@@ -338,7 +338,7 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
     if axis == "X":
         enable_driver_x(True)
 
-        fast_hz = (max(fast_mm_min, 60.0) / 60.0) * STEPS_PER_MM_X
+        fast_hz = MAX_STEP_HZ
         slow_hz = (max(slow_mm_min, 60.0) / 60.0) * STEPS_PER_MM_X
 
         # if already on endstop -> quick backoff
@@ -371,7 +371,7 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
     if axis == "Y":
         enable_driver_y(True)
 
-        fast_hz = (max(fast_mm_min, 60.0) / 60.0) * STEPS_PER_MM_Y
+        fast_hz = MAX_STEP_HZ
         slow_hz = (max(slow_mm_min, 60.0) / 60.0) * STEPS_PER_MM_Y
 
         if endstop_active(Y_MIN_GPIO):
