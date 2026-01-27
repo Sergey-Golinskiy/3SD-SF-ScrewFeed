@@ -332,7 +332,7 @@ def move_xy_abs(x_mm: float | None, y_mm: float | None, feed_mm_min: float):
     cur_y_mm = y_mm if done_y == int(round(abs(dy) * STEPS_PER_MM_Y)) else cur_y_mm
 
 
-def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.0, backoff_mm: float = 3.0):
+def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.0, backoff_mm: float = 15.0):
     global cur_x_mm, cur_y_mm
 
     if axis == "X":
@@ -355,9 +355,9 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
             if not ok:
                 break
 
-        # backoff
+        # backoff (slow 15mm)
         set_dir_x(True)
-        step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), fast_hz, None)
+        step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), slow_hz, None)
         time.sleep(0.05)
 
         # slow touch
@@ -387,9 +387,9 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
             if not ok:
                 break
 
-        # backoff
+        # backoff (slow 15mm)
         set_dir_y(True)
-        step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), fast_hz, None)
+        step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), slow_hz, None)
         time.sleep(0.05)
 
         # slow touch
