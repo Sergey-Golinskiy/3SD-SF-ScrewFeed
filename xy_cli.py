@@ -338,15 +338,17 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
     if axis == "X":
         enable_driver_x(True)
 
-        # if already on endstop -> backoff
+        fast_hz = (max(fast_mm_min, 60.0) / 60.0) * STEPS_PER_MM_X
+        slow_hz = (max(slow_mm_min, 60.0) / 60.0) * STEPS_PER_MM_X
+
+        # if already on endstop -> quick backoff
         if endstop_active(X_MIN_GPIO):
             set_dir_x(True)
-            step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), (slow_mm_min/60.0)*STEPS_PER_MM_X, None)
+            step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), fast_hz, None)
             time.sleep(0.05)
 
-        # fast approach
+        # fast approach until endstop
         set_dir_x(False)
-        fast_hz = (max(fast_mm_min, 60.0)/60.0) * STEPS_PER_MM_X
         chunk = int(STEPS_PER_MM_X * 10)
         while True:
             ok = step_pulses(X_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=X_MIN_GPIO)
@@ -355,8 +357,7 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
 
         # backoff
         set_dir_x(True)
-        slow_hz = (max(slow_mm_min, 60.0)/60.0) * STEPS_PER_MM_X
-        step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), slow_hz, None)
+        step_pulses(X_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_X), fast_hz, None)
         time.sleep(0.05)
 
         # slow touch
@@ -370,24 +371,28 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
     if axis == "Y":
         enable_driver_y(True)
 
+        fast_hz = (max(fast_mm_min, 60.0) / 60.0) * STEPS_PER_MM_Y
+        slow_hz = (max(slow_mm_min, 60.0) / 60.0) * STEPS_PER_MM_Y
+
         if endstop_active(Y_MIN_GPIO):
             set_dir_y(True)
-            step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), (slow_mm_min/60.0)*STEPS_PER_MM_Y, None)
+            step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), fast_hz, None)
             time.sleep(0.05)
 
+        # fast approach until endstop
         set_dir_y(False)
-        fast_hz = (max(fast_mm_min, 60.0)/60.0) * STEPS_PER_MM_Y
         chunk = int(STEPS_PER_MM_Y * 10)
         while True:
             ok = step_pulses(Y_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
             if not ok:
                 break
 
+        # backoff
         set_dir_y(True)
-        slow_hz = (max(slow_mm_min, 60.0)/60.0) * STEPS_PER_MM_Y
-        step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), slow_hz, None)
+        step_pulses(Y_STEP_GPIO, int(backoff_mm * STEPS_PER_MM_Y), fast_hz, None)
         time.sleep(0.05)
 
+        # slow touch
         set_dir_y(False)
         while not endstop_active(Y_MIN_GPIO):
             step_pulses(Y_STEP_GPIO, int(STEPS_PER_MM_Y * 0.5), slow_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
