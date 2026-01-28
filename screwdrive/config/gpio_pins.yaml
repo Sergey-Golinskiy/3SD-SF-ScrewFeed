@@ -1,0 +1,112 @@
+# GPIO Pin Configuration for Raspberry Pi 5
+# All pins use BCM numbering
+
+# =========================
+# XY Table Stepper Motors
+# =========================
+xy_table:
+  x_axis:
+    step: 9
+    dir: 10
+    enable: 11
+    endstop: 2
+  y_axis:
+    step: 21
+    dir: 7
+    enable: 8
+    endstop: 3
+
+# =========================
+# Relays (directly connected to Master Pi 5)
+# =========================
+relays:
+  # Screwdriver control
+  screwdriver_power:
+    gpio: 17
+    active_high: true
+    description: "Screwdriver motor power"
+
+  screwdriver_direction:
+    gpio: 27
+    active_high: true
+    description: "Screwdriver direction (CW/CCW)"
+
+  # Pneumatics
+  cylinder_down:
+    gpio: 22
+    active_high: true
+    description: "Pneumatic cylinder - push down"
+
+  cylinder_up:
+    gpio: 23
+    active_high: true
+    description: "Pneumatic cylinder - retract"
+
+  vacuum:
+    gpio: 24
+    active_high: true
+    description: "Vacuum gripper"
+
+  blow:
+    gpio: 25
+    active_high: true
+    description: "Air blow for cleaning"
+
+# =========================
+# Sensors (directly connected to Master Pi 5)
+# =========================
+sensors:
+  # Safety
+  area_sensor:
+    gpio: 5
+    active_low: true
+    description: "Safety light curtain"
+    pull_up: true
+
+  emergency_stop:
+    gpio: 6
+    active_low: true
+    description: "E-STOP button"
+    pull_up: true
+
+  # Screwdriver feedback
+  screw_present:
+    gpio: 12
+    active_low: true
+    description: "Screw in bit detector"
+    pull_up: true
+
+  torque_reached:
+    gpio: 13
+    active_low: true
+    description: "Torque limit reached signal"
+    pull_up: true
+
+  # Cylinder position
+  cylinder_up_sensor:
+    gpio: 19
+    active_low: true
+    description: "Cylinder retracted position"
+    pull_up: true
+
+  cylinder_down_sensor:
+    gpio: 26
+    active_low: true
+    description: "Cylinder extended position"
+    pull_up: true
+
+# =========================
+# Communication
+# =========================
+serial:
+  xy_table_port: "/dev/ttyAMA0"
+  xy_table_baud: 115200
+
+# =========================
+# Logic settings
+# =========================
+logic:
+  endstop_active_low: true
+  relay_active_high: true
+  step_pulse_active_low: true
+  step_idle_level: 1
