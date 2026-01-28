@@ -590,6 +590,110 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 
 
 # =========================
+# Motor Music (stepper singing)
+# =========================
+
+# Musical note frequencies (Hz)
+NOTES = {
+    'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
+    'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
+    'C5': 523.25, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00, 'B5': 987.77,
+    'REST': 0,
+}
+
+
+def play_tone(freq_hz: float, duration_ms: int, axis: str = "X") -> None:
+    """Play a tone using stepper motor at given frequency."""
+    if freq_hz <= 0:
+        time.sleep(duration_ms / 1000.0)
+        return
+
+    if axis == "X":
+        step_gpio = X_STEP_GPIO
+        enable_driver_x(True)
+    else:
+        step_gpio = Y_STEP_GPIO
+        enable_driver_y(True)
+
+    # Calculate steps needed for duration
+    steps = int(freq_hz * duration_ms / 1000.0)
+    if steps <= 0:
+        return
+
+    hi_ns = int(PULSE_US * 1000)
+    period_ns = int(1e9 / freq_hz)
+    if period_ns < hi_ns * 3:
+        period_ns = hi_ns * 3
+
+    t = time.perf_counter_ns()
+
+    for _ in range(steps):
+        if STEP_PULSE_ACTIVE_LOW:
+            io.write(step_gpio, 0)
+            t += hi_ns
+            busy_wait_ns(t)
+            io.write(step_gpio, 1)
+        else:
+            io.write(step_gpio, 1)
+            t += hi_ns
+            busy_wait_ns(t)
+            io.write(step_gpio, 0)
+        t += (period_ns - hi_ns)
+        busy_wait_ns(t)
+
+
+def play_melody(melody: list, axis: str = "X") -> None:
+    """Play a melody. Each item is (note_name, duration_ms)."""
+    for note, duration in melody:
+        freq = NOTES.get(note, 0)
+        play_tone(freq, duration, axis)
+
+
+def play_rock_riff() -> None:
+    """Play a rock-style riff (inspired by classic rock patterns)."""
+    # Classic rock power chord rhythm pattern
+    # E-A-D progression with rhythmic emphasis
+    melody = [
+        # Intro - heavy E power chord feel
+        ('E3', 150), ('REST', 50),
+        ('E3', 150), ('REST', 50),
+        ('G3', 100), ('A3', 100),
+        ('E3', 200), ('REST', 100),
+
+        # A section
+        ('A3', 150), ('REST', 50),
+        ('A3', 150), ('REST', 50),
+        ('C4', 100), ('D4', 100),
+        ('A3', 200), ('REST', 100),
+
+        # D section
+        ('D4', 150), ('REST', 50),
+        ('D4', 150), ('REST', 50),
+        ('F4', 100), ('G4', 100),
+        ('D4', 200), ('REST', 100),
+
+        # Back to E - finale
+        ('E3', 100), ('E3', 100),
+        ('G3', 100), ('A3', 100),
+        ('B3', 150), ('A3', 150),
+        ('G3', 150), ('E3', 300),
+
+        # Final hits
+        ('REST', 100),
+        ('E4', 100), ('REST', 50),
+        ('E4', 100), ('REST', 50),
+        ('E3', 400),
+    ]
+
+    enable_all(True)
+    # Alternate between X and Y motors for stereo effect
+    for i, (note, duration) in enumerate(melody):
+        axis = "X" if i % 2 == 0 else "Y"
+        freq = NOTES.get(note, 0)
+        play_tone(freq, duration, axis)
+
+
+# =========================
 # Homing functions
 # =========================
 def home_axis(axis: str) -> bool:
@@ -1003,6 +1107,13 @@ def handle_command(line: str) -> str:
             move_xy_abs(x, y, f)
             return "ok"
 
+        # === MUSIC command (motor singing) ===
+        if up == "MUSIC" or up == "PLAY" or up == "SONG":
+            if estop:
+                return "err ESTOP"
+            play_rock_riff()
+            return "ok ROCK!"
+
         # === HELP ===
         if up == "HELP":
             return get_help_text()
@@ -1053,6 +1164,8 @@ def get_help_text() -> str:
   SET SPMM X<val> Y<val>      - set steps/mm (legacy)
   SET WORK X<mm> Y<mm> F<val> - set work position
   SET X0 / SET Y0 / SET XY0   - zero current position
+
+  MUSIC / PLAY / SONG         - play rock riff (motor singing)
 
   QUIT / EXIT                 - exit program
 """
