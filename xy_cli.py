@@ -69,7 +69,7 @@ MAX_STEP_HZ   = 30000
 PULSE_US      = 10
 
 # Acceleration parameters
-ACCEL_MM_S2 = 500.0      # Acceleration in mm/s^2
+ACCEL_MM_S2 = 1500.0     # Acceleration in mm/s^2 (higher = faster ramp)
 START_SPEED_MM_S = 5.0   # Starting speed for ramp (mm/s)
 
 # Homing parameters
