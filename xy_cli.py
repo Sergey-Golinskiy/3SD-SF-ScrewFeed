@@ -593,11 +593,14 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 # Motor Music (stepper singing)
 # =========================
 
-# Musical note frequencies (Hz)
+# Musical note frequencies (Hz) - higher octaves for motor singing
 NOTES = {
-    'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
-    'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
+    # Octave 5 (mid-high)
     'C5': 523.25, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00, 'B5': 987.77,
+    # Octave 6 (high - best for motor singing)
+    'C6': 1046.50, 'D6': 1174.66, 'E6': 1318.51, 'F6': 1396.91, 'G6': 1567.98, 'A6': 1760.00, 'B6': 1975.53,
+    # Octave 7 (very high)
+    'C7': 2093.00, 'D7': 2349.32, 'E7': 2637.02, 'F7': 2793.83, 'G7': 3135.96, 'A7': 3520.00, 'B7': 3951.07,
     'REST': 0,
 }
 
@@ -650,47 +653,34 @@ def play_melody(melody: list, axis: str = "X") -> None:
 
 
 def play_rock_riff() -> None:
-    """Play a rock-style riff (inspired by classic rock patterns)."""
-    # Classic rock power chord rhythm pattern
-    # E-A-D progression with rhythmic emphasis
+    """Play a simple scale: do-re-mi-fa-sol-la-si at high frequencies."""
+    # До-Ре-Ми-Фа-Соль-Ля-Си (C-D-E-F-G-A-B) in octave 6 for clear motor singing
     melody = [
-        # Intro - heavy E power chord feel
-        ('E3', 150), ('REST', 50),
-        ('E3', 150), ('REST', 50),
-        ('G3', 100), ('A3', 100),
-        ('E3', 200), ('REST', 100),
-
-        # A section
-        ('A3', 150), ('REST', 50),
-        ('A3', 150), ('REST', 50),
-        ('C4', 100), ('D4', 100),
-        ('A3', 200), ('REST', 100),
-
-        # D section
-        ('D4', 150), ('REST', 50),
-        ('D4', 150), ('REST', 50),
-        ('F4', 100), ('G4', 100),
-        ('D4', 200), ('REST', 100),
-
-        # Back to E - finale
-        ('E3', 100), ('E3', 100),
-        ('G3', 100), ('A3', 100),
-        ('B3', 150), ('A3', 150),
-        ('G3', 150), ('E3', 300),
-
-        # Final hits
-        ('REST', 100),
-        ('E4', 100), ('REST', 50),
-        ('E4', 100), ('REST', 50),
-        ('E3', 400),
+        # Scale up
+        ('C6', 300),  # До
+        ('D6', 300),  # Ре
+        ('E6', 300),  # Ми
+        ('F6', 300),  # Фа
+        ('G6', 300),  # Соль
+        ('A6', 300),  # Ля
+        ('B6', 300),  # Си
+        ('C7', 500),  # До (высокое)
+        ('REST', 200),
+        # Scale down
+        ('C7', 300),
+        ('B6', 300),
+        ('A6', 300),
+        ('G6', 300),
+        ('F6', 300),
+        ('E6', 300),
+        ('D6', 300),
+        ('C6', 500),
     ]
 
     enable_all(True)
-    # Alternate between X and Y motors for stereo effect
-    for i, (note, duration) in enumerate(melody):
-        axis = "X" if i % 2 == 0 else "Y"
+    for note, duration in melody:
         freq = NOTES.get(note, 0)
-        play_tone(freq, duration, axis)
+        play_tone(freq, duration, "X")
 
 
 # =========================
