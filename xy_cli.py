@@ -439,7 +439,7 @@ def home_axis(axis: str) -> bool:
     if axis == "X":
         enable_driver_x(True)
 
-        fast_hz = min(MAX_FEED_MM_S * STEPS_PER_MM_X, MAX_STEP_HZ)
+        fast_hz = min(300.0 * STEPS_PER_MM_X, MAX_STEP_HZ)  # 300 mm/s for fast approach
         slow_hz = SLOW_MM_S * STEPS_PER_MM_X
 
         # if already on endstop -> quick backoff
@@ -448,28 +448,20 @@ def home_axis(axis: str) -> bool:
             step_pulses(X_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_X), fast_hz, None)
             time.sleep(0.05)
 
-        # fast approach until endstop
+        # fast approach until endstop (no distance limit, only timeout)
         set_dir_x(False)
-        scan_steps = int(SCAN_RANGE_X_MM * STEPS_PER_MM_X)
         chunk = int(STEPS_PER_MM_X * 10)
-        found = False
-        moved = 0
 
-        while moved < scan_steps:
+        while True:
             if check_timeout():
                 return False
             ok = step_pulses(X_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=X_MIN_GPIO)
-            moved += chunk
             if not ok:
-                found = True
                 break
-
-        if not found:
-            return False
 
         # backoff
         set_dir_x(True)
-        step_pulses(X_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_X), fast_hz, None)
+        step_pulses(X_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_X), slow_hz, None)
         time.sleep(0.05)
 
         # slow touch
@@ -485,7 +477,7 @@ def home_axis(axis: str) -> bool:
     if axis == "Y":
         enable_driver_y(True)
 
-        fast_hz = min(MAX_FEED_MM_S * STEPS_PER_MM_Y, MAX_STEP_HZ)
+        fast_hz = min(300.0 * STEPS_PER_MM_Y, MAX_STEP_HZ)  # 300 mm/s for fast approach
         slow_hz = SLOW_MM_S * STEPS_PER_MM_Y
 
         if endstop_active(Y_MIN_GPIO):
@@ -493,26 +485,19 @@ def home_axis(axis: str) -> bool:
             step_pulses(Y_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_Y), fast_hz, None)
             time.sleep(0.05)
 
+        # fast approach until endstop (no distance limit, only timeout)
         set_dir_y(False)
-        scan_steps = int(SCAN_RANGE_Y_MM * STEPS_PER_MM_Y)
         chunk = int(STEPS_PER_MM_Y * 10)
-        found = False
-        moved = 0
 
-        while moved < scan_steps:
+        while True:
             if check_timeout():
                 return False
             ok = step_pulses(Y_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
-            moved += chunk
             if not ok:
-                found = True
                 break
 
-        if not found:
-            return False
-
         set_dir_y(True)
-        step_pulses(Y_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_Y), fast_hz, None)
+        step_pulses(Y_STEP_GPIO, int(BACKOFF_MM * STEPS_PER_MM_Y), slow_hz, None)
         time.sleep(0.05)
 
         set_dir_y(False)
