@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
+"""
+xy_cli.py - CLI tool for controlling X/Y coordinate table via GPIO on Raspberry Pi 5.
+
+Part of 3SD-SF-ScrewFeed automated screwdriver project.
+Requires: Python 3.10+, lgpio library, Raspberry Pi with GPIO access.
+"""
+import sys
 import time
-import math
-import lgpio
+from typing import Optional
+
+try:
+    import lgpio
+except ImportError:
+    print("ERROR: lgpio library not found. Install with: pip install lgpio")
+    sys.exit(1)
 
 # =========================
 # GPIO mapping (BCM)
@@ -14,7 +26,7 @@ X_STEP_GPIO = 9
 X_DIR_GPIO  = 10
 X_ENA_GPIO  = 11
 
-# Y axis driver (как ты дал)
+# Y axis driver
 Y_STEP_GPIO = 21
 Y_DIR_GPIO  = 7
 Y_ENA_GPIO  = 8
@@ -23,7 +35,7 @@ Y_ENA_GPIO  = 8
 # Logic levels
 # =========================
 ENDSTOP_ACTIVE_LOW = True   # NPN sensor: triggered -> LOW
-ENA_ACTIVE_HIGH    = True   # у тебя: ENA=1 means enabled
+ENA_ACTIVE_HIGH    = True   # ENA=1 means driver enabled
 
 STEP_IDLE_LEVEL = 1
 STEP_PULSE_ACTIVE_LOW = True  # common-anode wiring: pulse on "-" line is usually active-low
@@ -45,19 +57,31 @@ PULSE_US     = 10
 cur_x_mm = 0.0
 cur_y_mm = 0.0
 
+# Homing timeout in seconds (safety limit)
+HOMING_TIMEOUT_S = 60.0
 
-def clamp(v, lo, hi):
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    """Clamp value v between lo and hi."""
     return lo if v < lo else hi if v > hi else v
 
 
-def busy_wait_ns(t_ns: int):
+def busy_wait_ns(t_ns: int) -> None:
+    """Busy-wait until the given nanosecond timestamp."""
     while time.perf_counter_ns() < t_ns:
         pass
 
 
 class GPIO:
+    """Wrapper for lgpio GPIO operations."""
+
     def __init__(self):
-        self.h = lgpio.gpiochip_open(0)
+        try:
+            self.h = lgpio.gpiochip_open(0)
+        except Exception as e:
+            print(f"ERROR: Cannot open GPIO chip: {e}")
+            print("Make sure you're running on Raspberry Pi with GPIO access.")
+            sys.exit(1)
 
         # outputs X
         lgpio.gpio_claim_output(self.h, X_STEP_GPIO, STEP_IDLE_LEVEL)
@@ -74,17 +98,28 @@ class GPIO:
         lgpio.gpio_claim_input(self.h, X_MIN_GPIO, pull_up)
         lgpio.gpio_claim_input(self.h, Y_MIN_GPIO, pull_up)
 
-    def close(self):
+    def close(self) -> None:
+        """Release GPIO resources."""
         lgpio.gpiochip_close(self.h)
 
     def read(self, gpio: int) -> int:
+        """Read GPIO pin state."""
         return lgpio.gpio_read(self.h, gpio)
 
-    def write(self, gpio: int, val: int):
+    def write(self, gpio: int, val: int) -> None:
+        """Write value to GPIO pin."""
         lgpio.gpio_write(self.h, gpio, val)
 
 
-io = GPIO()
+# Lazy initialization - will be set in main()
+io: Optional[GPIO] = None
+
+
+def init_gpio() -> None:
+    """Initialize GPIO. Must be called before any GPIO operations."""
+    global io
+    if io is None:
+        io = GPIO()
 
 
 def endstop_active(gpio: int) -> bool:
@@ -119,7 +154,7 @@ def set_dir_y(positive: bool):
     io.write(Y_DIR_GPIO, 1 if positive else 0)
 
 
-def step_pulses(step_gpio: int, steps: int, step_hz: float, stop_on_endstop_gpio: int | None = None) -> bool:
+def step_pulses(step_gpio: int, steps: int, step_hz: float, stop_on_endstop_gpio: Optional[int] = None) -> bool:
     """
     Generates STEP pulses for one axis (blocking).
     stop_on_endstop_gpio: if provided, stops when that endstop becomes active.
@@ -224,7 +259,7 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float):
     raise ValueError("Axis must be X or Y")
 
 
-def move_xy_abs(x_mm: float | None, y_mm: float | None, feed_mm_min: float):
+def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float) -> None:
     """
     Simple "both axes" move.
     To keep it simple and robust (without threads), we do interleaved stepping by time.
@@ -248,6 +283,9 @@ def move_xy_abs(x_mm: float | None, y_mm: float | None, feed_mm_min: float):
 
     sx = int(round(abs(dx) * STEPS_PER_MM_X))
     sy = int(round(abs(dy) * STEPS_PER_MM_Y))
+    # Save original step counts for position calculation
+    sx_orig = sx
+    sy_orig = sy
 
     if sx == 0 and sy == 0:
         return
@@ -327,13 +365,42 @@ def move_xy_abs(x_mm: float | None, y_mm: float | None, feed_mm_min: float):
                 done_y += 1
             next_y += period_y_ns
 
-    # Update positions if completed
-    cur_x_mm = x_mm if done_x == int(round(abs(dx) * STEPS_PER_MM_X)) else cur_x_mm
-    cur_y_mm = y_mm if done_y == int(round(abs(dy) * STEPS_PER_MM_Y)) else cur_y_mm
+    # Update positions if completed (check against original step counts)
+    if done_x == sx_orig:
+        cur_x_mm = x_mm
+    elif stop_x and sx < sx_orig:
+        # Endstop was hit, cur_x_mm already set to 0.0
+        print("HIT X_MIN -> X set to 0.0")
+
+    if done_y == sy_orig:
+        cur_y_mm = y_mm
+    elif stop_y and sy < sy_orig:
+        # Endstop was hit, cur_y_mm already set to 0.0
+        print("HIT Y_MIN -> Y set to 0.0")
 
 
-def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.0, backoff_mm: float = 15.0):
+def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.0, backoff_mm: float = 15.0) -> bool:
+    """
+    Home specified axis to MIN endstop.
+
+    Args:
+        axis: "X" or "Y"
+        fast_mm_min: Fast approach speed in mm/min
+        slow_mm_min: Slow touch speed in mm/min
+        backoff_mm: Distance to back off before slow approach
+
+    Returns:
+        True if homing successful, False if timeout occurred.
+    """
     global cur_x_mm, cur_y_mm
+
+    start_time = time.time()
+
+    def check_timeout() -> bool:
+        if time.time() - start_time > HOMING_TIMEOUT_S:
+            print(f"ERROR: Homing {axis} timeout after {HOMING_TIMEOUT_S}s")
+            return True
+        return False
 
     if axis == "X":
         enable_driver_x(True)
@@ -351,6 +418,8 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
         set_dir_x(False)
         chunk = int(STEPS_PER_MM_X * 10)
         while True:
+            if check_timeout():
+                return False
             ok = step_pulses(X_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=X_MIN_GPIO)
             if not ok:
                 break
@@ -363,10 +432,12 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
         # slow touch
         set_dir_x(False)
         while not endstop_active(X_MIN_GPIO):
+            if check_timeout():
+                return False
             step_pulses(X_STEP_GPIO, int(STEPS_PER_MM_X * 0.5), slow_hz, stop_on_endstop_gpio=X_MIN_GPIO)
 
         cur_x_mm = 0.0
-        return
+        return True
 
     if axis == "Y":
         enable_driver_y(True)
@@ -383,6 +454,8 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
         set_dir_y(False)
         chunk = int(STEPS_PER_MM_Y * 10)
         while True:
+            if check_timeout():
+                return False
             ok = step_pulses(Y_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
             if not ok:
                 break
@@ -395,10 +468,12 @@ def home_axis(axis: str, fast_mm_min: float = 18000.0, slow_mm_min: float = 600.
         # slow touch
         set_dir_y(False)
         while not endstop_active(Y_MIN_GPIO):
+            if check_timeout():
+                return False
             step_pulses(Y_STEP_GPIO, int(STEPS_PER_MM_Y * 0.5), slow_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
 
         cur_y_mm = 0.0
-        return
+        return True
 
     raise ValueError("Axis must be X or Y")
 
@@ -428,8 +503,12 @@ def help_text():
 """)
 
 
-def main():
+def main() -> None:
+    """Main CLI loop."""
     global STEPS_PER_MM_X, STEPS_PER_MM_Y, cur_x_mm, cur_y_mm
+
+    # Initialize GPIO
+    init_gpio()
 
     print("xy_cli ready (Pi 5 / lgpio). Type HELP.")
     enable_all(True)
@@ -437,136 +516,156 @@ def main():
     try:
         while True:
             status()
-            line = input("> ").strip()
+            try:
+                line = input("> ").strip()
+            except EOFError:
+                break
+
             if not line:
                 continue
 
             up = line.upper()
 
-            if up == "HELP":
-                help_text()
-                continue
-            if up in ("QUIT", "EXIT"):
-                break
+            try:
+                if up == "HELP":
+                    help_text()
+                    continue
+                if up in ("QUIT", "EXIT"):
+                    break
 
-            if up == "M114":
-                status()
-                continue
+                if up == "M114":
+                    status()
+                    continue
 
-            if up == "M17":
-                enable_all(True)
-                print("Drivers ENABLED")
-                continue
-            if up == "M18":
-                enable_all(False)
-                print("Drivers DISABLED")
-                continue
+                if up == "M17":
+                    enable_all(True)
+                    print("Drivers ENABLED")
+                    continue
+                if up == "M18":
+                    enable_all(False)
+                    print("Drivers DISABLED")
+                    continue
 
-            if up == "HOME":
-                home_axis("Y")
-                home_axis("X")
-                print("ok HOME")
-                continue
-            if up == "HOME X":
-                home_axis("X")
-                print("ok HOME X")
-                continue
-            if up == "HOME Y":
-                home_axis("Y")
-                print("ok HOME Y")
-                continue
-
-            if up.startswith("SET "):
-                parts = line.split()
-                if len(parts) >= 3 and parts[1].upper() == "SPMM":
-                    # SET SPMM 10   OR  SET SPMM X10 Y10
-                    if len(parts) == 3 and (parts[2][0].upper() not in ("X", "Y")):
-                        v = float(parts[2])
-                        STEPS_PER_MM_X = v
-                        STEPS_PER_MM_Y = v
-                        print(f"STEPS_PER_MM_X={STEPS_PER_MM_X} STEPS_PER_MM_Y={STEPS_PER_MM_Y}")
+                if up == "HOME":
+                    ok_y = home_axis("Y")
+                    ok_x = home_axis("X")
+                    if ok_x and ok_y:
+                        print("ok HOME")
                     else:
-                        for tok in parts[2:]:
-                            t = tok.upper()
-                            if t.startswith("X"):
-                                STEPS_PER_MM_X = float(tok[1:])
-                            elif t.startswith("Y"):
-                                STEPS_PER_MM_Y = float(tok[1:])
-                        print(f"STEPS_PER_MM_X={STEPS_PER_MM_X} STEPS_PER_MM_Y={STEPS_PER_MM_Y}")
+                        print("err HOME_FAILED")
+                    continue
+                if up == "HOME X":
+                    if home_axis("X"):
+                        print("ok HOME X")
+                    else:
+                        print("err HOME_X_FAILED")
+                    continue
+                if up == "HOME Y":
+                    if home_axis("Y"):
+                        print("ok HOME Y")
+                    else:
+                        print("err HOME_Y_FAILED")
                     continue
 
-                if len(parts) == 2 and parts[1].upper() == "X0":
-                    cur_x_mm = 0.0
-                    print("X set to 0.0")
-                    continue
-                if len(parts) == 2 and parts[1].upper() == "Y0":
-                    cur_y_mm = 0.0
-                    print("Y set to 0.0")
-                    continue
-                if len(parts) == 2 and parts[1].upper() == "XY0":
-                    cur_x_mm = 0.0
-                    cur_y_mm = 0.0
-                    print("X,Y set to 0.0")
+                if up.startswith("SET "):
+                    parts = line.split()
+                    if len(parts) >= 3 and parts[1].upper() == "SPMM":
+                        # SET SPMM 10   OR  SET SPMM X10 Y10
+                        if len(parts) == 3 and (parts[2][0].upper() not in ("X", "Y")):
+                            v = float(parts[2])
+                            STEPS_PER_MM_X = v
+                            STEPS_PER_MM_Y = v
+                            print(f"STEPS_PER_MM_X={STEPS_PER_MM_X} STEPS_PER_MM_Y={STEPS_PER_MM_Y}")
+                        else:
+                            for tok in parts[2:]:
+                                t = tok.upper()
+                                if t.startswith("X"):
+                                    STEPS_PER_MM_X = float(tok[1:])
+                                elif t.startswith("Y"):
+                                    STEPS_PER_MM_Y = float(tok[1:])
+                            print(f"STEPS_PER_MM_X={STEPS_PER_MM_X} STEPS_PER_MM_Y={STEPS_PER_MM_Y}")
+                        continue
+
+                    if len(parts) == 2 and parts[1].upper() == "X0":
+                        cur_x_mm = 0.0
+                        print("X set to 0.0")
+                        continue
+                    if len(parts) == 2 and parts[1].upper() == "Y0":
+                        cur_y_mm = 0.0
+                        print("Y set to 0.0")
+                        continue
+                    if len(parts) == 2 and parts[1].upper() == "XY0":
+                        cur_x_mm = 0.0
+                        cur_y_mm = 0.0
+                        print("X,Y set to 0.0")
+                        continue
+
+                    print("err BAD_SET")
                     continue
 
-                print("err BAD_SET")
-                continue
-
-            # Jog X: JX -5 F1200
-            if up.startswith("JX "):
-                toks = line.split()
-                if len(toks) < 2:
-                    print("err BAD_ARGS")
+                # Jog X: JX -5 F1200
+                if up.startswith("JX "):
+                    toks = line.split()
+                    if len(toks) < 2:
+                        print("err BAD_ARGS")
+                        continue
+                    delta = float(toks[1])
+                    feed = 300.0
+                    for t in toks[2:]:
+                        if t.upper().startswith("F"):
+                            feed = float(t[1:])
+                    move_axis_abs("X", cur_x_mm + delta, feed)
+                    print("ok")
                     continue
-                delta = float(toks[1])
-                feed = 300.0
-                for t in toks[2:]:
-                    if t.upper().startswith("F"):
-                        feed = float(t[1:])
-                move_axis_abs("X", cur_x_mm + delta, feed)
-                print("ok")
-                continue
 
-            # Jog Y: JY +10 F6000
-            if up.startswith("JY "):
-                toks = line.split()
-                if len(toks) < 2:
-                    print("err BAD_ARGS")
+                # Jog Y: JY +10 F6000
+                if up.startswith("JY "):
+                    toks = line.split()
+                    if len(toks) < 2:
+                        print("err BAD_ARGS")
+                        continue
+                    delta = float(toks[1])
+                    feed = 300.0
+                    for t in toks[2:]:
+                        if t.upper().startswith("F"):
+                            feed = float(t[1:])
+                    move_axis_abs("Y", cur_y_mm + delta, feed)
+                    print("ok")
                     continue
-                delta = float(toks[1])
-                feed = 300.0
-                for t in toks[2:]:
-                    if t.upper().startswith("F"):
-                        feed = float(t[1:])
-                move_axis_abs("Y", cur_y_mm + delta, feed)
-                print("ok")
-                continue
 
-            # Move: G0 X50 Y200 F12000 (X or Y can be omitted)
-            if up.startswith("G0") or up.startswith("G1"):
-                x = None
-                y = None
-                f = 300.0
-                for tok in line.split()[1:]:
-                    tt = tok.upper()
-                    if tt.startswith("X"):
-                        x = float(tok[1:])
-                    elif tt.startswith("Y"):
-                        y = float(tok[1:])
-                    elif tt.startswith("F"):
-                        f = float(tok[1:])
-                if x is None and y is None:
-                    print("err BAD_ARGS")
+                # Move: G0 X50 Y200 F12000 (X or Y can be omitted)
+                if up.startswith("G0") or up.startswith("G1"):
+                    x = None
+                    y = None
+                    f = 300.0
+                    for tok in line.split()[1:]:
+                        tt = tok.upper()
+                        if tt.startswith("X"):
+                            x = float(tok[1:])
+                        elif tt.startswith("Y"):
+                            y = float(tok[1:])
+                        elif tt.startswith("F"):
+                            f = float(tok[1:])
+                    if x is None and y is None:
+                        print("err BAD_ARGS")
+                        continue
+                    move_xy_abs(x, y, f)
+                    print("ok")
                     continue
-                move_xy_abs(x, y, f)
-                print("ok")
-                continue
 
-            print("err UNKNOWN")
+                print("err UNKNOWN")
+
+            except ValueError as e:
+                print(f"err INVALID_NUMBER: {e}")
+
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
 
     finally:
         enable_all(False)
-        io.close()
+        if io is not None:
+            io.close()
+        print("GPIO released. Goodbye.")
 
 
 if __name__ == "__main__":

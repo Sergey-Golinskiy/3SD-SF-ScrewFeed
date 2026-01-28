@@ -1,72 +1,171 @@
 # 3SD-SF-ScrewFeed
 
-## Опис
-`xy_cli.py` — це консольний інструмент для керування двома осями (X та Y) через GPIO на Raspberry Pi (під бібліотеку `lgpio`). Скрипт у режимі CLI приймає прості команди для хомінгу, переміщень та джогу, а також дозволяє змінювати кроки/мм і обнуляти поточну позицію. Основна ідея — пряме генерування STEP-пульсів для драйверів осей X/Y із перевіркою кінцевиків (endstop).【F:xy_cli.py†L1-L409】
+CLI tool for controlling X/Y coordinate table on Raspberry Pi 5 — part of the automated screwdriver project.
 
-## Вимоги
-- Raspberry Pi з доступом до GPIO.
-- Python 3.
-- Встановлена бібліотека `lgpio` (скрипт використовує `gpiochip_open`, `gpio_claim_output`, `gpio_read`, `gpio_write`).【F:xy_cli.py†L1-L82】
+## Description
 
-## Як працює
-1. **Мапінг GPIO та логіка сигналів**
-   - Вказані піни STEP/DIR/ENA для X та Y, а також входи кінцевиків X_MIN/Y_MIN (активні по LOW).【F:xy_cli.py†L6-L38】
-   - ENA активний по HIGH, а STEP-пульс заданий як активний по LOW (common-anode).【F:xy_cli.py†L33-L38】
+`xy_cli.py` is a command-line tool for controlling two axes (X and Y) via GPIO on Raspberry Pi using the `lgpio` library. The script accepts simple commands for homing, movement, and jogging, and also allows changing steps/mm and zeroing the current position.
 
-2. **Генерація STEP-пульсів**
-   - Функція `step_pulses` блокує виконання і генерує `steps` імпульсів з обмеженням частоти `MAX_STEP_HZ` та тривалістю імпульсу `PULSE_US`. Якщо задано `stop_on_endstop_gpio`, рух зупиниться при спрацюванні кінцевика.【F:xy_cli.py†L93-L147】
+Core functionality:
+- Direct STEP pulse generation for X/Y axis drivers
+- Endstop checking (MIN endstops)
+- Interleaved dual-axis motion
+- Configurable steps per mm
 
-3. **Переміщення по одній осі**
-   - `move_axis_abs` рухає одну вісь до абсолютної координати (мм). Кроки/мм множаться на дельту для розрахунку кількості кроків. При русі до мінімуму перевіряється кінцевик та, у разі спрацювання, координата скидається в 0.0 мм.【F:xy_cli.py†L150-L226】
+## Requirements
 
-4. **Переміщення по двох осях**
-   - `move_xy_abs` виконує інтерливінг кроків X та Y за часом (простий планувальник без синхронного Bresenham). Це дозволяє рухати обидві осі приблизно одночасно з однаковою швидкістю в мм/с.【F:xy_cli.py†L229-L326】
+- **Raspberry Pi 5** with GPIO access
+- **Python 3.10+**
+- **lgpio** library
 
-5. **Хомінг**
-   - `home_axis` виконує:
-     1) від’їзд від кінцевика (якщо вже затиснуто),
-     2) швидкий під’їзд до спрацювання,
-     3) від’їзд на `backoff_mm`,
-     4) повільний під’їзд до точного спрацювання.
-   - Після завершення координата осі встановлюється в 0.0 мм.【F:xy_cli.py†L329-L403】
+### Installation
 
-## Налаштування
-Ключові константи, які можна змінювати під вашу механіку:
-- `STEPS_PER_MM_X`, `STEPS_PER_MM_Y` — кроки на мм для кожної осі.【F:xy_cli.py†L41-L45】
-- `X_MIN_MM`, `X_MAX_MM`, `Y_MIN_MM`, `Y_MAX_MM` — межі переміщень у мм.【F:xy_cli.py†L47-L51】
-- `MAX_STEP_HZ`, `PULSE_US` — максимальна частота та тривалість STEP-імпульсу.【F:xy_cli.py†L53-L55】
-- `ENDSTOP_ACTIVE_LOW`, `ENA_ACTIVE_HIGH`, `STEP_PULSE_ACTIVE_LOW` — логіка сигналів залежно від вашого підключення.【F:xy_cli.py†L33-L38】
+```bash
+# Install lgpio
+pip install lgpio
 
-## Запуск
+# Clone repository
+git clone <repository-url>
+cd 3SD-SF-ScrewFeed
+```
+
+## GPIO Pinout
+
+| Function    | GPIO (BCM) |
+|-------------|------------|
+| X_STEP      | 9          |
+| X_DIR       | 10         |
+| X_ENA       | 11         |
+| X_MIN (endstop) | 2      |
+| Y_STEP      | 21         |
+| Y_DIR       | 7          |
+| Y_ENA       | 8          |
+| Y_MIN (endstop) | 3      |
+
+### Signal Logic
+
+| Signal      | Active Level |
+|-------------|--------------|
+| Endstop     | LOW (NPN sensor) |
+| ENA (enable)| HIGH         |
+| STEP pulse  | LOW (common-anode) |
+
+## How It Works
+
+### 1. STEP Pulse Generation
+The `step_pulses` function generates blocking STEP pulses with configurable frequency (`MAX_STEP_HZ`) and pulse duration (`PULSE_US`). Movement stops automatically when endstop is triggered.
+
+### 2. Single Axis Movement
+`move_axis_abs` moves one axis to an absolute coordinate (mm). Steps per mm multiplied by delta gives the step count. When moving toward MIN, endstop is checked and position resets to 0.0 mm on trigger.
+
+### 3. Dual Axis Movement
+`move_xy_abs` performs time-interleaved stepping for X and Y axes. This simple scheduler (not Bresenham) allows both axes to move approximately simultaneously at the same mm/s speed.
+
+### 4. Homing
+`home_axis` performs:
+1. Back off from endstop (if already triggered)
+2. Fast approach until endstop triggers
+3. Back off by `backoff_mm` (15mm default)
+4. Slow approach for precise positioning
+5. Set axis coordinate to 0.0 mm
+
+**Safety**: Homing has a 60-second timeout to prevent infinite loops if mechanics jam.
+
+## Configuration
+
+Key constants in `xy_cli.py`:
+
+```python
+# Steps per mm for each axis
+STEPS_PER_MM_X = 10.0
+STEPS_PER_MM_Y = 10.0
+
+# Travel limits (mm)
+X_MIN_MM = 0.0
+X_MAX_MM = 165.0
+Y_MIN_MM = 0.0
+Y_MAX_MM = 350.0
+
+# Motion parameters
+MAX_STEP_HZ = 30000   # Maximum step frequency
+PULSE_US = 10         # Step pulse duration (microseconds)
+
+# Homing timeout (seconds)
+HOMING_TIMEOUT_S = 60.0
+```
+
+## Usage
+
 ```bash
 python3 xy_cli.py
 ```
-Після запуску з’явиться запрошення та статус кінцевиків. Драйвери вмикаються автоматично.【F:xy_cli.py†L406-L409】
 
-## Команди CLI
-- `HELP` — показати довідку.
-- `M114` — поточний статус/координати.
-- `M17` / `M18` — увімкнути / вимкнути драйвери.
-- `HOME` — хомінг Y, потім X.
-- `HOME X` / `HOME Y` — хомінг конкретної осі.
-- `G0 X<мм> Y<мм> F<мм/хв>` — абсолютний рух (можна вказати лише X або Y).
-- `JX <+/-мм> F<мм/хв>` — джог осі X.
-- `JY <+/-мм> F<мм/хв>` — джог осі Y.
-- `SET SPMM <val>` — задати кроки/мм для обох осей.
-- `SET SPMM X<val> Y<val>` — задати окремо для X/Y.
-- `SET X0` / `SET Y0` / `SET XY0` — обнулити поточну позицію.
-- `QUIT` — вихід.
+After startup, a prompt appears showing current position and endstop status. Drivers are enabled automatically.
 
-Усі ці команди реалізовані в головному циклі `main()` і обробляються текстово (рядки в upper-case).【F:xy_cli.py†L257-L393】
+### CLI Commands
 
-## Приклади
+| Command | Description |
+|---------|-------------|
+| `HELP` | Show help text |
+| `M114` | Show current status/coordinates |
+| `M17` | Enable both drivers |
+| `M18` | Disable both drivers |
+| `HOME` | Home Y then X |
+| `HOME X` | Home X axis only |
+| `HOME Y` | Home Y axis only |
+| `G0 X<mm> Y<mm> F<mm/min>` | Absolute move (X or Y optional) |
+| `G1 X<mm> Y<mm> F<mm/min>` | Same as G0 |
+| `JX <+/-mm> F<mm/min>` | Jog X axis |
+| `JY <+/-mm> F<mm/min>` | Jog Y axis |
+| `SET SPMM <val>` | Set steps/mm for both axes |
+| `SET SPMM X<val> Y<val>` | Set steps/mm separately |
+| `SET X0` | Zero X position |
+| `SET Y0` | Zero Y position |
+| `SET XY0` | Zero both positions |
+| `QUIT` / `EXIT` | Exit program |
+
+### Examples
+
 ```text
-HOME
-G0 X50 Y200 F12000
-JX -5 F1200
-SET SPMM X10 Y10
+> HOME
+ok HOME
+> G0 X50 Y200 F12000
+ok
+> JX -5 F1200
+ok
+> SET SPMM X10 Y10
+STEPS_PER_MM_X=10.0 STEPS_PER_MM_Y=10.0
+> M114
+X=45.000mm Y=200.000mm | X_MIN=open Y_MIN=open
 ```
 
-## Зауваження з безпеки
-- Скрипт напряму керує драйверами через GPIO, тому переконайтесь у правильності підключень та логіки сигналів перед запуском.
-- Вихідні межі (`X_MIN_MM`, `X_MAX_MM`, тощо) використовуються для обмеження координат, але механічні кінцевики все одно повинні бути підключені та перевірені.【F:xy_cli.py†L47-L226】
+## Error Messages
+
+| Error | Description |
+|-------|-------------|
+| `err UNKNOWN` | Unknown command |
+| `err BAD_ARGS` | Missing or invalid arguments |
+| `err BAD_SET` | Invalid SET command format |
+| `err INVALID_NUMBER` | Cannot parse number |
+| `err HOME_FAILED` | Homing timeout |
+| `HIT X_MIN` / `HIT Y_MIN` | Endstop triggered during move |
+
+## Safety Notes
+
+- The script directly controls stepper drivers via GPIO. Verify all connections and signal logic before running.
+- Software limits (`X_MAX_MM`, `Y_MAX_MM`) restrict coordinates, but **mechanical endstops must still be connected** as hardware safety.
+- Homing timeout (60s) prevents infinite movement if endstop fails.
+- Always run `HOME` after power-up to establish known position.
+- Press `Ctrl+C` to safely stop and disable drivers.
+
+## Project Structure
+
+```
+3SD-SF-ScrewFeed/
+├── README.md       # This file
+└── xy_cli.py       # Main CLI tool
+```
+
+## License
+
+Part of 3SD-SF-ScrewFeed automated screwdriver project.
