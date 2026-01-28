@@ -626,7 +626,7 @@ def handle_command(line: str) -> str:
             if estop:
                 return "err ESTOP"
             if home_all():
-                move_xy_abs(0.0, 0.0, 300.0)
+                move_xy_abs(0.0, 0.0, 195.0)
                 return "ok"
             return "err HOME_NOT_FOUND"
 
@@ -634,7 +634,7 @@ def handle_command(line: str) -> str:
         if up == "ZERO":
             if estop:
                 return "err ESTOP"
-            move_xy_abs(0.0, 0.0, 300.0)
+            move_xy_abs(0.0, 0.0, 195.0)
             return "ok"
 
         # === WORK command (go to work position) ===
