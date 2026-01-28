@@ -68,6 +68,10 @@ MAX_FEED_MM_S = 600.0   # Max feed rate mm/s
 MAX_STEP_HZ   = 30000
 PULSE_US      = 10
 
+# Acceleration parameters
+ACCEL_MM_S2 = 500.0      # Acceleration in mm/s^2
+START_SPEED_MM_S = 5.0   # Starting speed for ramp (mm/s)
+
 # Homing parameters
 SCAN_RANGE_X_MM = 202.0
 SCAN_RANGE_Y_MM = 502.0
@@ -200,9 +204,19 @@ def set_dir_y(positive: bool) -> None:
 # Step pulse generation
 # =========================
 def step_pulses(step_gpio: int, steps: int, step_hz: float,
-                stop_on_endstop_gpio: Optional[int] = None) -> bool:
+                stop_on_endstop_gpio: Optional[int] = None,
+                use_accel: bool = False, steps_per_mm: float = 40.0) -> bool:
     """
     Generates STEP pulses for one axis (blocking).
+
+    Args:
+        step_gpio: GPIO pin for STEP signal
+        steps: Number of steps to generate
+        step_hz: Target step frequency (Hz)
+        stop_on_endstop_gpio: Stop if this endstop triggers
+        use_accel: Enable acceleration/deceleration ramp
+        steps_per_mm: Steps per mm (for acceleration calculation)
+
     Returns True if finished normally, False if stopped by endstop.
     """
     if steps <= 0:
@@ -212,18 +226,89 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
         step_hz = 1.0
     step_hz = min(step_hz, MAX_STEP_HZ)
 
-    period_ns = int(1e9 / step_hz)
     hi_ns = int(PULSE_US * 1000)
+    min_period_ns = hi_ns * 3  # Minimum period limit
 
-    if hi_ns * 2 >= period_ns:
-        period_ns = hi_ns * 3
+    if not use_accel:
+        # Simple constant speed motion
+        period_ns = max(int(1e9 / step_hz), min_period_ns)
+        t = time.perf_counter_ns()
+
+        for _ in range(steps):
+            if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
+                return False
+
+            if STEP_PULSE_ACTIVE_LOW:
+                io.write(step_gpio, 0)
+                t += hi_ns
+                busy_wait_ns(t)
+                io.write(step_gpio, 1)
+                t += (period_ns - hi_ns)
+                busy_wait_ns(t)
+            else:
+                io.write(step_gpio, 1)
+                t += hi_ns
+                busy_wait_ns(t)
+                io.write(step_gpio, 0)
+                t += (period_ns - hi_ns)
+                busy_wait_ns(t)
+        return True
+
+    # === Trapezoidal motion profile with acceleration ===
+
+    # Convert to step frequencies
+    start_hz = START_SPEED_MM_S * steps_per_mm
+    target_hz = step_hz
+    accel_step_hz_per_step = ACCEL_MM_S2 * steps_per_mm / target_hz  # Approximate
+
+    # Calculate steps needed for acceleration and deceleration
+    # Using v^2 = v0^2 + 2*a*s => s = (v^2 - v0^2) / (2*a)
+    # In steps: n_accel = (f_target^2 - f_start^2) / (2 * accel_in_hz_per_step * f_target)
+    if ACCEL_MM_S2 > 0:
+        accel_hz2_per_step = 2.0 * ACCEL_MM_S2 * steps_per_mm
+        n_accel = int((target_hz * target_hz - start_hz * start_hz) / accel_hz2_per_step)
+        n_decel = n_accel
+    else:
+        n_accel = 0
+        n_decel = 0
+
+    # Adjust if path is too short for full accel+decel
+    if n_accel + n_decel > steps:
+        # Triangular profile - no constant speed phase
+        n_accel = steps // 2
+        n_decel = steps - n_accel
+
+    n_const = steps - n_accel - n_decel
 
     t = time.perf_counter_ns()
+    current_hz = start_hz
+    step_count = 0
 
-    for _ in range(steps):
+    for i in range(steps):
         if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
             return False
 
+        # Calculate current frequency based on phase
+        if i < n_accel:
+            # Acceleration phase: v^2 = v0^2 + 2*a*s
+            current_hz = (start_hz * start_hz + accel_hz2_per_step * (i + 1)) ** 0.5
+            current_hz = min(current_hz, target_hz)
+        elif i < n_accel + n_const:
+            # Constant speed phase
+            current_hz = target_hz
+        else:
+            # Deceleration phase
+            steps_remaining = steps - i
+            current_hz = (start_hz * start_hz + accel_hz2_per_step * steps_remaining) ** 0.5
+            current_hz = min(current_hz, target_hz)
+
+        # Ensure minimum speed
+        current_hz = max(current_hz, start_hz)
+        current_hz = min(current_hz, MAX_STEP_HZ)
+
+        period_ns = max(int(1e9 / current_hz), min_period_ns)
+
+        # Generate pulse
         if STEP_PULSE_ACTIVE_LOW:
             io.write(step_gpio, 0)
             t += hi_ns
@@ -246,7 +331,7 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
 # Motion functions
 # =========================
 def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
-    """Move single axis to absolute position. Returns True if successful."""
+    """Move single axis to absolute position with acceleration. Returns True if successful."""
     global cur_x_mm, cur_y_mm
 
     if estop:
@@ -270,7 +355,8 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         enable_driver_x(True)
         stop_gpio = X_MIN_GPIO if not positive else None
-        ok = step_pulses(X_STEP_GPIO, steps, step_hz, stop_on_endstop_gpio=stop_gpio)
+        ok = step_pulses(X_STEP_GPIO, steps, step_hz, stop_on_endstop_gpio=stop_gpio,
+                        use_accel=True, steps_per_mm=STEPS_PER_MM_X)
 
         if ok:
             cur_x_mm = target_mm
@@ -296,7 +382,8 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         enable_driver_y(True)
         stop_gpio = Y_MIN_GPIO if not positive else None
-        ok = step_pulses(Y_STEP_GPIO, steps, step_hz, stop_on_endstop_gpio=stop_gpio)
+        ok = step_pulses(Y_STEP_GPIO, steps, step_hz, stop_on_endstop_gpio=stop_gpio,
+                        use_accel=True, steps_per_mm=STEPS_PER_MM_Y)
 
         if ok:
             cur_y_mm = target_mm
@@ -309,7 +396,8 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
 def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float) -> bool:
     """
-    Move both axes to absolute position using interleaved stepping.
+    Move both axes to absolute position using interleaved stepping with acceleration.
+    Uses trapezoidal motion profile for smooth acceleration/deceleration.
     Returns True if move completed successfully.
     """
     global cur_x_mm, cur_y_mm
@@ -341,25 +429,36 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 
     enable_all(True)
 
-    mm_per_s = min(max(feed_mm_min / 60.0, 0.1), MAX_FEED_MM_S)
-    step_hz_x = min(mm_per_s * STEPS_PER_MM_X, MAX_STEP_HZ)
-    step_hz_y = min(mm_per_s * STEPS_PER_MM_Y, MAX_STEP_HZ)
+    # Calculate path length in mm for acceleration planning
+    path_mm = (dx * dx + dy * dy) ** 0.5
+    if path_mm < 1e-6:
+        path_mm = max(abs(dx), abs(dy))
 
-    period_x_ns = int(1e9 / step_hz_x) if sx > 0 else None
-    period_y_ns = int(1e9 / step_hz_y) if sy > 0 else None
+    # Target speed
+    target_mm_s = min(max(feed_mm_min / 60.0, 0.1), MAX_FEED_MM_S)
+    start_mm_s = START_SPEED_MM_S
+
+    # Calculate distance needed for acceleration/deceleration
+    # Using v^2 = v0^2 + 2*a*s => s = (v^2 - v0^2) / (2*a)
+    if ACCEL_MM_S2 > 0:
+        accel_dist_mm = (target_mm_s * target_mm_s - start_mm_s * start_mm_s) / (2.0 * ACCEL_MM_S2)
+        decel_dist_mm = accel_dist_mm
+    else:
+        accel_dist_mm = 0.0
+        decel_dist_mm = 0.0
+
+    # Adjust if path is too short for full accel+decel (triangular profile)
+    if accel_dist_mm + decel_dist_mm > path_mm:
+        accel_dist_mm = path_mm / 2.0
+        decel_dist_mm = path_mm - accel_dist_mm
+
+    const_dist_mm = path_mm - accel_dist_mm - decel_dist_mm
+
     hi_ns = int(PULSE_US * 1000)
-
-    if period_x_ns is not None and hi_ns * 2 >= period_x_ns:
-        period_x_ns = hi_ns * 3
-    if period_y_ns is not None and hi_ns * 2 >= period_y_ns:
-        period_y_ns = hi_ns * 3
+    min_period_ns = hi_ns * 3
 
     stop_x = (dx < 0)
     stop_y = (dy < 0)
-
-    now = time.perf_counter_ns()
-    next_x = now
-    next_y = now
 
     done_x = 0
     done_y = 0
@@ -370,45 +469,117 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     hit_x = False
     hit_y = False
 
-    while done_x < sx or done_y < sy:
-        t = time.perf_counter_ns()
+    # Track distance traveled for acceleration profile
+    dist_traveled_mm = 0.0
+    last_x = 0
+    last_y = 0
 
-        # X pulse
-        if sx > 0 and done_x < sx and period_x_ns is not None and t >= next_x:
+    # Use the longer axis to determine the main timing
+    total_steps = max(sx, sy)
+    if total_steps == 0:
+        return True
+
+    # Calculate step ratios
+    ratio_x = sx / total_steps if total_steps > 0 else 0
+    ratio_y = sy / total_steps if total_steps > 0 else 0
+
+    # Bresenham-style accumulators for even step distribution
+    accum_x = 0.0
+    accum_y = 0.0
+
+    t = time.perf_counter_ns()
+
+    for step_i in range(total_steps):
+        # Calculate distance traveled based on steps done
+        actual_dx = done_x / STEPS_PER_MM_X if STEPS_PER_MM_X > 0 else 0
+        actual_dy = done_y / STEPS_PER_MM_Y if STEPS_PER_MM_Y > 0 else 0
+        dist_traveled_mm = (actual_dx * actual_dx + actual_dy * actual_dy) ** 0.5
+
+        # Determine current speed based on motion phase
+        if dist_traveled_mm < accel_dist_mm:
+            # Acceleration phase: v^2 = v0^2 + 2*a*s
+            current_mm_s = (start_mm_s * start_mm_s + 2.0 * ACCEL_MM_S2 * dist_traveled_mm) ** 0.5
+            current_mm_s = min(current_mm_s, target_mm_s)
+        elif dist_traveled_mm < accel_dist_mm + const_dist_mm:
+            # Constant speed phase
+            current_mm_s = target_mm_s
+        else:
+            # Deceleration phase
+            dist_remaining_mm = path_mm - dist_traveled_mm
+            current_mm_s = (start_mm_s * start_mm_s + 2.0 * ACCEL_MM_S2 * dist_remaining_mm) ** 0.5
+            current_mm_s = min(current_mm_s, target_mm_s)
+
+        # Ensure minimum speed
+        current_mm_s = max(current_mm_s, start_mm_s)
+
+        # Calculate period based on current speed
+        # Period is for the dominant axis
+        if sx >= sy and sx > 0:
+            current_hz = current_mm_s * STEPS_PER_MM_X
+        elif sy > 0:
+            current_hz = current_mm_s * STEPS_PER_MM_Y
+        else:
+            current_hz = current_mm_s * max(STEPS_PER_MM_X, STEPS_PER_MM_Y)
+
+        current_hz = min(current_hz, MAX_STEP_HZ)
+        period_ns = max(int(1e9 / current_hz), min_period_ns)
+
+        # Determine which axes need a step this iteration
+        accum_x += ratio_x
+        accum_y += ratio_y
+
+        do_step_x = accum_x >= 1.0 and done_x < sx
+        do_step_y = accum_y >= 1.0 and done_y < sy
+
+        if do_step_x:
+            accum_x -= 1.0
+
+        if do_step_y:
+            accum_y -= 1.0
+
+        # Check endstops and generate pulses
+        if do_step_x:
             if stop_x and endstop_active(X_MIN_GPIO):
                 cur_x_mm = 0.0
-                sx = done_x
                 hit_x = True
+                do_step_x = False
             else:
                 if STEP_PULSE_ACTIVE_LOW:
                     io.write(X_STEP_GPIO, 0)
-                    busy_wait_ns(t + hi_ns)
-                    io.write(X_STEP_GPIO, 1)
                 else:
                     io.write(X_STEP_GPIO, 1)
-                    busy_wait_ns(t + hi_ns)
-                    io.write(X_STEP_GPIO, 0)
                 done_x += 1
-            next_x += period_x_ns
 
-        # Y pulse
-        t2 = time.perf_counter_ns()
-        if sy > 0 and done_y < sy and period_y_ns is not None and t2 >= next_y:
+        if do_step_y:
             if stop_y and endstop_active(Y_MIN_GPIO):
                 cur_y_mm = 0.0
-                sy = done_y
                 hit_y = True
+                do_step_y = False
             else:
                 if STEP_PULSE_ACTIVE_LOW:
                     io.write(Y_STEP_GPIO, 0)
-                    busy_wait_ns(t2 + hi_ns)
-                    io.write(Y_STEP_GPIO, 1)
                 else:
                     io.write(Y_STEP_GPIO, 1)
-                    busy_wait_ns(t2 + hi_ns)
-                    io.write(Y_STEP_GPIO, 0)
                 done_y += 1
-            next_y += period_y_ns
+
+        # Hold pulse high time
+        if do_step_x or do_step_y:
+            t += hi_ns
+            busy_wait_ns(t)
+
+            # Return to idle
+            if do_step_x:
+                io.write(X_STEP_GPIO, STEP_IDLE_LEVEL)
+            if do_step_y:
+                io.write(Y_STEP_GPIO, STEP_IDLE_LEVEL)
+
+        # Wait for period
+        t += (period_ns - hi_ns) if (do_step_x or do_step_y) else period_ns
+        busy_wait_ns(t)
+
+        # Early exit if both axes hit endstops
+        if hit_x and hit_y:
+            break
 
     if done_x == sx_orig and not hit_x:
         cur_x_mm = x_mm
