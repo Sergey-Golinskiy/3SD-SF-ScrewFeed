@@ -78,7 +78,7 @@ HOMING_TIMEOUT_S = 60.0
 # Work position (default)
 WORK_X_MM = 5.0
 WORK_Y_MM = 350.0
-WORK_F_MM_MIN = 60000.0
+WORK_F_MM_MIN = 10000.0
 
 # =========================
 # State variables
