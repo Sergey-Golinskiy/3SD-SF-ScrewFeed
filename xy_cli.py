@@ -56,8 +56,8 @@ INVERT_Y_DIR = False
 # =========================
 # Motion config
 # =========================
-STEPS_PER_MM_X = 20.0
-STEPS_PER_MM_Y = 20.0
+STEPS_PER_MM_X = 40.0
+STEPS_PER_MM_Y = 40.0
 
 X_MIN_MM = 0.0
 X_MAX_MM = 165.0
