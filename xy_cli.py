@@ -89,6 +89,7 @@ WORK_F_MM_MIN = 10000.0
 # =========================
 cur_x_mm = 0.0
 cur_y_mm = 0.0
+cur_feed_mm_min = 1000.0  # Current/default feed rate (mm/min)
 estop = False  # Emergency stop flag
 
 # Lazy GPIO initialization
@@ -601,7 +602,7 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 import math
 
 def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
-             clockwise: bool, feed_mm_min: float) -> bool:
+             clockwise: bool, feed_mm_min: float, passes: int = 1) -> bool:
     """
     Perform circular arc interpolation (G2/G3).
 
@@ -612,6 +613,7 @@ def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
         j_offset: Y offset from current position to arc center
         clockwise: True for G2 (CW), False for G3 (CCW)
         feed_mm_min: Feed rate in mm/min
+        passes: Number of full circles (P parameter), default 1
 
     Returns:
         True if arc completed successfully.
@@ -655,6 +657,17 @@ def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
         if angle_diff <= 0:
             angle_diff += 2 * math.pi
 
+    # Check if this is a full circle (start == end)
+    is_full_circle = (abs(x_end - cur_x_mm) < 0.01 and abs(y_end - cur_y_mm) < 0.01)
+
+    if is_full_circle:
+        # For full circles, use P parameter for number of rotations
+        # If P not specified (passes=1) and start==end, do one full circle
+        angle_diff = 2 * math.pi * passes
+    elif passes > 1:
+        # Add extra full rotations before the final arc
+        angle_diff += 2 * math.pi * (passes - 1)
+
     # Calculate arc length
     arc_length = radius * angle_diff
 
@@ -668,7 +681,8 @@ def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
         angle_step = -angle_step
 
     print(f"DEBUG arc_move: center=({cx:.2f}, {cy:.2f}), r={radius:.2f}, "
-          f"angle={math.degrees(start_angle):.1f}° -> {math.degrees(end_angle):.1f}°, "
+          f"passes={passes}, full_circle={is_full_circle}, "
+          f"angle={math.degrees(start_angle):.1f}° total={math.degrees(angle_diff):.1f}°, "
           f"segments={num_segments}")
 
     # Execute arc as series of linear moves
@@ -978,7 +992,7 @@ def handle_command(line: str) -> str:
     Handle a single command line and return response.
     Compatible with Arduino version command set.
     """
-    global cur_x_mm, cur_y_mm, estop
+    global cur_x_mm, cur_y_mm, cur_feed_mm_min, estop
     global STEPS_PER_MM_X, STEPS_PER_MM_Y
     global X_MIN_MM, X_MAX_MM, Y_MIN_MM, Y_MAX_MM
     global WORK_X_MM, WORK_Y_MM, WORK_F_MM_MIN
@@ -1248,11 +1262,16 @@ def handle_command(line: str) -> str:
             move_xy_abs(x, y, f)
             return "ok"
 
+        # === Standalone F command (set feed rate) ===
+        if up.startswith("F") and len(up) > 1 and up[1:].replace('.', '').isdigit():
+            cur_feed_mm_min = float(line[1:])
+            return f"ok FEED={cur_feed_mm_min:.0f}"
+
         # === G0/G1 move commands ===
         if up.startswith("G0") or up.startswith("G1"):
             if estop:
                 return "err ESTOP"
-            x, y, f = None, None, 300.0
+            x, y, f = None, None, cur_feed_mm_min
             for tok in line.split()[1:]:
                 t = tok.upper()
                 if t.startswith("X"):
@@ -1261,6 +1280,7 @@ def handle_command(line: str) -> str:
                     y = float(tok[1:])
                 elif t.startswith("F"):
                     f = float(tok[1:])
+                    cur_feed_mm_min = f  # Update default feed rate
             if x is None and y is None:
                 return "err BAD_ARGS"
             move_xy_abs(x, y, f)
@@ -1268,13 +1288,13 @@ def handle_command(line: str) -> str:
 
         # === G2/G3 arc commands (circular interpolation) ===
         # G2 = clockwise, G3 = counter-clockwise
-        # Format: G2 X... Y... I... J... F...  (I,J = offset to center)
-        #     or: G2 X... Y... R... F...       (R = radius)
+        # Format: G2 X... Y... I... J... F... P...  (I,J = offset to center, P = passes)
+        #     or: G2 X... Y... R... F... P...       (R = radius)
         if up.startswith("G2") or up.startswith("G3"):
             if estop:
                 return "err ESTOP"
             clockwise = up.startswith("G2")
-            x, y, i, j, r, f = None, None, None, None, None, 300.0
+            x, y, i, j, r, f, p = None, None, None, None, None, cur_feed_mm_min, 1
             for tok in line.split()[1:]:
                 t = tok.upper()
                 if t.startswith("X"):
@@ -1289,6 +1309,9 @@ def handle_command(line: str) -> str:
                     r = float(tok[1:])
                 elif t.startswith("F"):
                     f = float(tok[1:])
+                    cur_feed_mm_min = f  # Update default feed rate
+                elif t.startswith("P"):
+                    p = int(float(tok[1:]))  # Number of full circles/passes
 
             # Default end position to current if not specified
             if x is None:
@@ -1298,7 +1321,7 @@ def handle_command(line: str) -> str:
 
             # Use radius or I/J notation
             if r is not None:
-                # Radius notation
+                # Radius notation (P not typically used with R)
                 if arc_move_radius(x, y, r, clockwise, f):
                     return "ok"
                 return "err ARC_FAILED"
@@ -1308,7 +1331,7 @@ def handle_command(line: str) -> str:
                     i = 0.0
                 if j is None:
                     j = 0.0
-                if arc_move(x, y, i, j, clockwise, f):
+                if arc_move(x, y, i, j, clockwise, f, p):
                     return "ok"
                 return "err ARC_FAILED"
             else:
@@ -1354,15 +1377,17 @@ def get_help_text() -> str:
   CAL                         - home + go to zero
   ZERO                        - go to position 0,0
 
+  F<mm/min>                  - set feed rate (e.g. F50000)
+
   G X<mm> Y<mm> F<mm/min>     - guarded move
   GF X<mm> Y<mm> F<mm/min>    - fast move
   G0 X<mm> Y<mm> F<mm/min>    - linear move (G-code style)
   G1 X<mm> Y<mm> F<mm/min>    - same as G0
 
-  G2 X<mm> Y<mm> I<mm> J<mm> F<mm/min>  - clockwise arc (I,J=center offset)
-  G3 X<mm> Y<mm> I<mm> J<mm> F<mm/min>  - counter-clockwise arc
-  G2 X<mm> Y<mm> R<mm> F<mm/min>        - clockwise arc (R=radius)
-  G3 X<mm> Y<mm> R<mm> F<mm/min>        - counter-clockwise arc
+  G2 X<mm> Y<mm> I<mm> J<mm> P<n> F<mm/min>  - CW arc (P=full circles)
+  G3 X<mm> Y<mm> I<mm> J<mm> P<n> F<mm/min>  - CCW arc
+  G2 X<mm> Y<mm> R<mm> F<mm/min>             - CW arc (R=radius)
+  G3 X<mm> Y<mm> R<mm> F<mm/min>             - CCW arc
 
   DX <+/-mm> F<mm/min>        - jog X axis
   DY <+/-mm> F<mm/min>        - jog Y axis
