@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from dataclasses import asdict
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 
 from core import (
@@ -419,7 +419,402 @@ def create_app(
             ]
         })
 
+    # === Web UI ===
+    @app.route('/', methods=['GET'])
+    def index():
+        """Main web UI."""
+        return Response(WEB_UI_HTML, mimetype='text/html')
+
     return app
+
+
+# === Web UI HTML ===
+WEB_UI_HTML = """<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Screw Drive Control Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+  h1 { margin: 0 0 10px; color: #333; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+  .status-badge.ok { background: #d4edda; color: #155724; }
+  .status-badge.error { background: #f8d7da; color: #721c24; }
+  .status-badge.warning { background: #fff3cd; color: #856404; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); flex: 1; min-width: 300px; }
+  .card h3 { margin: 0 0 15px; color: #444; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+  th { background: #f8f9fa; font-weight: 600; }
+  .ok { color: #28a745; font-weight: 600; }
+  .off { color: #dc3545; font-weight: 600; }
+  .btn { padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+  .btn-primary { background: #007bff; color: white; }
+  .btn-primary:hover { background: #0056b3; }
+  .btn-success { background: #28a745; color: white; }
+  .btn-success:hover { background: #1e7e34; }
+  .btn-danger { background: #dc3545; color: white; }
+  .btn-danger:hover { background: #c82333; }
+  .btn-warning { background: #ffc107; color: #212529; }
+  .btn-warning:hover { background: #e0a800; }
+  .btn-secondary { background: #6c757d; color: white; }
+  .btn-secondary:hover { background: #545b62; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=number], input[type=text], select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  .form-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+  .form-row label { min-width: 80px; font-weight: 500; }
+  .muted { color: #6c757d; font-size: 13px; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .badge-success { background: #d4edda; color: #155724; }
+  .badge-danger { background: #f8d7da; color: #721c24; }
+  .badge-info { background: #d1ecf1; color: #0c5460; }
+  .badge-warning { background: #fff3cd; color: #856404; }
+  .xy-display { font-size: 24px; font-weight: bold; color: #333; margin: 15px 0; }
+  .xy-display span { color: #007bff; }
+  .jog-grid { display: grid; grid-template-columns: repeat(3, 60px); gap: 5px; justify-content: center; margin: 15px 0; }
+  .jog-grid .btn { width: 60px; height: 50px; font-size: 18px; }
+  .cycle-status { padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 15px; }
+  .progress-bar { height: 20px; background: #e9ecef; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+  .progress-bar-fill { height: 100%; background: #28a745; transition: width 0.3s; }
+  #log { height: 150px; overflow-y: auto; background: #1e1e1e; color: #0f0; font-family: monospace; padding: 10px; border-radius: 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Screw Drive Control Panel</h1>
+  <div>
+    <span id="connectionStatus" class="status-badge warning">Connecting...</span>
+    <span id="updateTime" class="muted" style="margin-left: 10px;"></span>
+  </div>
+</div>
+
+<div class="row">
+  <!-- Cycle Control -->
+  <div class="card" style="flex: 2;">
+    <h3>Cycle Control</h3>
+    <div class="form-row">
+      <label>Device:</label>
+      <select id="deviceSelect" style="flex: 1;"></select>
+    </div>
+    <div class="cycle-status" id="cycleStatus">
+      <div>State: <span id="cycleState" class="badge badge-info">IDLE</span></div>
+      <div style="margin-top: 8px;">Holes: <span id="holesProgress">0 / 0</span></div>
+      <div class="progress-bar"><div class="progress-bar-fill" id="progressBar" style="width: 0%;"></div></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-success" id="btnStart">START</button>
+      <button class="btn btn-warning" id="btnPause">PAUSE</button>
+      <button class="btn btn-danger" id="btnStop">STOP</button>
+      <button class="btn btn-danger" id="btnEstop">E-STOP</button>
+      <button class="btn btn-secondary" id="btnClearEstop">Clear E-STOP</button>
+    </div>
+  </div>
+
+  <!-- XY Table -->
+  <div class="card">
+    <h3>XY Table</h3>
+    <div id="xyStatus">
+      <span class="badge badge-warning" id="xyState">DISCONNECTED</span>
+    </div>
+    <div class="xy-display">
+      X: <span id="posX">0.00</span> mm<br>
+      Y: <span id="posY">0.00</span> mm
+    </div>
+    <div class="jog-grid">
+      <div></div>
+      <button class="btn btn-secondary" onclick="jog(0, 10)">Y+</button>
+      <div></div>
+      <button class="btn btn-secondary" onclick="jog(-10, 0)">X-</button>
+      <button class="btn btn-primary" onclick="homeXY()">H</button>
+      <button class="btn btn-secondary" onclick="jog(10, 0)">X+</button>
+      <div></div>
+      <button class="btn btn-secondary" onclick="jog(0, -10)">Y-</button>
+      <div></div>
+    </div>
+    <div class="form-row">
+      <input type="number" id="jogStep" value="10" min="1" max="100" style="width: 80px;">
+      <span class="muted">mm step</span>
+    </div>
+    <div class="btn-group" style="margin-top: 10px;">
+      <button class="btn btn-primary" onclick="goToZero()">Go to Zero</button>
+      <button class="btn btn-secondary" id="btnXYConnect" onclick="connectXY()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <!-- Sensors -->
+  <div class="card">
+    <h3>Sensors</h3>
+    <table id="sensorsTable">
+      <thead><tr><th>Name</th><th>State</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Relays -->
+  <div class="card">
+    <h3>Relays</h3>
+    <table id="relaysTable">
+      <thead><tr><th>Name</th><th>State</th><th>Control</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div style="margin-top: 10px;">
+      <button class="btn btn-danger" onclick="allRelaysOff()">All OFF</button>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="card" style="flex: 1;">
+    <h3>Manual Move</h3>
+    <div class="form-row">
+      <label>X:</label>
+      <input type="number" id="moveX" value="0" step="0.1" style="width: 100px;">
+      <label>Y:</label>
+      <input type="number" id="moveY" value="0" step="0.1" style="width: 100px;">
+      <label>Feed:</label>
+      <input type="number" id="moveFeed" value="10000" step="100" style="width: 100px;">
+    </div>
+    <button class="btn btn-primary" onclick="manualMove()">Move</button>
+  </div>
+
+  <div class="card" style="flex: 1;">
+    <h3>Log</h3>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let selectedDevice = null;
+
+async function api(endpoint, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + endpoint, opts);
+  return await res.json();
+}
+
+function log(msg) {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  el.innerHTML += `[${time}] ${msg}\\n`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function loadDevices() {
+  try {
+    const devices = await api('/api/devices');
+    const sel = document.getElementById('deviceSelect');
+    sel.innerHTML = '<option value="">-- Select Device --</option>';
+    devices.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.key;
+      opt.textContent = `${d.name} (${d.holes} holes)`;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    log('Error loading devices: ' + e.message);
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const data = await api('/api/status');
+
+    // Connection status
+    document.getElementById('connectionStatus').className = 'status-badge ok';
+    document.getElementById('connectionStatus').textContent = 'Connected';
+    document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
+
+    // Sensors
+    const sensorsBody = document.querySelector('#sensorsTable tbody');
+    sensorsBody.innerHTML = '';
+    for (const [name, state] of Object.entries(data.sensors || {})) {
+      const tr = document.createElement('tr');
+      const isActive = state === 'ACTIVE';
+      tr.innerHTML = `<td>${name}</td><td class="${isActive ? 'ok' : 'off'}">${state}</td>`;
+      sensorsBody.appendChild(tr);
+    }
+
+    // Relays
+    const relaysBody = document.querySelector('#relaysTable tbody');
+    relaysBody.innerHTML = '';
+    for (const [name, state] of Object.entries(data.relays || {})) {
+      const tr = document.createElement('tr');
+      const isOn = state === 'ON';
+      tr.innerHTML = `
+        <td>${name}</td>
+        <td class="${isOn ? 'ok' : 'off'}">${state}</td>
+        <td>
+          <button class="btn btn-success" onclick="setRelay('${name}', 'on')" style="padding: 4px 8px;">ON</button>
+          <button class="btn btn-danger" onclick="setRelay('${name}', 'off')" style="padding: 4px 8px;">OFF</button>
+        </td>
+      `;
+      relaysBody.appendChild(tr);
+    }
+
+    // XY Table
+    if (data.xy_table) {
+      document.getElementById('xyState').textContent = data.xy_table.state;
+      document.getElementById('xyState').className = 'badge ' +
+        (data.xy_table.connected ? 'badge-success' : 'badge-danger');
+      document.getElementById('posX').textContent = data.xy_table.x.toFixed(2);
+      document.getElementById('posY').textContent = data.xy_table.y.toFixed(2);
+    }
+
+    // Cycle
+    if (data.cycle) {
+      document.getElementById('cycleState').textContent = data.cycle.state;
+      const stateClass = {
+        'IDLE': 'badge-info', 'READY': 'badge-success', 'COMPLETED': 'badge-success',
+        'ERROR': 'badge-danger', 'ESTOP': 'badge-danger', 'PAUSED': 'badge-warning'
+      }[data.cycle.state] || 'badge-info';
+      document.getElementById('cycleState').className = 'badge ' + stateClass;
+
+      const holes = data.cycle.holes_completed;
+      const total = data.cycle.total_holes;
+      document.getElementById('holesProgress').textContent = `${holes} / ${total}`;
+      const pct = total > 0 ? (holes / total * 100) : 0;
+      document.getElementById('progressBar').style.width = pct + '%';
+    }
+
+  } catch (e) {
+    document.getElementById('connectionStatus').className = 'status-badge error';
+    document.getElementById('connectionStatus').textContent = 'Disconnected';
+  }
+}
+
+async function setRelay(name, state) {
+  try {
+    await api(`/api/relays/${name}`, 'POST', { state });
+    log(`Relay ${name}: ${state}`);
+    refreshStatus();
+  } catch (e) {
+    log('Error: ' + e.message);
+  }
+}
+
+async function allRelaysOff() {
+  try {
+    await api('/api/relays/all/off', 'POST');
+    log('All relays OFF');
+    refreshStatus();
+  } catch (e) {
+    log('Error: ' + e.message);
+  }
+}
+
+async function jog(dx, dy) {
+  const step = parseFloat(document.getElementById('jogStep').value) || 10;
+  try {
+    await api('/api/xy/jog', 'POST', { dx: dx * step / 10, dy: dy * step / 10, feed: 1000 });
+    refreshStatus();
+  } catch (e) {
+    log('Jog error: ' + e.message);
+  }
+}
+
+async function homeXY() {
+  try {
+    log('Homing XY...');
+    await api('/api/xy/home', 'POST');
+    log('Homing complete');
+    refreshStatus();
+  } catch (e) {
+    log('Home error: ' + e.message);
+  }
+}
+
+async function goToZero() {
+  try {
+    await api('/api/xy/zero', 'POST');
+    log('Moved to zero');
+    refreshStatus();
+  } catch (e) {
+    log('Error: ' + e.message);
+  }
+}
+
+async function connectXY() {
+  try {
+    await api('/api/xy/connect', 'POST');
+    log('XY Table connected');
+    refreshStatus();
+  } catch (e) {
+    log('Connect error: ' + e.message);
+  }
+}
+
+async function manualMove() {
+  const x = parseFloat(document.getElementById('moveX').value);
+  const y = parseFloat(document.getElementById('moveY').value);
+  const feed = parseFloat(document.getElementById('moveFeed').value);
+  try {
+    await api('/api/xy/move', 'POST', { x, y, feed });
+    log(`Moved to X:${x} Y:${y}`);
+    refreshStatus();
+  } catch (e) {
+    log('Move error: ' + e.message);
+  }
+}
+
+// Cycle control
+document.getElementById('btnStart').onclick = async () => {
+  const device = document.getElementById('deviceSelect').value;
+  if (!device) { alert('Select a device first'); return; }
+  try {
+    await api('/api/cycle/start', 'POST', { device });
+    log('Cycle started: ' + device);
+    refreshStatus();
+  } catch (e) {
+    log('Start error: ' + e.message);
+  }
+};
+
+document.getElementById('btnPause').onclick = async () => {
+  await api('/api/cycle/pause', 'POST');
+  log('Cycle paused');
+  refreshStatus();
+};
+
+document.getElementById('btnStop').onclick = async () => {
+  await api('/api/cycle/stop', 'POST');
+  log('Cycle stopped');
+  refreshStatus();
+};
+
+document.getElementById('btnEstop').onclick = async () => {
+  await api('/api/cycle/estop', 'POST');
+  log('E-STOP ACTIVATED');
+  refreshStatus();
+};
+
+document.getElementById('btnClearEstop').onclick = async () => {
+  await api('/api/cycle/clear_estop', 'POST');
+  log('E-STOP cleared');
+  refreshStatus();
+};
+
+// Initialize
+window.addEventListener('load', async () => {
+  await loadDevices();
+  await refreshStatus();
+  setInterval(refreshStatus, 1000);
+  log('Panel initialized');
+});
+</script>
+
+</body>
+</html>
+"""
 
 
 def _load_devices(app: Flask) -> None:
