@@ -19,51 +19,52 @@ xy_table:
 # =========================
 # Relays (directly connected to Master Pi 5)
 # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
+# Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
 # =========================
 relays:
   # R01 - Screw feeder (pulse to release screw)
   r01_pit:
     gpio: 5
-    active_high: true
+    active_high: false
     description: "Screw feeder - pulse to release screw"
     pulse_ms: 200
 
   # R02 - Task 2 selection (700ms pulse)
   r02_di7_tsk2:
     gpio: 6
-    active_high: true
+    active_high: false
     description: "Select task 2 for tightening (700ms pulse)"
     pulse_ms: 700
 
   # R04 - Cylinder control (ON=down, OFF=up automatic)
   r04_c2:
     gpio: 16
-    active_high: true
+    active_high: false
     description: "Screwdriver cylinder (ON=down, OFF=up)"
 
   # R05 - Free run mode (hold ON = screwdriver spins)
   r05_di4_free:
     gpio: 19
-    active_high: true
+    active_high: false
     description: "Free run mode - screwdriver spins while ON"
 
   # R06 - Torque mode (hold ON until torque OK signal)
   r06_di1_pot:
     gpio: 20
-    active_high: true
+    active_high: false
     description: "Torque mode - hold ON until DO2_OK"
 
   # R07 - Task 0 selection (700ms pulse)
   r07_di5_tsk0:
     gpio: 21
-    active_high: true
+    active_high: false
     description: "Select task 0 for tightening (700ms pulse)"
     pulse_ms: 700
 
   # R08 - Task 1 selection (700ms pulse)
   r08_di6_tsk1:
     gpio: 26
-    active_high: true
+    active_high: false
     description: "Select task 1 for tightening (700ms pulse)"
     pulse_ms: 700
 
@@ -136,6 +137,6 @@ serial:
 # =========================
 logic:
   endstop_active_low: true
-  relay_active_high: true
+  relay_active_high: false  # Relays are active_low: GPIO LOW = ON
   step_pulse_active_low: true
   step_idle_level: 1

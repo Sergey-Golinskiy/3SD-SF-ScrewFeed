@@ -48,14 +48,15 @@ class RelayController:
     # R06 - Torque mode (hold ON until DO2_OK)
     # R07 - Task 0 selection (700ms pulse)
     # R08 - Task 1 selection (700ms pulse)
+    # Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
     DEFAULT_RELAYS = {
-        'r01_pit': RelayConfig(gpio=5, active_high=True, description="Screw feeder"),
-        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=True, description="Task 2 selection"),
-        'r04_c2': RelayConfig(gpio=16, active_high=True, description="Cylinder down/up"),
-        'r05_di4_free': RelayConfig(gpio=19, active_high=True, description="Free run mode"),
-        'r06_di1_pot': RelayConfig(gpio=20, active_high=True, description="Torque mode"),
-        'r07_di5_tsk0': RelayConfig(gpio=21, active_high=True, description="Task 0 selection"),
-        'r08_di6_tsk1': RelayConfig(gpio=26, active_high=True, description="Task 1 selection"),
+        'r01_pit': RelayConfig(gpio=5, active_high=False, description="Screw feeder"),
+        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=False, description="Task 2 selection"),
+        'r04_c2': RelayConfig(gpio=16, active_high=False, description="Cylinder down/up"),
+        'r05_di4_free': RelayConfig(gpio=19, active_high=False, description="Free run mode"),
+        'r06_di1_pot': RelayConfig(gpio=20, active_high=False, description="Torque mode"),
+        'r07_di5_tsk0': RelayConfig(gpio=21, active_high=False, description="Task 0 selection"),
+        'r08_di6_tsk1': RelayConfig(gpio=26, active_high=False, description="Task 1 selection"),
     }
 
     # Pulse durations in seconds
