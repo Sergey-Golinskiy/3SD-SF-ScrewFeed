@@ -25,11 +25,11 @@
 # Обновление системы
 sudo apt update && sudo apt upgrade -y
 
-# Установка зависимостей
+# Установка системных зависимостей
 sudo apt install -y python3-pip python3-lgpio git
 
 # Установка Python пакетов
-pip install pyserial --break-system-packages
+pip install pyserial lgpio pyyaml --break-system-packages
 ```
 
 ### 2. Настройка UART
@@ -107,12 +107,30 @@ sudo systemctl status xy_table.service
 # Обновление системы
 sudo apt update && sudo apt upgrade -y
 
-# Установка зависимостей
+# Установка системных зависимостей
 sudo apt install -y python3-pip python3-lgpio python3-pyqt5 git
 
-# Установка Python пакетов
-pip install pyserial flask flask-cors pyyaml --break-system-packages
+# Клонирование репозитория
+git clone https://github.com/Sergey-Golinskiy/3SD-SF-ScrewFeed.git
+cd 3SD-SF-ScrewFeed/screwdrive
+
+# Установка Python зависимостей из requirements.txt
+pip install -r requirements.txt --break-system-packages
+
+# Или установка вручную:
+# pip install flask flask-cors pyserial pyyaml lgpio --break-system-packages
 ```
+
+### Зависимости (requirements.txt)
+
+| Пакет | Версия | Назначение |
+|-------|--------|------------|
+| flask | >=2.0.0 | Web сервер API |
+| flask-cors | >=3.0.0 | CORS для API |
+| lgpio | >=0.2.0 | GPIO для Raspberry Pi 5 |
+| pyserial | >=3.5 | Serial связь с XY Table |
+| pyyaml | >=6.0 | Конфигурационные файлы |
+| PyQt5 | >=5.15.0 | Desktop UI (опционально) |
 
 ### 2. Настройка UART
 
