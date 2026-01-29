@@ -479,7 +479,7 @@ WEB_UI_HTML = """<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>Screw Drive Control Panel</title>
+<title>Панель керування відкруткою</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   * { box-sizing: border-box; }
@@ -533,9 +533,9 @@ WEB_UI_HTML = """<!doctype html>
 <body>
 
 <div class="header">
-  <h1>Screw Drive Control Panel</h1>
+  <h1>Панель керування відкруткою</h1>
   <div>
-    <span id="connectionStatus" class="status-badge warning">Connecting...</span>
+    <span id="connectionStatus" class="status-badge warning">Підключення...</span>
     <span id="updateTime" class="muted" style="margin-left: 10px;"></span>
   </div>
 </div>
@@ -543,28 +543,28 @@ WEB_UI_HTML = """<!doctype html>
 <div class="row">
   <!-- Cycle Control -->
   <div class="card" style="flex: 2;">
-    <h3>Cycle Control</h3>
+    <h3>Керування циклом</h3>
     <div class="form-row">
-      <label>Device:</label>
+      <label>Пристрій:</label>
       <select id="deviceSelect" style="flex: 1;"></select>
     </div>
     <div class="cycle-status" id="cycleStatus">
-      <div>State: <span id="cycleState" class="badge badge-info">IDLE</span></div>
-      <div style="margin-top: 8px;">Holes: <span id="holesProgress">0 / 0</span></div>
+      <div>Стан: <span id="cycleState" class="badge badge-info">ОЧІКУВАННЯ</span></div>
+      <div style="margin-top: 8px;">Отвори: <span id="holesProgress">0 / 0</span></div>
       <div class="progress-bar"><div class="progress-bar-fill" id="progressBar" style="width: 0%;"></div></div>
     </div>
     <div class="btn-group">
-      <button class="btn btn-success" id="btnStart">START</button>
-      <button class="btn btn-warning" id="btnPause">PAUSE</button>
-      <button class="btn btn-danger" id="btnStop">STOP</button>
-      <button class="btn btn-danger" id="btnEstop">E-STOP</button>
-      <button class="btn btn-secondary" id="btnClearEstop">Clear E-STOP</button>
+      <button class="btn btn-success" id="btnStart">СТАРТ</button>
+      <button class="btn btn-warning" id="btnPause">ПАУЗА</button>
+      <button class="btn btn-danger" id="btnStop">СТОП</button>
+      <button class="btn btn-danger" id="btnEstop">АВАРІЯ</button>
+      <button class="btn btn-secondary" id="btnClearEstop">Скинути аварію</button>
     </div>
   </div>
 
   <!-- XY Table -->
   <div class="card">
-    <h3>XY Table</h3>
+    <h3>XY Стіл</h3>
     <div id="xyStatus">
       <span class="badge badge-warning" id="xyState">DISCONNECTED</span>
     </div>
@@ -585,13 +585,13 @@ WEB_UI_HTML = """<!doctype html>
     </div>
     <div class="form-row">
       <input type="number" id="jogStep" value="10" min="1" max="100" style="width: 80px;">
-      <span class="muted">mm step</span>
+      <span class="muted">мм крок</span>
     </div>
     <div class="btn-group" style="margin-top: 10px;">
-      <button class="btn btn-primary" onclick="homeXY()">HOME</button>
-      <button class="btn btn-warning" onclick="homeY()">HOME Y</button>
-      <button class="btn btn-warning" onclick="homeX()">HOME X</button>
-      <button class="btn btn-secondary" id="btnXYConnect" onclick="connectXY()">Connect</button>
+      <button class="btn btn-primary" onclick="homeXY()">НУЛЬ</button>
+      <button class="btn btn-warning" onclick="homeY()">НУЛЬ Y</button>
+      <button class="btn btn-warning" onclick="homeX()">НУЛЬ X</button>
+      <button class="btn btn-secondary" id="btnXYConnect" onclick="connectXY()">Підключити</button>
     </div>
   </div>
 </div>
@@ -599,62 +599,90 @@ WEB_UI_HTML = """<!doctype html>
 <div class="row">
   <!-- Sensors -->
   <div class="card">
-    <h3>Sensors</h3>
+    <h3>Датчики</h3>
     <table id="sensorsTable">
-      <thead><tr><th>Name</th><th>State</th></tr></thead>
+      <thead><tr><th>Назва</th><th>Стан</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
   <!-- Relays -->
   <div class="card">
-    <h3>Relays</h3>
+    <h3>Реле</h3>
     <table id="relaysTable">
-      <thead><tr><th>Name</th><th>State</th><th>Control</th></tr></thead>
+      <thead><tr><th>Назва</th><th>Стан</th><th>Керування</th></tr></thead>
       <tbody></tbody>
     </table>
     <div style="margin-top: 10px;">
-      <button class="btn btn-danger" onclick="allRelaysOff()">All OFF</button>
+      <button class="btn btn-danger" onclick="allRelaysOff()">Все ВИКЛ</button>
     </div>
   </div>
 </div>
 
 <div class="row">
   <div class="card" style="flex: 1;">
-    <h3>Manual Move</h3>
+    <h3>Ручне переміщення</h3>
     <div class="form-row">
       <label>X:</label>
       <input type="number" id="moveX" value="0" step="0.1" style="width: 100px;">
       <label>Y:</label>
       <input type="number" id="moveY" value="0" step="0.1" style="width: 100px;">
-      <label>Feed:</label>
+      <label>Швидкість:</label>
       <input type="number" id="moveFeed" value="10000" step="100" style="width: 100px;">
     </div>
-    <button class="btn btn-primary" onclick="manualMove()">Move</button>
+    <button class="btn btn-primary" onclick="manualMove()">Рухати</button>
 
-    <h4 style="margin-top: 15px; margin-bottom: 10px;">G-code Console</h4>
-    <textarea id="gcodeInput" rows="5" placeholder="Enter G-code (one command per line)
-Example:
+    <h4 style="margin-top: 15px; margin-bottom: 10px;">G-code консоль</h4>
+    <textarea id="gcodeInput" rows="5" placeholder="Введіть G-code (одна команда на рядок)
+Приклад:
 G28
 G0 X100 Y200 F1000
 G0 X50 Y100 F1000" style="width: 100%; font-family: monospace; font-size: 13px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; resize: vertical;"></textarea>
     <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
-      <button class="btn btn-primary" onclick="sendGcode()">Run Program</button>
-      <button class="btn btn-secondary" onclick="document.getElementById('gcodeInput').value=''">Clear</button>
-      <span class="muted">Commands: G0/G1, G28, HOME, ZERO, M114, M119</span>
+      <button class="btn btn-primary" onclick="sendGcode()">Запустити</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('gcodeInput').value=''">Очистити</button>
+      <span class="muted">Команди: G0/G1, G2/G3, G28, HOME, ZERO, M114, M119</span>
     </div>
   </div>
 
   <div class="card" style="flex: 1;">
-    <h3>Log</h3>
+    <h3>Журнал</h3>
     <div id="log"></div>
-    <button class="btn btn-secondary" onclick="clearLog()" style="margin-top: 10px;">Clear Log</button>
+    <button class="btn btn-secondary" onclick="clearLog()" style="margin-top: 10px;">Очистити журнал</button>
   </div>
 </div>
 
 <script>
 const API = '';
 let selectedDevice = null;
+
+// Ukrainian names for relays and sensors
+const RELAY_NAMES = {
+  'r01_pit': 'Живильник гвинтів',
+  'r02_di7_tsk2': 'Вибір задачі 2',
+  'r04_c2': 'Циліндр відкрутки',
+  'r05_di4_free': 'Вільний хід',
+  'r06_di1_pot': 'Режим по моменту',
+  'r07_di5_tsk0': 'Вибір задачі 0',
+  'r08_di6_tsk1': 'Вибір задачі 1'
+};
+
+const SENSOR_NAMES = {
+  'area_sensor': 'Світлова завіса',
+  'ped_start': 'Педаль старту',
+  'ger_c2_up': 'Циліндр вгорі',
+  'ger_c2_down': 'Циліндр внизу - АВАРІЯ!',
+  'ind_scrw': 'Датчик гвинта',
+  'do2_ok': 'Момент OK'
+};
+
+function getRelayName(key) {
+  return RELAY_NAMES[key] || key;
+}
+
+function getSensorName(key) {
+  return SENSOR_NAMES[key] || key;
+}
 
 async function api(endpoint, method = 'GET', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -743,7 +771,7 @@ async function refreshStatus() {
 
     // Connection status
     document.getElementById('connectionStatus').className = 'status-badge ok';
-    document.getElementById('connectionStatus').textContent = 'Connected';
+    document.getElementById('connectionStatus').textContent = "Під'єднано";
     document.getElementById('updateTime').textContent = new Date().toLocaleTimeString();
 
     // Sensors
@@ -752,7 +780,8 @@ async function refreshStatus() {
     for (const [name, state] of Object.entries(data.sensors || {})) {
       const tr = document.createElement('tr');
       const isActive = state === 'ACTIVE';
-      tr.innerHTML = `<td>${name}</td><td class="${isActive ? 'ok' : 'off'}">${state}</td>`;
+      const displayName = getSensorName(name);
+      tr.innerHTML = `<td title="${name}">${displayName}</td><td class="${isActive ? 'ok' : 'off'}">${isActive ? 'ТАК' : 'НІ'}</td>`;
       sensorsBody.appendChild(tr);
     }
 
@@ -762,12 +791,13 @@ async function refreshStatus() {
     for (const [name, state] of Object.entries(data.relays || {})) {
       const tr = document.createElement('tr');
       const isOn = state === 'ON';
+      const displayName = getRelayName(name);
       tr.innerHTML = `
-        <td>${name}</td>
-        <td class="${isOn ? 'ok' : 'off'}">${state}</td>
+        <td title="${name}">${displayName}</td>
+        <td class="${isOn ? 'ok' : 'off'}">${isOn ? 'ВКЛ' : 'ВИКЛ'}</td>
         <td>
-          <button class="btn btn-success" onclick="setRelay('${name}', 'on')" style="padding: 4px 8px;">ON</button>
-          <button class="btn btn-danger" onclick="setRelay('${name}', 'off')" style="padding: 4px 8px;">OFF</button>
+          <button class="btn btn-success" onclick="setRelay('${name}', 'on')" style="padding: 4px 8px;">ВКЛ</button>
+          <button class="btn btn-danger" onclick="setRelay('${name}', 'off')" style="padding: 4px 8px;">ВИКЛ</button>
         </td>
       `;
       relaysBody.appendChild(tr);
@@ -800,7 +830,7 @@ async function refreshStatus() {
 
   } catch (e) {
     document.getElementById('connectionStatus').className = 'status-badge error';
-    document.getElementById('connectionStatus').textContent = 'Disconnected';
+    document.getElementById('connectionStatus').textContent = "Від'єднано";
   }
 }
 
@@ -937,7 +967,7 @@ window.addEventListener('load', async () => {
   await loadDevices();
   await refreshStatus();
   setInterval(refreshStatus, 1000);
-  log('Panel initialized');
+  log('Панель ініціалізовано');
 });
 </script>
 
