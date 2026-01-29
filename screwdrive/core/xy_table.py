@@ -104,30 +104,51 @@ class XYTableController:
             return False
 
         try:
-            self._serial = serial.Serial(
-                self._port,
-                self._baud,
-                timeout=0.1
-            )
-            time.sleep(0.5)  # Wait for connection to stabilize
+            print(f"DEBUG: Opening serial port {self._port} at {self._baud} baud...")
 
-            # Clear any pending data
+            self._serial = serial.Serial(
+                port=self._port,
+                baudrate=self._baud,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=1.0,  # 1 second read timeout
+                write_timeout=1.0,
+                xonxoff=False,
+                rtscts=False,
+                dsrdtr=False
+            )
+
+            # Wait for connection to stabilize
+            time.sleep(1.0)
+
+            # Clear any pending data (including "ok READY" from xy_cli)
             self._serial.reset_input_buffer()
             self._serial.reset_output_buffer()
 
-            # Test connection
-            if self._send_command("PING") == "PONG":
+            # Small delay after clear
+            time.sleep(0.1)
+
+            # Test connection with PING
+            print("DEBUG: Testing connection with PING...")
+            response = self._send_command("PING", timeout=5.0)
+            print(f"DEBUG: PING response: {response!r}")
+
+            if response == "PONG":
                 self._state = XYTableState.READY
                 self._notify_state_change()
+                print("DEBUG: XY Table connected successfully")
                 return True
             else:
-                print("ERROR: XY table not responding to PING")
+                print(f"ERROR: XY table not responding to PING (got: {response!r})")
                 self._serial.close()
                 self._serial = None
                 return False
 
         except Exception as e:
             print(f"ERROR: Cannot connect to XY table on {self._port}: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def _connect_direct(self) -> bool:
@@ -160,6 +181,7 @@ class XYTableController:
             Response string or None on error.
         """
         if self._serial is None:
+            print(f"DEBUG: Serial is None, cannot send '{cmd}'")
             return None
 
         timeout = timeout or self._timeout
@@ -170,41 +192,72 @@ class XYTableController:
 
         with self._lock:
             try:
-                # Clear buffers before sending
+                # Clear any pending input data
                 self._serial.reset_input_buffer()
 
+                # Small delay to ensure buffer is clear
+                time.sleep(0.01)
+
                 # Send command
-                self._serial.write((cmd + "\n").encode('utf-8'))
+                cmd_bytes = (cmd + "\n").encode('utf-8')
+                self._serial.write(cmd_bytes)
                 self._serial.flush()
 
-                # Wait for response
+                print(f"DEBUG: Sent command: {cmd!r}")
+
+                # Wait for response using blocking readline with timeout
+                # Set a reasonable read timeout
+                old_timeout = self._serial.timeout
+                self._serial.timeout = min(timeout, 5.0)  # Max 5s per line read
+
                 start = time.time()
                 response_lines = []
 
-                while time.time() - start < timeout:
-                    if self._serial.in_waiting > 0:
-                        line = self._serial.readline().decode('utf-8', errors='ignore').strip()
-                        if line:
-                            response_lines.append(line)
+                try:
+                    while time.time() - start < timeout:
+                        # Read a line (blocks until newline or timeout)
+                        raw_line = self._serial.readline()
 
-                            # For single-line commands, return immediately
-                            if cmd_upper in single_line_commands:
-                                return line
+                        if raw_line:
+                            line = raw_line.decode('utf-8', errors='ignore').strip()
+                            print(f"DEBUG: Received line: {line!r}")
 
-                            # Check for completion markers
-                            if line.startswith("ok") or line.startswith("err"):
-                                return "\n".join(response_lines)
-                    time.sleep(0.001)
+                            if line:
+                                response_lines.append(line)
 
-                # If we got any response but no "ok", return what we have
+                                # For single-line commands, return immediately
+                                if cmd_upper in single_line_commands:
+                                    return line
+
+                                # Check for completion markers
+                                if line.startswith("ok") or line.startswith("err"):
+                                    return "\n".join(response_lines)
+                        else:
+                            # No data received within serial timeout
+                            # Check if we already have a response
+                            if response_lines:
+                                # Maybe we got the response but missed 'ok'
+                                last_line = response_lines[-1].lower()
+                                if "ok" in last_line or "err" in last_line:
+                                    return "\n".join(response_lines)
+
+                            # Small sleep before retry
+                            time.sleep(0.01)
+                finally:
+                    self._serial.timeout = old_timeout
+
+                # If we got any response, return it
                 if response_lines:
+                    print(f"DEBUG: Returning partial response: {response_lines}")
                     return "\n".join(response_lines)
 
-                print(f"WARNING: Command '{cmd}' timed out")
+                print(f"WARNING: Command '{cmd}' timed out (no response in {timeout}s)")
                 return None
 
             except Exception as e:
                 print(f"ERROR: Command '{cmd}' failed: {e}")
+                import traceback
+                traceback.print_exc()
                 return None
 
     def _parse_status(self, response: str) -> None:
