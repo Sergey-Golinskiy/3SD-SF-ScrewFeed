@@ -226,12 +226,18 @@ def create_app(
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
 
-        data = request.get_json() or {}
-        axis = data.get('axis')  # None for both axes
+        try:
+            data = request.get_json() or {}
+            axis = data.get('axis')  # None for both axes
 
-        if app.xy_table.home(axis):
-            return jsonify({'status': 'homed', 'axis': axis or 'all'})
-        return jsonify({'error': 'Homing failed'}), 500
+            if app.xy_table.home(axis):
+                return jsonify({'status': 'homed', 'axis': axis or 'all'})
+            return jsonify({'error': 'Homing failed'}), 500
+        except Exception as e:
+            print(f"ERROR in xy_home: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': str(e)}), 500
 
     @app.route('/api/xy/home/x', methods=['POST'])
     def xy_home_x():
@@ -618,8 +624,19 @@ let selectedDevice = null;
 async function api(endpoint, method = 'GET', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API + endpoint, opts);
-  return await res.json();
+  try {
+    const res = await fetch(API + endpoint, opts);
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error('API response not JSON:', text.substring(0, 200));
+      throw new Error('Server error: ' + res.status);
+    }
+  } catch (e) {
+    console.error('API call failed:', endpoint, e);
+    throw e;
+  }
 }
 
 function log(msg) {
