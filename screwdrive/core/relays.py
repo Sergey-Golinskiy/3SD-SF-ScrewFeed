@@ -50,13 +50,13 @@ class RelayController:
     # R08 - Task 1 selection (700ms pulse)
     # Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
     DEFAULT_RELAYS = {
-        'r01_pit': RelayConfig(gpio=5, active_high=False, description="Screw feeder"),
-        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=False, description="Task 2 selection"),
-        'r04_c2': RelayConfig(gpio=16, active_high=False, description="Cylinder down/up"),
-        'r05_di4_free': RelayConfig(gpio=19, active_high=False, description="Free run mode"),
-        'r06_di1_pot': RelayConfig(gpio=20, active_high=False, description="Torque mode"),
-        'r07_di5_tsk0': RelayConfig(gpio=21, active_high=False, description="Task 0 selection"),
-        'r08_di6_tsk1': RelayConfig(gpio=26, active_high=False, description="Task 1 selection"),
+        'r01_pit': RelayConfig(gpio=5, active_high=False, description="Живильник гвинтів"),
+        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=False, description="Вибір задачі 2"),
+        'r04_c2': RelayConfig(gpio=16, active_high=False, description="Циліндр відкрутки"),
+        'r05_di4_free': RelayConfig(gpio=19, active_high=False, description="Вільний хід"),
+        'r06_di1_pot': RelayConfig(gpio=20, active_high=False, description="Режим по моменту"),
+        'r07_di5_tsk0': RelayConfig(gpio=21, active_high=False, description="Вибір задачі 0"),
+        'r08_di6_tsk1': RelayConfig(gpio=26, active_high=False, description="Вибір задачі 1"),
     }
 
     # Pulse durations in seconds

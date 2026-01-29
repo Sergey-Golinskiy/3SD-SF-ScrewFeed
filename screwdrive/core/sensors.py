@@ -46,35 +46,35 @@ class SensorController:
     # Default sensor configuration
     # Pin assignments based on actual hardware connections
     DEFAULT_SENSORS = {
-        # Safety curtain - OPEN=clear, CLOSE=blocked
+        # Світлова завіса - HIGH=вільно, LOW=заблоковано
         'area_sensor': SensorConfig(
             gpio=17, active_low=True, pull_up=True,
-            description="Safety light curtain (AREA_SENSOR)", debounce_ms=100
+            description="Світлова завіса безпеки", debounce_ms=100
         ),
-        # Start pedal - OPEN=released, CLOSE=pressed
+        # Педаль старту - HIGH=відпущена, LOW=натиснута
         'ped_start': SensorConfig(
             gpio=18, active_low=True, pull_up=True,
-            description="Start pedal (PED_START)", debounce_ms=50
+            description="Педаль старту циклу", debounce_ms=50
         ),
-        # Cylinder UP position - ACTIVE=cylinder at top
+        # Циліндр вгорі - ACTIVE=циліндр у верхньому положенні
         'ger_c2_up': SensorConfig(
             gpio=22, active_low=True, pull_up=True,
-            description="Cylinder UP position (GER_C2_UP)", debounce_ms=10
+            description="Циліндр вгорі", debounce_ms=10
         ),
-        # Cylinder DOWN position - EMERGENCY! ACTIVE=reached bottom, turn off R04_C2
+        # Циліндр внизу - АВАРІЯ! ACTIVE=досяг низу, вимкнути R04_C2
         'ger_c2_down': SensorConfig(
             gpio=23, active_low=True, pull_up=True,
-            description="Cylinder DOWN - EMERGENCY (GER_C2_DOWN)", debounce_ms=10
+            description="Циліндр внизу - АВАРІЯ!", debounce_ms=10
         ),
-        # Inductive screw sensor - OPEN=no screw, CLOSE=screw passed
+        # Індуктивний датчик гвинта - HIGH=немає, LOW=гвинт пройшов
         'ind_scrw': SensorConfig(
             gpio=12, active_low=True, pull_up=True,
-            description="Inductive screw sensor (IND_SCRW)", debounce_ms=10
+            description="Індуктивний датчик гвинта", debounce_ms=10
         ),
-        # Torque OK signal from driver - OPEN=not ok, CLOSE=torque reached
+        # Сигнал досягнення моменту - HIGH=не досягнуто, LOW=момент OK
         'do2_ok': SensorConfig(
             gpio=25, active_low=True, pull_up=True,
-            description="Torque reached (DO2_OK)", debounce_ms=10
+            description="Момент досягнуто - OK", debounce_ms=10
         ),
     }
 

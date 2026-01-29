@@ -17,112 +17,125 @@ xy_table:
     endstop: 3
 
 # =========================
-# Relays (directly connected to Master Pi 5)
+# Реле (підключені до Master Pi 5)
 # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
 # Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
 # =========================
 relays:
-  # R01 - Screw feeder (pulse to release screw)
+  # R01 - Живильник гвинтів (імпульс для подачі гвинта)
   r01_pit:
     gpio: 5
     active_high: false
-    description: "Screw feeder - pulse to release screw"
+    description: "Живильник гвинтів - імпульс для подачі"
+    description_en: "Screw feeder - pulse to release screw"
     pulse_ms: 200
 
-  # R02 - Task 2 selection (700ms pulse)
+  # R02 - Вибір задачі 2 (імпульс 700мс)
   r02_di7_tsk2:
     gpio: 6
     active_high: false
-    description: "Select task 2 for tightening (700ms pulse)"
+    description: "Вибір задачі 2 для закручування"
+    description_en: "Select task 2 for tightening (700ms pulse)"
     pulse_ms: 700
 
-  # R04 - Cylinder control (ON=down, OFF=up automatic)
+  # R04 - Циліндр відкрутки (ON=вниз, OFF=вгору автоматично)
   r04_c2:
     gpio: 16
     active_high: false
-    description: "Screwdriver cylinder (ON=down, OFF=up)"
+    description: "Циліндр відкрутки (ON=вниз, OFF=вгору)"
+    description_en: "Screwdriver cylinder (ON=down, OFF=up)"
 
-  # R05 - Free run mode (hold ON = screwdriver spins)
+  # R05 - Вільний хід (утримувати ON = крутиться)
   r05_di4_free:
     gpio: 19
     active_high: false
-    description: "Free run mode - screwdriver spins while ON"
+    description: "Вільний хід - крутиться поки увімкнено"
+    description_en: "Free run mode - screwdriver spins while ON"
 
-  # R06 - Torque mode (hold ON until torque OK signal)
+  # R06 - Режим по моменту (утримувати ON до сигналу OK)
   r06_di1_pot:
     gpio: 20
     active_high: false
-    description: "Torque mode - hold ON until DO2_OK"
+    description: "Режим по моменту - до сигналу OK"
+    description_en: "Torque mode - hold ON until DO2_OK"
 
-  # R07 - Task 0 selection (700ms pulse)
+  # R07 - Вибір задачі 0 (імпульс 700мс)
   r07_di5_tsk0:
     gpio: 21
     active_high: false
-    description: "Select task 0 for tightening (700ms pulse)"
+    description: "Вибір задачі 0 для закручування"
+    description_en: "Select task 0 for tightening (700ms pulse)"
     pulse_ms: 700
 
-  # R08 - Task 1 selection (700ms pulse)
+  # R08 - Вибір задачі 1 (імпульс 700мс)
   r08_di6_tsk1:
     gpio: 26
     active_high: false
-    description: "Select task 1 for tightening (700ms pulse)"
+    description: "Вибір задачі 1 для закручування"
+    description_en: "Select task 1 for tightening (700ms pulse)"
     pulse_ms: 700
 
 # =========================
-# Sensors (directly connected to Master Pi 5)
+# Датчики (підключені до Master Pi 5)
 # =========================
 sensors:
-  # Safety curtain - blocks entry to work area
-  # OPEN (HIGH) = clear, no obstruction
-  # CLOSE (LOW) = blocked, stop operations
+  # Світлова завіса безпеки - блокує вхід в робочу зону
+  # HIGH = вільно, немає перешкод
+  # LOW = заблоковано, зупинити роботу
   area_sensor:
     gpio: 17
     active_low: true
-    description: "Safety light curtain (AREA_SENSOR)"
+    description: "Світлова завіса безпеки"
+    description_en: "Safety light curtain (AREA_SENSOR)"
     pull_up: true
 
-  # Start pedal - initiates cycle
-  # OPEN (HIGH) = released
-  # CLOSE (LOW) = pressed
+  # Педаль старту - запускає цикл
+  # HIGH = відпущена
+  # LOW = натиснута
   ped_start:
     gpio: 18
     active_low: true
-    description: "Start pedal (PED_START)"
+    description: "Педаль старту циклу"
+    description_en: "Start pedal (PED_START)"
     pull_up: true
 
-  # Cylinder UP position sensor
-  # ACTIVE = cylinder is in upper position
+  # Датчик верхнього положення циліндра
+  # ACTIVE = циліндр у верхньому положенні
   ger_c2_up:
     gpio: 22
     active_low: true
-    description: "Cylinder UP position (GER_C2_UP)"
+    description: "Циліндр у верхньому положенні"
+    description_en: "Cylinder UP position (GER_C2_UP)"
     pull_up: true
 
-  # Cylinder DOWN position sensor - EMERGENCY!
-  # If triggered, must turn off R04_C2 (cylinder relay)
-  # ACTIVE = cylinder reached bottom (emergency condition)
+  # Датчик нижнього положення циліндра - АВАРІЯ!
+  # Якщо спрацював - вимкнути R04_C2 (реле циліндра)
+  # ACTIVE = циліндр досяг низу (аварійний стан)
   ger_c2_down:
     gpio: 23
     active_low: true
-    description: "Cylinder DOWN position - EMERGENCY (GER_C2_DOWN)"
+    description: "Циліндр внизу - АВАРІЯ!"
+    description_en: "Cylinder DOWN position - EMERGENCY (GER_C2_DOWN)"
     pull_up: true
 
-  # Inductive screw sensor - detects if screw passed through tube
-  # OPEN (HIGH) = no screw
-  # CLOSE (LOW) = screw passed/present
+  # Індуктивний датчик гвинта - виявляє проходження гвинта
+  # HIGH = немає гвинта
+  # LOW = гвинт пройшов/присутній
   ind_scrw:
     gpio: 12
     active_low: true
-    description: "Inductive screw sensor (IND_SCRW)"
+    description: "Індуктивний датчик гвинта"
+    description_en: "Inductive screw sensor (IND_SCRW)"
     pull_up: true
 
-  # Driver torque OK signal
-  # OPEN (HIGH) = torque not reached yet
-  # CLOSE (LOW) = torque reached, screw tightened
+  # Сигнал досягнення моменту від драйвера
+  # HIGH = момент ще не досягнуто
+  # LOW = момент досягнуто, гвинт закручено
   do2_ok:
     gpio: 25
     active_low: true
-    description: "Torque reached signal (DO2_OK)"
+    description: "Момент досягнуто - OK"
+    description_en: "Torque reached signal (DO2_OK)"
     pull_up: true
 
 # =========================
