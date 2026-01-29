@@ -41,14 +41,26 @@ class RelayController:
 
     # Default relay configuration
     # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
+    # R01 - Screw feeder (pulse to release screw)
+    # R02 - Task 2 selection (700ms pulse)
+    # R04 - Cylinder control (ON=down, OFF=up)
+    # R05 - Free run mode (hold ON = screwdriver spins)
+    # R06 - Torque mode (hold ON until DO2_OK)
+    # R07 - Task 0 selection (700ms pulse)
+    # R08 - Task 1 selection (700ms pulse)
     DEFAULT_RELAYS = {
-        'screwdriver_power': RelayConfig(gpio=4, active_high=True, description="Screwdriver motor"),
-        'screwdriver_direction': RelayConfig(gpio=27, active_high=True, description="Direction CW/CCW"),
-        'cylinder_down': RelayConfig(gpio=5, active_high=True, description="Cylinder extend"),
-        'cylinder_up': RelayConfig(gpio=6, active_high=True, description="Cylinder retract"),
-        'vacuum': RelayConfig(gpio=24, active_high=True, description="Vacuum gripper"),
-        'blow': RelayConfig(gpio=13, active_high=True, description="Air blow"),
+        'r01_pit': RelayConfig(gpio=5, active_high=True, description="Screw feeder"),
+        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=True, description="Task 2 selection"),
+        'r04_c2': RelayConfig(gpio=16, active_high=True, description="Cylinder down/up"),
+        'r05_di4_free': RelayConfig(gpio=19, active_high=True, description="Free run mode"),
+        'r06_di1_pot': RelayConfig(gpio=20, active_high=True, description="Torque mode"),
+        'r07_di5_tsk0': RelayConfig(gpio=21, active_high=True, description="Task 0 selection"),
+        'r08_di6_tsk1': RelayConfig(gpio=26, active_high=True, description="Task 1 selection"),
     }
+
+    # Pulse durations in seconds
+    TASK_PULSE_DURATION = 0.7  # 700ms for task selection
+    FEEDER_PULSE_DURATION = 0.2  # 200ms for screw feeder
 
     def __init__(self, gpio: Optional[GPIOController] = None,
                  relays: Optional[Dict[str, RelayConfig]] = None):
@@ -182,48 +194,91 @@ class RelayController:
         """Get list of available relay names."""
         return list(self._relays.keys())
 
+    # ==========================================
     # Convenience methods for common operations
-    def screwdriver_start(self, clockwise: bool = True) -> bool:
-        """Start screwdriver motor."""
-        self.set('screwdriver_direction', clockwise)
-        time.sleep(0.05)  # Direction setup delay
-        return self.on('screwdriver_power')
+    # ==========================================
 
-    def screwdriver_stop(self) -> bool:
-        """Stop screwdriver motor."""
-        return self.off('screwdriver_power')
+    def feed_screw(self) -> bool:
+        """
+        Feed a screw from the feeder.
+        Pulses R01_PIT to release one screw.
+        """
+        return self.pulse('r01_pit', self.FEEDER_PULSE_DURATION)
 
-    def cylinder_extend(self) -> bool:
-        """Extend pneumatic cylinder."""
-        self.off('cylinder_up')
-        time.sleep(0.05)
-        return self.on('cylinder_down')
+    def select_task(self, task: int) -> bool:
+        """
+        Select screwdriver task/program (0, 1, or 2).
+        Sends 700ms pulse to corresponding relay.
 
-    def cylinder_retract(self) -> bool:
-        """Retract pneumatic cylinder."""
-        self.off('cylinder_down')
-        time.sleep(0.05)
-        return self.on('cylinder_up')
+        Args:
+            task: Task number (0, 1, or 2)
 
-    def cylinder_stop(self) -> bool:
-        """Stop cylinder (both valves off)."""
-        self.off('cylinder_down')
-        return self.off('cylinder_up')
+        Returns:
+            True if successful.
+        """
+        task_relays = {
+            0: 'r07_di5_tsk0',
+            1: 'r08_di6_tsk1',
+            2: 'r02_di7_tsk2',
+        }
+        if task not in task_relays:
+            print(f"ERROR: Invalid task number {task}. Must be 0, 1, or 2.")
+            return False
+        return self.pulse(task_relays[task], self.TASK_PULSE_DURATION)
 
-    def vacuum_on(self) -> bool:
-        """Enable vacuum gripper."""
-        self.off('blow')
-        return self.on('vacuum')
+    def cylinder_down(self) -> bool:
+        """
+        Move cylinder DOWN (extend).
+        R04_C2 ON = cylinder goes down.
+        """
+        return self.on('r04_c2')
 
-    def vacuum_off(self) -> bool:
-        """Disable vacuum gripper."""
-        return self.off('vacuum')
+    def cylinder_up(self) -> bool:
+        """
+        Move cylinder UP (retract).
+        R04_C2 OFF = cylinder goes up automatically.
+        """
+        return self.off('r04_c2')
 
-    def blow_on(self) -> bool:
-        """Enable air blow."""
-        self.off('vacuum')
-        return self.on('blow')
+    def screwdriver_free_start(self) -> bool:
+        """
+        Start screwdriver in FREE RUN mode.
+        Screwdriver spins while R05_DI4_FREE is ON.
+        """
+        return self.on('r05_di4_free')
 
-    def blow_off(self) -> bool:
-        """Disable air blow."""
-        return self.off('blow')
+    def screwdriver_free_stop(self) -> bool:
+        """
+        Stop screwdriver FREE RUN mode.
+        """
+        return self.off('r05_di4_free')
+
+    def screwdriver_torque_start(self) -> bool:
+        """
+        Start screwdriver in TORQUE mode.
+        Screwdriver runs until torque is reached (DO2_OK signal).
+        R06_DI1_POT should be held ON until torque OK.
+        """
+        return self.on('r06_di1_pot')
+
+    def screwdriver_torque_stop(self) -> bool:
+        """
+        Stop screwdriver TORQUE mode.
+        Call this when DO2_OK signal is received.
+        """
+        return self.off('r06_di1_pot')
+
+    def emergency_stop(self) -> bool:
+        """
+        Emergency stop - turn off all relays.
+        Cylinder will automatically retract (R04 OFF = up).
+        """
+        return self.all_off()
+
+    def is_cylinder_down(self) -> bool:
+        """Check if cylinder relay is active (cylinder going down)."""
+        return self.is_on('r04_c2')
+
+    def is_screwdriver_running(self) -> bool:
+        """Check if screwdriver is running in any mode."""
+        return self.is_on('r05_di4_free') or self.is_on('r06_di1_pot')

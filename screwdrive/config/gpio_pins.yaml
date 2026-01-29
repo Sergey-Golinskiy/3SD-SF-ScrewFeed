@@ -21,37 +21,51 @@ xy_table:
 # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
 # =========================
 relays:
-  # Screwdriver control
-  screwdriver_power:
-    gpio: 4
-    active_high: true
-    description: "Screwdriver motor power"
-
-  screwdriver_direction:
-    gpio: 27
-    active_high: true
-    description: "Screwdriver direction (CW/CCW)"
-
-  # Pneumatics
-  cylinder_down:
+  # R01 - Screw feeder (pulse to release screw)
+  r01_pit:
     gpio: 5
     active_high: true
-    description: "Pneumatic cylinder - push down"
+    description: "Screw feeder - pulse to release screw"
+    pulse_ms: 200
 
-  cylinder_up:
+  # R02 - Task 2 selection (700ms pulse)
+  r02_di7_tsk2:
     gpio: 6
     active_high: true
-    description: "Pneumatic cylinder - retract"
+    description: "Select task 2 for tightening (700ms pulse)"
+    pulse_ms: 700
 
-  vacuum:
-    gpio: 24
+  # R04 - Cylinder control (ON=down, OFF=up automatic)
+  r04_c2:
+    gpio: 16
     active_high: true
-    description: "Vacuum gripper"
+    description: "Screwdriver cylinder (ON=down, OFF=up)"
 
-  blow:
-    gpio: 13
+  # R05 - Free run mode (hold ON = screwdriver spins)
+  r05_di4_free:
+    gpio: 19
     active_high: true
-    description: "Air blow for cleaning"
+    description: "Free run mode - screwdriver spins while ON"
+
+  # R06 - Torque mode (hold ON until torque OK signal)
+  r06_di1_pot:
+    gpio: 20
+    active_high: true
+    description: "Torque mode - hold ON until DO2_OK"
+
+  # R07 - Task 0 selection (700ms pulse)
+  r07_di5_tsk0:
+    gpio: 21
+    active_high: true
+    description: "Select task 0 for tightening (700ms pulse)"
+    pulse_ms: 700
+
+  # R08 - Task 1 selection (700ms pulse)
+  r08_di6_tsk1:
+    gpio: 26
+    active_high: true
+    description: "Select task 1 for tightening (700ms pulse)"
+    pulse_ms: 700
 
 # =========================
 # Sensors (directly connected to Master Pi 5)
