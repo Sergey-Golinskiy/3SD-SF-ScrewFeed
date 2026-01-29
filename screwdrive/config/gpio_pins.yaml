@@ -56,43 +56,57 @@ relays:
 # Sensors (directly connected to Master Pi 5)
 # =========================
 sensors:
-  # Safety
+  # Safety curtain - blocks entry to work area
+  # OPEN (HIGH) = clear, no obstruction
+  # CLOSE (LOW) = blocked, stop operations
   area_sensor:
-    gpio: 5
+    gpio: 17
     active_low: true
-    description: "Safety light curtain"
+    description: "Safety light curtain (AREA_SENSOR)"
     pull_up: true
 
-  emergency_stop:
-    gpio: 6
+  # Start pedal - initiates cycle
+  # OPEN (HIGH) = released
+  # CLOSE (LOW) = pressed
+  ped_start:
+    gpio: 18
     active_low: true
-    description: "E-STOP button"
+    description: "Start pedal (PED_START)"
     pull_up: true
 
-  # Screwdriver feedback
-  screw_present:
+  # Cylinder UP position sensor
+  # ACTIVE = cylinder is in upper position
+  ger_c2_up:
+    gpio: 22
+    active_low: true
+    description: "Cylinder UP position (GER_C2_UP)"
+    pull_up: true
+
+  # Cylinder DOWN position sensor - EMERGENCY!
+  # If triggered, must turn off R04_C2 (cylinder relay)
+  # ACTIVE = cylinder reached bottom (emergency condition)
+  ger_c2_down:
+    gpio: 23
+    active_low: true
+    description: "Cylinder DOWN position - EMERGENCY (GER_C2_DOWN)"
+    pull_up: true
+
+  # Inductive screw sensor - detects if screw passed through tube
+  # OPEN (HIGH) = no screw
+  # CLOSE (LOW) = screw passed/present
+  ind_scrw:
     gpio: 12
     active_low: true
-    description: "Screw in bit detector"
+    description: "Inductive screw sensor (IND_SCRW)"
     pull_up: true
 
-  torque_reached:
-    gpio: 13
+  # Driver torque OK signal
+  # OPEN (HIGH) = torque not reached yet
+  # CLOSE (LOW) = torque reached, screw tightened
+  do2_ok:
+    gpio: 25
     active_low: true
-    description: "Torque limit reached signal"
-    pull_up: true
-
-  # Cylinder position
-  cylinder_up_sensor:
-    gpio: 19
-    active_low: true
-    description: "Cylinder retracted position"
-    pull_up: true
-
-  cylinder_down_sensor:
-    gpio: 26
-    active_low: true
-    description: "Cylinder extended position"
+    description: "Torque reached signal (DO2_OK)"
     pull_up: true
 
 # =========================

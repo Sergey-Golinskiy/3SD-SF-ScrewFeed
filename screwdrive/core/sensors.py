@@ -43,31 +43,38 @@ class SensorController:
     - Continuous monitoring thread
     """
 
-    # Default sensor configuration matching the old system
+    # Default sensor configuration
+    # Pin assignments based on actual hardware connections
     DEFAULT_SENSORS = {
+        # Safety curtain - OPEN=clear, CLOSE=blocked
         'area_sensor': SensorConfig(
-            gpio=5, active_low=True, pull_up=True,
-            description="Safety light curtain", debounce_ms=100
+            gpio=17, active_low=True, pull_up=True,
+            description="Safety light curtain (AREA_SENSOR)", debounce_ms=100
         ),
-        'emergency_stop': SensorConfig(
-            gpio=6, active_low=True, pull_up=True,
-            description="E-STOP button", debounce_ms=50
+        # Start pedal - OPEN=released, CLOSE=pressed
+        'ped_start': SensorConfig(
+            gpio=18, active_low=True, pull_up=True,
+            description="Start pedal (PED_START)", debounce_ms=50
         ),
-        'screw_present': SensorConfig(
+        # Cylinder UP position - ACTIVE=cylinder at top
+        'ger_c2_up': SensorConfig(
+            gpio=22, active_low=True, pull_up=True,
+            description="Cylinder UP position (GER_C2_UP)", debounce_ms=10
+        ),
+        # Cylinder DOWN position - EMERGENCY! ACTIVE=reached bottom, turn off R04_C2
+        'ger_c2_down': SensorConfig(
+            gpio=23, active_low=True, pull_up=True,
+            description="Cylinder DOWN - EMERGENCY (GER_C2_DOWN)", debounce_ms=10
+        ),
+        # Inductive screw sensor - OPEN=no screw, CLOSE=screw passed
+        'ind_scrw': SensorConfig(
             gpio=12, active_low=True, pull_up=True,
-            description="Screw in bit detector", debounce_ms=10
+            description="Inductive screw sensor (IND_SCRW)", debounce_ms=10
         ),
-        'torque_reached': SensorConfig(
-            gpio=13, active_low=True, pull_up=True,
-            description="Torque limit signal", debounce_ms=10
-        ),
-        'cylinder_up': SensorConfig(
-            gpio=19, active_low=True, pull_up=True,
-            description="Cylinder retracted", debounce_ms=10
-        ),
-        'cylinder_down': SensorConfig(
-            gpio=26, active_low=True, pull_up=True,
-            description="Cylinder extended", debounce_ms=10
+        # Torque OK signal from driver - OPEN=not ok, CLOSE=torque reached
+        'do2_ok': SensorConfig(
+            gpio=25, active_low=True, pull_up=True,
+            description="Torque reached (DO2_OK)", debounce_ms=10
         ),
     }
 
@@ -268,35 +275,55 @@ class SensorController:
         return list(self._sensors.keys())
 
     # Convenience methods for common checks
+
     def is_safe(self) -> bool:
         """Check if all safety sensors allow operation."""
-        area_ok = self.is_inactive('area_sensor')  # Area should be clear
-        estop_ok = self.is_inactive('emergency_stop')  # E-STOP should not be pressed
-        return area_ok and estop_ok
-
-    def is_estop_pressed(self) -> bool:
-        """Check if E-STOP is pressed."""
-        return self.is_active('emergency_stop')
+        area_ok = self.is_inactive('area_sensor')  # Area should be clear (no obstruction)
+        cylinder_emergency_ok = self.is_inactive('ger_c2_down')  # Cylinder not at emergency position
+        return area_ok and cylinder_emergency_ok
 
     def is_area_blocked(self) -> bool:
-        """Check if safety area is blocked."""
+        """Check if safety area is blocked (obstruction detected)."""
         return self.is_active('area_sensor')
 
+    def is_area_clear(self) -> bool:
+        """Check if safety area is clear (no obstruction)."""
+        return self.is_inactive('area_sensor')
+
+    def is_pedal_pressed(self) -> bool:
+        """Check if start pedal is pressed."""
+        return self.is_active('ped_start')
+
+    def is_pedal_released(self) -> bool:
+        """Check if start pedal is released."""
+        return self.is_inactive('ped_start')
+
     def is_cylinder_up(self) -> bool:
-        """Check if cylinder is in retracted position."""
-        return self.is_active('cylinder_up')
+        """Check if cylinder is in UP (retracted) position."""
+        return self.is_active('ger_c2_up')
 
-    def is_cylinder_down(self) -> bool:
-        """Check if cylinder is in extended position."""
-        return self.is_active('cylinder_down')
+    def is_cylinder_down_emergency(self) -> bool:
+        """
+        Check if cylinder reached DOWN position (EMERGENCY!).
+        If True, must immediately turn off R04_C2!
+        """
+        return self.is_active('ger_c2_down')
 
-    def is_screw_present(self) -> bool:
-        """Check if screw is present in bit."""
-        return self.is_active('screw_present')
+    def is_screw_detected(self) -> bool:
+        """Check if screw passed through tube (inductive sensor)."""
+        return self.is_active('ind_scrw')
+
+    def is_screw_absent(self) -> bool:
+        """Check if no screw detected (tube empty)."""
+        return self.is_inactive('ind_scrw')
 
     def is_torque_reached(self) -> bool:
-        """Check if torque limit was reached."""
-        return self.is_active('torque_reached')
+        """Check if torque limit was reached (screw tightened)."""
+        return self.is_active('do2_ok')
+
+    def is_torque_not_reached(self) -> bool:
+        """Check if torque not yet reached."""
+        return self.is_inactive('do2_ok')
 
     def wait_for(self, name: str, state: SensorState,
                  timeout_s: float = 10.0) -> bool:
