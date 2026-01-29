@@ -227,7 +227,7 @@ def create_app(
             return jsonify({'error': 'XY table not initialized'}), 503
 
         try:
-            data = request.get_json() or {}
+            data = request.get_json(silent=True) or {}
             axis = data.get('axis')  # None for both axes
 
             if app.xy_table.home(axis):
