@@ -596,6 +596,169 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 
 
 # =========================
+# Circular interpolation (G2/G3)
+# =========================
+import math
+
+def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
+             clockwise: bool, feed_mm_min: float) -> bool:
+    """
+    Perform circular arc interpolation (G2/G3).
+
+    Args:
+        x_end: Target X position (absolute)
+        y_end: Target Y position (absolute)
+        i_offset: X offset from current position to arc center
+        j_offset: Y offset from current position to arc center
+        clockwise: True for G2 (CW), False for G3 (CCW)
+        feed_mm_min: Feed rate in mm/min
+
+    Returns:
+        True if arc completed successfully.
+    """
+    global cur_x_mm, cur_y_mm
+
+    if estop:
+        return False
+
+    # Calculate arc center
+    cx = cur_x_mm + i_offset
+    cy = cur_y_mm + j_offset
+
+    # Calculate radius from start and end points
+    r_start = math.sqrt((cur_x_mm - cx)**2 + (cur_y_mm - cy)**2)
+    r_end = math.sqrt((x_end - cx)**2 + (y_end - cy)**2)
+
+    # Check radius consistency (allow 0.1mm tolerance)
+    if abs(r_start - r_end) > 0.1:
+        print(f"WARNING: Arc radius mismatch: start={r_start:.3f}, end={r_end:.3f}")
+
+    radius = r_start
+
+    if radius < 0.01:
+        # Degenerate arc, just move to end point
+        return move_xy_abs(x_end, y_end, feed_mm_min)
+
+    # Calculate start and end angles
+    start_angle = math.atan2(cur_y_mm - cy, cur_x_mm - cx)
+    end_angle = math.atan2(y_end - cy, x_end - cx)
+
+    # Calculate angular distance
+    if clockwise:
+        # CW: angle decreases
+        angle_diff = start_angle - end_angle
+        if angle_diff <= 0:
+            angle_diff += 2 * math.pi
+    else:
+        # CCW: angle increases
+        angle_diff = end_angle - start_angle
+        if angle_diff <= 0:
+            angle_diff += 2 * math.pi
+
+    # Calculate arc length
+    arc_length = radius * angle_diff
+
+    # Determine number of segments (aim for ~0.5mm per segment for smoothness)
+    segment_length = 0.5  # mm
+    num_segments = max(int(arc_length / segment_length), 4)
+
+    # Calculate angle step
+    angle_step = angle_diff / num_segments
+    if clockwise:
+        angle_step = -angle_step
+
+    print(f"DEBUG arc_move: center=({cx:.2f}, {cy:.2f}), r={radius:.2f}, "
+          f"angle={math.degrees(start_angle):.1f}° -> {math.degrees(end_angle):.1f}°, "
+          f"segments={num_segments}")
+
+    # Execute arc as series of linear moves
+    current_angle = start_angle
+
+    for i in range(num_segments):
+        if estop:
+            return False
+
+        current_angle += angle_step
+
+        # Calculate next point on arc
+        if i == num_segments - 1:
+            # Last segment: use exact end point to avoid accumulation errors
+            next_x = x_end
+            next_y = y_end
+        else:
+            next_x = cx + radius * math.cos(current_angle)
+            next_y = cy + radius * math.sin(current_angle)
+
+        # Clamp to bounds
+        next_x = float(clamp(next_x, X_MIN_MM, X_MAX_MM))
+        next_y = float(clamp(next_y, Y_MIN_MM, Y_MAX_MM))
+
+        # Move to next point
+        if not move_xy_abs(next_x, next_y, feed_mm_min):
+            return False
+
+    return True
+
+
+def arc_move_radius(x_end: float, y_end: float, radius: float,
+                    clockwise: bool, feed_mm_min: float) -> bool:
+    """
+    Perform circular arc using radius notation (R parameter).
+
+    Args:
+        x_end: Target X position (absolute)
+        y_end: Target Y position (absolute)
+        radius: Arc radius (positive = minor arc, negative = major arc)
+        clockwise: True for G2 (CW), False for G3 (CCW)
+        feed_mm_min: Feed rate in mm/min
+
+    Returns:
+        True if arc completed successfully.
+    """
+    global cur_x_mm, cur_y_mm
+
+    # Calculate chord
+    dx = x_end - cur_x_mm
+    dy = y_end - cur_y_mm
+    chord = math.sqrt(dx*dx + dy*dy)
+
+    if chord < 0.001:
+        # Start and end are the same point
+        return True
+
+    if abs(radius) < chord / 2:
+        print(f"ERROR: Radius {radius} too small for chord length {chord}")
+        return False
+
+    # Calculate distance from chord midpoint to arc center
+    h = math.sqrt(radius*radius - (chord/2)**2)
+
+    # Midpoint of chord
+    mx = (cur_x_mm + x_end) / 2
+    my = (cur_y_mm + y_end) / 2
+
+    # Perpendicular vector to chord (normalized)
+    px = -dy / chord
+    py = dx / chord
+
+    # Determine which side of chord the center is on
+    # For CW with positive R, or CCW with negative R: use one side
+    # For CW with negative R, or CCW with positive R: use other side
+    if (clockwise and radius > 0) or (not clockwise and radius < 0):
+        h = -h
+
+    # Arc center
+    cx = mx + h * px
+    cy = my + h * py
+
+    # Calculate I, J offsets
+    i_offset = cx - cur_x_mm
+    j_offset = cy - cur_y_mm
+
+    return arc_move(x_end, y_end, i_offset, j_offset, clockwise, feed_mm_min)
+
+
+# =========================
 # Motor Music (stepper singing)
 # =========================
 
@@ -1103,6 +1266,54 @@ def handle_command(line: str) -> str:
             move_xy_abs(x, y, f)
             return "ok"
 
+        # === G2/G3 arc commands (circular interpolation) ===
+        # G2 = clockwise, G3 = counter-clockwise
+        # Format: G2 X... Y... I... J... F...  (I,J = offset to center)
+        #     or: G2 X... Y... R... F...       (R = radius)
+        if up.startswith("G2") or up.startswith("G3"):
+            if estop:
+                return "err ESTOP"
+            clockwise = up.startswith("G2")
+            x, y, i, j, r, f = None, None, None, None, None, 300.0
+            for tok in line.split()[1:]:
+                t = tok.upper()
+                if t.startswith("X"):
+                    x = float(tok[1:])
+                elif t.startswith("Y"):
+                    y = float(tok[1:])
+                elif t.startswith("I"):
+                    i = float(tok[1:])
+                elif t.startswith("J"):
+                    j = float(tok[1:])
+                elif t.startswith("R"):
+                    r = float(tok[1:])
+                elif t.startswith("F"):
+                    f = float(tok[1:])
+
+            # Default end position to current if not specified
+            if x is None:
+                x = cur_x_mm
+            if y is None:
+                y = cur_y_mm
+
+            # Use radius or I/J notation
+            if r is not None:
+                # Radius notation
+                if arc_move_radius(x, y, r, clockwise, f):
+                    return "ok"
+                return "err ARC_FAILED"
+            elif i is not None or j is not None:
+                # I/J notation (default to 0 if not specified)
+                if i is None:
+                    i = 0.0
+                if j is None:
+                    j = 0.0
+                if arc_move(x, y, i, j, clockwise, f):
+                    return "ok"
+                return "err ARC_FAILED"
+            else:
+                return "err BAD_ARGS (need I/J or R for arc)"
+
         # === MUSIC command (motor singing) ===
         if up == "MUSIC" or up == "PLAY" or up == "SONG":
             if estop:
@@ -1145,7 +1356,13 @@ def get_help_text() -> str:
 
   G X<mm> Y<mm> F<mm/min>     - guarded move
   GF X<mm> Y<mm> F<mm/min>    - fast move
-  G0 X<mm> Y<mm> F<mm/min>    - move (G-code style)
+  G0 X<mm> Y<mm> F<mm/min>    - linear move (G-code style)
+  G1 X<mm> Y<mm> F<mm/min>    - same as G0
+
+  G2 X<mm> Y<mm> I<mm> J<mm> F<mm/min>  - clockwise arc (I,J=center offset)
+  G3 X<mm> Y<mm> I<mm> J<mm> F<mm/min>  - counter-clockwise arc
+  G2 X<mm> Y<mm> R<mm> F<mm/min>        - clockwise arc (R=radius)
+  G3 X<mm> Y<mm> R<mm> F<mm/min>        - counter-clockwise arc
 
   DX <+/-mm> F<mm/min>        - jog X axis
   DY <+/-mm> F<mm/min>        - jog Y axis
