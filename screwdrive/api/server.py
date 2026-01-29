@@ -311,6 +311,28 @@ def create_app(
             return jsonify({'status': 'ok'})
         return jsonify({'error': 'Move to zero failed'}), 500
 
+    @app.route('/api/xy/command', methods=['POST'])
+    def xy_command():
+        """Send raw G-code command to XY table."""
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+
+        data = request.get_json(silent=True) or {}
+        cmd = data.get('command', '').strip()
+
+        if not cmd:
+            return jsonify({'error': 'No command provided'}), 400
+
+        try:
+            response = app.xy_table._send_command(cmd, timeout=60.0)
+            return jsonify({
+                'status': 'ok',
+                'command': cmd,
+                'response': response or 'No response'
+            })
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/xy/estop', methods=['POST'])
     def xy_estop():
         """Trigger XY table E-STOP."""
@@ -609,11 +631,19 @@ WEB_UI_HTML = """<!doctype html>
       <input type="number" id="moveFeed" value="10000" step="100" style="width: 100px;">
     </div>
     <button class="btn btn-primary" onclick="manualMove()">Move</button>
+
+    <h4 style="margin-top: 15px; margin-bottom: 10px;">G-code Console</h4>
+    <div class="form-row">
+      <input type="text" id="gcodeInput" placeholder="Enter G-code (e.g. G0 X100 Y200 F1000)" style="flex: 1; min-width: 200px;">
+      <button class="btn btn-primary" onclick="sendGcode()">Send</button>
+    </div>
+    <div class="muted" style="margin-top: 5px;">Commands: G0/G1, G28, HOME, ZERO, M114, M119, PING</div>
   </div>
 
   <div class="card" style="flex: 1;">
     <h3>Log</h3>
     <div id="log"></div>
+    <button class="btn btn-secondary" onclick="clearLog()" style="margin-top: 10px;">Clear Log</button>
   </div>
 </div>
 
@@ -642,9 +672,43 @@ async function api(endpoint, method = 'GET', body = null) {
 function log(msg) {
   const el = document.getElementById('log');
   const time = new Date().toLocaleTimeString();
-  el.innerHTML += `[${time}] ${msg}\\n`;
+  el.innerHTML += `[${time}] ${msg}<br>`;
   el.scrollTop = el.scrollHeight;
 }
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+}
+
+async function sendGcode() {
+  const input = document.getElementById('gcodeInput');
+  const cmd = input.value.trim();
+  if (!cmd) return;
+
+  try {
+    log('> ' + cmd);
+    const result = await api('/api/xy/command', 'POST', { command: cmd });
+    if (result.response) {
+      result.response.split('\\n').forEach(line => {
+        if (line.trim()) log('< ' + line);
+      });
+    }
+    input.value = '';
+    refreshStatus();
+  } catch (e) {
+    log('Error: ' + e.message);
+  }
+}
+
+// Allow Enter key to send G-code
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('gcodeInput');
+  if (input) {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendGcode();
+    });
+  }
+});
 
 async function loadDevices() {
   try {
