@@ -39,14 +39,15 @@ class RelayController:
     - State tracking
     """
 
-    # Default relay configuration matching the old system
+    # Default relay configuration
+    # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
     DEFAULT_RELAYS = {
-        'screwdriver_power': RelayConfig(gpio=17, active_high=True, description="Screwdriver motor"),
+        'screwdriver_power': RelayConfig(gpio=4, active_high=True, description="Screwdriver motor"),
         'screwdriver_direction': RelayConfig(gpio=27, active_high=True, description="Direction CW/CCW"),
-        'cylinder_down': RelayConfig(gpio=22, active_high=True, description="Cylinder extend"),
-        'cylinder_up': RelayConfig(gpio=23, active_high=True, description="Cylinder retract"),
+        'cylinder_down': RelayConfig(gpio=5, active_high=True, description="Cylinder extend"),
+        'cylinder_up': RelayConfig(gpio=6, active_high=True, description="Cylinder retract"),
         'vacuum': RelayConfig(gpio=24, active_high=True, description="Vacuum gripper"),
-        'blow': RelayConfig(gpio=25, active_high=True, description="Air blow"),
+        'blow': RelayConfig(gpio=13, active_high=True, description="Air blow"),
     }
 
     def __init__(self, gpio: Optional[GPIOController] = None,
