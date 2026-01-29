@@ -416,6 +416,10 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     dx = x_mm - cur_x_mm
     dy = y_mm - cur_y_mm
 
+    # Debug output
+    print(f"DEBUG move_xy_abs: cur=({cur_x_mm:.2f}, {cur_y_mm:.2f}) -> target=({x_mm:.2f}, {y_mm:.2f})")
+    print(f"DEBUG move_xy_abs: dx={dx:.2f}, dy={dy:.2f}, dir_x={'+'if dx>=0 else'-'}, dir_y={'+'if dy>=0 else'-'}")
+
     sx = int(round(abs(dx) * STEPS_PER_MM_X))
     sy = int(round(abs(dy) * STEPS_PER_MM_Y))
     sx_orig = sx
@@ -585,6 +589,8 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
         cur_x_mm = x_mm
     if done_y == sy_orig and not hit_y:
         cur_y_mm = y_mm
+
+    print(f"DEBUG move_xy_abs: done, final pos=({cur_x_mm:.2f}, {cur_y_mm:.2f}), hit_x={hit_x}, hit_y={hit_y}")
 
     return not (hit_x or hit_y)
 
