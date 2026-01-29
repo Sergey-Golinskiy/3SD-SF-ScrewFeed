@@ -397,13 +397,20 @@ class XYTableController:
         return False
 
     def go_to_zero(self) -> bool:
-        """Move to zero position."""
-        response = self._send_command("ZERO")
-        if response and "ok" in response.lower():
-            self._position.x = 0.0
-            self._position.y = 0.0
-            return True
-        return False
+        """
+        Home to zero position (same as HOME command).
+
+        Performs proper homing: Y axis first, then X axis.
+        """
+        return self.home()  # ZERO now behaves same as HOME
+
+    def home_x(self) -> bool:
+        """Home X axis only."""
+        return self.home("X")
+
+    def home_y(self) -> bool:
+        """Home Y axis only."""
+        return self.home("Y")
 
     def calibrate(self) -> bool:
         """Home and go to zero."""

@@ -899,8 +899,8 @@ def handle_command(line: str) -> str:
         if up == "ZERO":
             if estop:
                 return "err ESTOP"
-            move_xy_abs(0.0, 0.0, 195.0)
-            return "ok"
+            # ZERO now works same as HOME - proper homing Y first, then X
+            return "ok IN_HOME_POS" if home_all() else "err HOME_NOT_FOUND"
 
         # === WORK command (go to work position) ===
         if up == "WORK" or up.startswith("WORK "):

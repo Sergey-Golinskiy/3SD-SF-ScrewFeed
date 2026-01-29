@@ -222,7 +222,7 @@ def create_app(
 
     @app.route('/api/xy/home', methods=['POST'])
     def xy_home():
-        """Home XY table."""
+        """Home XY table (all axes: Y first, then X)."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
 
@@ -232,6 +232,24 @@ def create_app(
         if app.xy_table.home(axis):
             return jsonify({'status': 'homed', 'axis': axis or 'all'})
         return jsonify({'error': 'Homing failed'}), 500
+
+    @app.route('/api/xy/home/x', methods=['POST'])
+    def xy_home_x():
+        """Home X axis only."""
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+        if app.xy_table.home_x():
+            return jsonify({'status': 'homed', 'axis': 'X'})
+        return jsonify({'error': 'Homing X failed'}), 500
+
+    @app.route('/api/xy/home/y', methods=['POST'])
+    def xy_home_y():
+        """Home Y axis only."""
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+        if app.xy_table.home_y():
+            return jsonify({'status': 'homed', 'axis': 'Y'})
+        return jsonify({'error': 'Homing Y failed'}), 500
 
     @app.route('/api/xy/move', methods=['POST'])
     def xy_move():
@@ -542,7 +560,9 @@ WEB_UI_HTML = """<!doctype html>
       <span class="muted">mm step</span>
     </div>
     <div class="btn-group" style="margin-top: 10px;">
-      <button class="btn btn-primary" onclick="goToZero()">Go to Zero</button>
+      <button class="btn btn-primary" onclick="homeXY()">HOME</button>
+      <button class="btn btn-warning" onclick="homeY()">HOME Y</button>
+      <button class="btn btn-warning" onclick="homeX()">HOME X</button>
       <button class="btn btn-secondary" id="btnXYConnect" onclick="connectXY()">Connect</button>
     </div>
   </div>
@@ -724,7 +744,7 @@ async function jog(dx, dy) {
 
 async function homeXY() {
   try {
-    log('Homing XY...');
+    log('Homing XY (Y first, then X)...');
     await api('/api/xy/home', 'POST');
     log('Homing complete');
     refreshStatus();
@@ -733,14 +753,31 @@ async function homeXY() {
   }
 }
 
-async function goToZero() {
+async function homeX() {
   try {
-    await api('/api/xy/zero', 'POST');
-    log('Moved to zero');
+    log('Homing X axis...');
+    await api('/api/xy/home/x', 'POST');
+    log('X axis homed');
     refreshStatus();
   } catch (e) {
-    log('Error: ' + e.message);
+    log('Home X error: ' + e.message);
   }
+}
+
+async function homeY() {
+  try {
+    log('Homing Y axis...');
+    await api('/api/xy/home/y', 'POST');
+    log('Y axis homed');
+    refreshStatus();
+  } catch (e) {
+    log('Home Y error: ' + e.message);
+  }
+}
+
+async function goToZero() {
+  // ZERO now works same as HOME
+  return homeXY();
 }
 
 async function connectXY() {
