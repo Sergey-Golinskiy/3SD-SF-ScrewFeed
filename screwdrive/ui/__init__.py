@@ -1,8 +1,15 @@
 """
-UI module placeholder for Screw Drive Control System.
+UI module for Screw Drive Control System.
 
-The touchdesk.py PyQt5 UI will be refactored and placed here.
-For now, use the web API for control.
+Provides:
+- TouchDesk: PyQt5 fullscreen touch interface for Raspberry Pi
+- Web UI is served through the API server (api/server.py)
+
+Usage:
+    python -m ui.touchdesk    # Run TouchDesk UI
+
+For headless operation with touchscreen:
+    QT_QPA_PLATFORM=eglfs python -m ui.touchdesk
 """
 
-# TODO: Migrate touchdesk.py to this module
+__all__ = ['touchdesk']
