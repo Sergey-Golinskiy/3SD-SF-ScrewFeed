@@ -633,11 +633,16 @@ WEB_UI_HTML = """<!doctype html>
     <button class="btn btn-primary" onclick="manualMove()">Move</button>
 
     <h4 style="margin-top: 15px; margin-bottom: 10px;">G-code Console</h4>
-    <div class="form-row">
-      <input type="text" id="gcodeInput" placeholder="Enter G-code (e.g. G0 X100 Y200 F1000)" style="flex: 1; min-width: 200px;">
-      <button class="btn btn-primary" onclick="sendGcode()">Send</button>
+    <textarea id="gcodeInput" rows="5" placeholder="Enter G-code (one command per line)
+Example:
+G28
+G0 X100 Y200 F1000
+G0 X50 Y100 F1000" style="width: 100%; font-family: monospace; font-size: 13px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; resize: vertical;"></textarea>
+    <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+      <button class="btn btn-primary" onclick="sendGcode()">Run Program</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('gcodeInput').value=''">Clear</button>
+      <span class="muted">Commands: G0/G1, G28, HOME, ZERO, M114, M119</span>
     </div>
-    <div class="muted" style="margin-top: 5px;">Commands: G0/G1, G28, HOME, ZERO, M114, M119, PING</div>
   </div>
 
   <div class="card" style="flex: 1;">
@@ -682,33 +687,39 @@ function clearLog() {
 
 async function sendGcode() {
   const input = document.getElementById('gcodeInput');
-  const cmd = input.value.trim();
-  if (!cmd) return;
+  const text = input.value.trim();
+  if (!text) return;
 
-  try {
-    log('> ' + cmd);
-    const result = await api('/api/xy/command', 'POST', { command: cmd });
-    if (result.response) {
-      result.response.split('\\n').forEach(line => {
-        if (line.trim()) log('< ' + line);
-      });
+  // Split into lines and filter empty/comment lines
+  const lines = text.split('\\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith(';') && !l.startsWith('#'));
+
+  if (lines.length === 0) return;
+
+  log('--- Running program (' + lines.length + ' commands) ---');
+
+  for (let i = 0; i < lines.length; i++) {
+    const cmd = lines[i];
+    try {
+      log('> [' + (i+1) + '/' + lines.length + '] ' + cmd);
+      const result = await api('/api/xy/command', 'POST', { command: cmd });
+      if (result.response) {
+        result.response.split('\\n').forEach(line => {
+          if (line.trim()) log('< ' + line);
+        });
+      }
+    } catch (e) {
+      log('Error at line ' + (i+1) + ': ' + e.message);
+      log('--- Program stopped ---');
+      refreshStatus();
+      return;
     }
-    input.value = '';
-    refreshStatus();
-  } catch (e) {
-    log('Error: ' + e.message);
   }
-}
 
-// Allow Enter key to send G-code
-document.addEventListener('DOMContentLoaded', () => {
-  const input = document.getElementById('gcodeInput');
-  if (input) {
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendGcode();
-    });
-  }
-});
+  log('--- Program complete ---');
+  refreshStatus();
+}
 
 async function loadDevices() {
   try {
