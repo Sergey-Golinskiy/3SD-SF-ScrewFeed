@@ -610,7 +610,7 @@ WEB_UI_HTML = """<!doctype html>
   <div class="card">
     <h3>Реле</h3>
     <table id="relaysTable">
-      <thead><tr><th>Назва</th><th>Стан</th><th>Керування</th></tr></thead>
+      <thead><tr><th>Назва</th><th>Стан</th><th>Керування</th><th>Імпульс</th></tr></thead>
       <tbody></tbody>
     </table>
     <div style="margin-top: 10px;">
@@ -674,6 +674,17 @@ const SENSOR_NAMES = {
   'ger_c2_down': 'Циліндр внизу - АВАРІЯ!',
   'ind_scrw': 'Датчик гвинта',
   'do2_ok': 'Момент OK'
+};
+
+// Default pulse durations in ms
+const RELAY_PULSE_DEFAULTS = {
+  'r01_pit': 200,        // Живильник - 200мс
+  'r02_di7_tsk2': 700,   // Задача 2 - 700мс
+  'r04_c2': 500,         // Циліндр - 500мс
+  'r05_di4_free': 500,   // Вільний хід - 500мс
+  'r06_di1_pot': 500,    // По моменту - 500мс
+  'r07_di5_tsk0': 700,   // Задача 0 - 700мс
+  'r08_di6_tsk1': 700    // Задача 1 - 700мс
 };
 
 function getRelayName(key) {
@@ -792,12 +803,17 @@ async function refreshStatus() {
       const tr = document.createElement('tr');
       const isOn = state === 'ON';
       const displayName = getRelayName(name);
+      const defaultPulse = RELAY_PULSE_DEFAULTS[name] || 500;
       tr.innerHTML = `
         <td title="${name}">${displayName}</td>
         <td class="${isOn ? 'ok' : 'off'}">${isOn ? 'ВКЛ' : 'ВИКЛ'}</td>
         <td>
           <button class="btn btn-success" onclick="setRelay('${name}', 'on')" style="padding: 4px 8px;">ВКЛ</button>
           <button class="btn btn-danger" onclick="setRelay('${name}', 'off')" style="padding: 4px 8px;">ВИКЛ</button>
+        </td>
+        <td>
+          <input type="number" id="pulse_${name}" value="${defaultPulse}" min="50" max="5000" style="width: 70px; padding: 4px;" title="мс">
+          <button class="btn btn-warning" onclick="pulseRelay('${name}')" style="padding: 4px 8px;">ІМПУЛЬС</button>
         </td>
       `;
       relaysBody.appendChild(tr);
@@ -837,20 +853,34 @@ async function refreshStatus() {
 async function setRelay(name, state) {
   try {
     await api(`/api/relays/${name}`, 'POST', { state });
-    log(`Relay ${name}: ${state}`);
+    log(`Реле ${getRelayName(name)}: ${state === 'on' ? 'ВКЛ' : 'ВИКЛ'}`);
     refreshStatus();
   } catch (e) {
-    log('Error: ' + e.message);
+    log('Помилка: ' + e.message);
+  }
+}
+
+async function pulseRelay(name) {
+  const inputEl = document.getElementById('pulse_' + name);
+  const durationMs = parseInt(inputEl.value) || 500;
+  const durationSec = durationMs / 1000;
+  try {
+    log(`Імпульс ${getRelayName(name)}: ${durationMs} мс...`);
+    await api(`/api/relays/${name}`, 'POST', { state: 'pulse', duration: durationSec });
+    log(`Імпульс ${getRelayName(name)}: завершено`);
+    refreshStatus();
+  } catch (e) {
+    log('Помилка: ' + e.message);
   }
 }
 
 async function allRelaysOff() {
   try {
     await api('/api/relays/all/off', 'POST');
-    log('All relays OFF');
+    log('Всі реле ВИКЛ');
     refreshStatus();
   } catch (e) {
-    log('Error: ' + e.message);
+    log('Помилка: ' + e.message);
   }
 }
 
