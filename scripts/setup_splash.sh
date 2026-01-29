@@ -1,13 +1,18 @@
 #!/bin/bash
 # =============================================================================
 # ScrewDrive Splash Screen Setup Script
-# Configures Raspberry Pi 5 to show splash screen on boot without desktop
+# Based on working configuration from old project
 # =============================================================================
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Function to print green bold section headers
+header() {
+  echo -e "\n\033[1;32m=== $1 ===\033[0m\n"
+}
 
 echo "========================================"
 echo "ScrewDrive Splash Screen Setup"
@@ -19,22 +24,34 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# 1. Install required packages
-echo ""
-echo "[1/7] Installing required packages..."
-apt-get update
-apt-get install -y fbi plymouth plymouth-themes
+# 1. System update
+header "System update"
+apt update
 
-# 2. Create splash directory and copy image
-echo ""
-echo "[2/7] Setting up splash image..."
+# 2. Install required packages
+header "Installing required packages"
+apt install -y fbi imagemagick python3-pyqt5 python3-serial python3-flask python3-yaml
+
+# 3. Purge plymouth completely
+header "Removing Plymouth (boot splash)"
+apt purge -y plymouth plymouth-themes 2>/dev/null || true
+rm -rf /usr/share/plymouth 2>/dev/null || true
+
+# 4. Create splash directory and copy files
+header "Setting up splash files"
+mkdir -p /opt/splash
 mkdir -p /opt/screwdrive
-cp "$PROJECT_DIR/screwdrive/resources/splash.png" /opt/screwdrive/
-chmod 644 /opt/screwdrive/splash.png
 
-# 3. Configure boot config to disable rainbow splash and logo
-echo ""
-echo "[3/7] Configuring boot settings..."
+cp "$PROJECT_DIR/screwdrive/resources/splash.png" /opt/splash/splash.png
+cp "$PROJECT_DIR/screwdrive/services/clear-splash.sh" /opt/splash/clear-splash.sh
+cp "$PROJECT_DIR/screwdrive/resources/kms.json" /opt/screwdrive/kms.json
+
+chmod 644 /opt/splash/splash.png
+chmod +x /opt/splash/clear-splash.sh
+chmod 644 /opt/screwdrive/kms.json
+
+# 5. Configure boot config.txt
+header "Configuring /boot/firmware/config.txt"
 CONFIG_FILE="/boot/firmware/config.txt"
 
 # Backup original config
@@ -43,16 +60,13 @@ if [ ! -f "${CONFIG_FILE}.backup" ]; then
     echo "Backed up original config.txt"
 fi
 
-# Add/update settings in config.txt
-if ! grep -q "disable_splash=1" "$CONFIG_FILE"; then
-    echo "" >> "$CONFIG_FILE"
-    echo "# ScrewDrive: Disable rainbow splash" >> "$CONFIG_FILE"
-    echo "disable_splash=1" >> "$CONFIG_FILE"
-fi
+# Remove existing disable_splash if present and add new one
+sed -i '/^disable_splash=/d' "$CONFIG_FILE"
+echo "disable_splash=1" >> "$CONFIG_FILE"
+echo "Added: disable_splash=1"
 
-# 4. Configure kernel command line to hide boot messages
-echo ""
-echo "[4/7] Configuring kernel command line..."
+# 6. Configure kernel command line
+header "Configuring /boot/firmware/cmdline.txt"
 CMDLINE_FILE="/boot/firmware/cmdline.txt"
 
 # Backup original cmdline
@@ -61,81 +75,66 @@ if [ ! -f "${CMDLINE_FILE}.backup" ]; then
     echo "Backed up original cmdline.txt"
 fi
 
-# Read current cmdline
+# Replace console=tty1 with console=tty3 (hide boot messages)
+sed -i 's/console=tty1/console=tty3/g' "$CMDLINE_FILE"
+
+# Add quiet boot parameters if not present
 CMDLINE=$(cat "$CMDLINE_FILE")
-
-# Add quiet and splash options if not present
-NEEDS_UPDATE=false
 if [[ ! "$CMDLINE" =~ "quiet" ]]; then
-    CMDLINE="$CMDLINE quiet"
-    NEEDS_UPDATE=true
-fi
-if [[ ! "$CMDLINE" =~ "splash" ]]; then
-    CMDLINE="$CMDLINE splash"
-    NEEDS_UPDATE=true
-fi
-if [[ ! "$CMDLINE" =~ "loglevel=0" ]]; then
-    CMDLINE="$CMDLINE loglevel=0"
-    NEEDS_UPDATE=true
-fi
-if [[ ! "$CMDLINE" =~ "logo.nologo" ]]; then
-    CMDLINE="$CMDLINE logo.nologo"
-    NEEDS_UPDATE=true
-fi
-if [[ ! "$CMDLINE" =~ "vt.global_cursor_default=0" ]]; then
-    CMDLINE="$CMDLINE vt.global_cursor_default=0"
-    NEEDS_UPDATE=true
+    sed -i 's/$/ quiet loglevel=3 vt.global_cursor_default=0/' "$CMDLINE_FILE"
+    echo "Added: quiet loglevel=3 vt.global_cursor_default=0"
 fi
 
-if [ "$NEEDS_UPDATE" = true ]; then
-    echo "$CMDLINE" > "$CMDLINE_FILE"
-    echo "Updated cmdline.txt"
-fi
+# 7. Set boot behaviour to Console Autologin
+header "Configuring boot behaviour"
+raspi-config nonint do_boot_behaviour B2
+echo "Set boot to: Console Autologin (B2)"
 
-# 5. Install splash screen service
-echo ""
-echo "[5/7] Installing splash screen service..."
+# Set default target to multi-user (no GUI)
+systemctl set-default multi-user.target
+echo "Set default target: multi-user.target"
+
+# 8. Install splash screen service
+header "Installing splashscreen.service"
 cp "$PROJECT_DIR/screwdrive/services/splashscreen.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable splashscreen.service
+echo "Enabled: splashscreen.service"
 
-# 6. Disable desktop environment (optional - comment out if you need desktop sometimes)
-echo ""
-echo "[6/7] Configuring boot target..."
-# Set default to multi-user (no GUI)
-systemctl set-default multi-user.target
+# 9. Install main screwdrive service
+header "Installing screwdrive.service"
+cp "$PROJECT_DIR/screwdrive/services/screwdrive.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable screwdrive.service
+echo "Enabled: screwdrive.service"
 
-# Disable lightdm/gdm if present
-systemctl disable lightdm.service 2>/dev/null || true
-systemctl disable gdm.service 2>/dev/null || true
-
-# 7. Create touchdesk startup service that kills splash
-echo ""
-echo "[7/7] Creating TouchDesk service with splash killer..."
-cat > /etc/systemd/system/touchdesk.service << 'EOF'
-[Unit]
-Description=ScrewDrive TouchDesk UI
-After=network.target splashscreen.service
-Wants=splashscreen.service
-
-[Service]
-Type=simple
-User=root
-Environment=DISPLAY=:0
-Environment=QT_QPA_PLATFORM=linuxfb
-Environment=QT_QPA_FB_DRM=1
-WorkingDirectory=/opt/screwdrive
-ExecStartPre=/bin/bash -c 'pkill -9 fbi || true'
-ExecStart=/usr/bin/python3 /opt/screwdrive/touchdesk.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+# 10. Install touchdesk service
+header "Installing touchdesk.service"
+cp "$PROJECT_DIR/screwdrive/services/touchdesk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable touchdesk.service
+echo "Enabled: touchdesk.service"
+
+# 11. Copy project files to /opt/screwdrive
+header "Deploying project files"
+cp -r "$PROJECT_DIR/screwdrive"/* /opt/screwdrive/ 2>/dev/null || true
+cp "$PROJECT_DIR"/*.py /opt/screwdrive/ 2>/dev/null || true
+
+# Create necessary temp files
+touch /tmp/selected_device.json
+touch /tmp/screw_events.jsonl
+
+# 12. Setup environment variables for eglfs
+header "Setting up environment variables"
+PROFILE="/etc/profile.d/screwdrive.sh"
+cat > "$PROFILE" << 'EOF'
+# ScrewDrive TouchDesk PyQt eglfs KMS setup
+export QT_QPA_PLATFORM=eglfs
+export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+export QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
+EOF
+chmod 644 "$PROFILE"
+echo "Created: $PROFILE"
 
 echo ""
 echo "========================================"
@@ -143,15 +142,23 @@ echo "Setup complete!"
 echo "========================================"
 echo ""
 echo "Changes made:"
-echo "  - Installed fbi for framebuffer display"
-echo "  - Copied splash.png to /opt/screwdrive/"
-echo "  - Disabled Raspberry Pi rainbow splash"
-echo "  - Hidden boot messages (quiet boot)"
-echo "  - Hidden kernel logo"
-echo "  - Enabled splash screen service"
-echo "  - Disabled desktop environment"
-echo "  - Created TouchDesk service"
+echo "  [✓] Installed fbi, imagemagick"
+echo "  [✓] Removed Plymouth completely"
+echo "  [✓] Copied splash.png to /opt/splash/"
+echo "  [✓] Disabled Raspberry Pi rainbow splash"
+echo "  [✓] Redirected console from tty1 to tty3"
+echo "  [✓] Added quiet boot parameters"
+echo "  [✓] Set boot to Console Autologin (B2)"
+echo "  [✓] Enabled splashscreen.service"
+echo "  [✓] Enabled screwdrive.service"
+echo "  [✓] Enabled touchdesk.service"
+echo "  [✓] Deployed project to /opt/screwdrive/"
 echo ""
-echo "IMPORTANT: You need to reboot for changes to take effect!"
-echo "Run: sudo reboot"
+echo "Services status:"
+systemctl is-enabled splashscreen.service || true
+systemctl is-enabled screwdrive.service || true
+systemctl is-enabled touchdesk.service || true
+echo ""
+echo -e "\033[1;32mIMPORTANT: Reboot your Raspberry Pi to apply changes!\033[0m"
+echo -e "\033[1;32m  sudo reboot\033[0m"
 echo ""

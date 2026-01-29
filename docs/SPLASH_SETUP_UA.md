@@ -6,8 +6,8 @@
 
 **Результат:**
 - При включенні одразу показується splash.png
-- Немає логотипу Raspberry Pi
-- Немає повідомлень завантаження
+- Немає логотипу Raspberry Pi (веселковий splash)
+- Немає повідомлень завантаження консолі
 - Splash залишається поки не запуститься TouchDesk UI
 - Робочий стіл не завантажується взагалі
 
@@ -26,21 +26,32 @@ sudo reboot
 ### Крок 1: Встановлення необхідних пакетів
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y fbi
+sudo apt update
+sudo apt install -y fbi imagemagick python3-pyqt5 python3-serial python3-flask python3-yaml
 ```
 
-`fbi` - це програма для відображення зображень на фреймбуфері без X-сервера.
+### Крок 2: Видалення Plymouth
 
-### Крок 2: Копіювання splash-зображення
+**ВАЖЛИВО:** Plymouth треба повністю видалити, інакше він буде конфліктувати з fbi:
 
 ```bash
-sudo mkdir -p /opt/screwdrive
-sudo cp screwdrive/resources/splash.png /opt/screwdrive/
-sudo chmod 644 /opt/screwdrive/splash.png
+sudo apt purge -y plymouth plymouth-themes
+sudo rm -rf /usr/share/plymouth
 ```
 
-### Крок 3: Вимкнення Rainbow Splash
+### Крок 3: Копіювання splash-зображення
+
+```bash
+sudo mkdir -p /opt/splash
+sudo mkdir -p /opt/screwdrive
+sudo cp screwdrive/resources/splash.png /opt/splash/splash.png
+sudo cp screwdrive/services/clear-splash.sh /opt/splash/clear-splash.sh
+sudo cp screwdrive/resources/kms.json /opt/screwdrive/kms.json
+sudo chmod 644 /opt/splash/splash.png
+sudo chmod +x /opt/splash/clear-splash.sh
+```
+
+### Крок 4: Вимкнення Rainbow Splash
 
 Відредагуйте файл `/boot/firmware/config.txt`:
 
@@ -48,14 +59,13 @@ sudo chmod 644 /opt/screwdrive/splash.png
 sudo nano /boot/firmware/config.txt
 ```
 
-Додайте в кінець файлу:
+Видаліть старий рядок `disable_splash` (якщо є) та додайте в кінець:
 
 ```
-# Вимкнути веселковий splash
 disable_splash=1
 ```
 
-### Крок 4: Приховування повідомлень завантаження
+### Крок 5: Перенаправлення консолі та приховування повідомлень
 
 Відредагуйте файл `/boot/firmware/cmdline.txt`:
 
@@ -63,18 +73,35 @@ disable_splash=1
 sudo nano /boot/firmware/cmdline.txt
 ```
 
-Додайте в кінець рядка (не на новий рядок!):
+1. Замініть `console=tty1` на `console=tty3`:
+   ```
+   # Було:
+   console=tty1
+   # Стало:
+   console=tty3
+   ```
 
-```
-quiet splash loglevel=0 logo.nologo vt.global_cursor_default=0
-```
+2. Додайте в кінець рядка (не на новий рядок!):
+   ```
+   quiet loglevel=3 vt.global_cursor_default=0
+   ```
 
 **Приклад повного рядка:**
 ```
-console=serial0,115200 console=tty1 root=PARTUUID=xxx rootfstype=ext4 fsck.repair=yes rootwait quiet splash loglevel=0 logo.nologo vt.global_cursor_default=0
+console=serial0,115200 console=tty3 root=PARTUUID=xxx rootfstype=ext4 fsck.repair=yes rootwait quiet loglevel=3 vt.global_cursor_default=0
 ```
 
-### Крок 5: Створення служби splash screen
+### Крок 6: Налаштування boot behaviour
+
+```bash
+# Console Autologin (B2)
+sudo raspi-config nonint do_boot_behaviour B2
+
+# Встановити multi-user target (без GUI)
+sudo systemctl set-default multi-user.target
+```
+
+### Крок 7: Створення служби splashscreen
 
 Створіть файл `/etc/systemd/system/splashscreen.service`:
 
@@ -86,23 +113,19 @@ sudo nano /etc/systemd/system/splashscreen.service
 
 ```ini
 [Unit]
-Description=Splash Screen for ScrewDrive System
+Description=Framebuffer Splash Screen
 DefaultDependencies=no
 After=local-fs.target systemd-udev-settle.service
-Before=sysinit.target
-ConditionPathExists=/opt/screwdrive/splash.png
+Before=graphical.target
 
 [Service]
-Type=oneshot
+Type=simple
 RemainAfterExit=yes
 Environment=FRAMEBUFFER=/dev/fb0
-ExecStartPre=/bin/sleep 0.5
-ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /opt/screwdrive/splash.png
-StandardInput=tty
-StandardOutput=tty
+ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /opt/splash/splash.png
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=multi-user.target
 ```
 
 Увімкніть службу:
@@ -112,18 +135,38 @@ sudo systemctl daemon-reload
 sudo systemctl enable splashscreen.service
 ```
 
-### Крок 6: Вимкнення робочого столу
+### Крок 8: Створення служби screwdrive (API)
+
+Створіть файл `/etc/systemd/system/screwdrive.service`:
 
 ```bash
-# Встановити multi-user target (без GUI)
-sudo systemctl set-default multi-user.target
-
-# Вимкнути display manager
-sudo systemctl disable lightdm.service
-sudo systemctl disable gdm.service
+sudo nano /etc/systemd/system/screwdrive.service
 ```
 
-### Крок 7: Створення служби TouchDesk
+Вміст:
+
+```ini
+[Unit]
+Description=ScrewDrive Control System API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/opt/screwdrive
+ExecStart=/usr/bin/python3 /opt/screwdrive/main.py
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Крок 9: Створення служби TouchDesk
 
 Створіть файл `/etc/systemd/system/touchdesk.service`:
 
@@ -135,34 +178,53 @@ sudo nano /etc/systemd/system/touchdesk.service
 
 ```ini
 [Unit]
-Description=ScrewDrive TouchDesk UI
-After=network.target splashscreen.service
-Wants=splashscreen.service
+Description=ScrewDrive TouchDesk UI (PyQt5 EGLFS)
+After=screwdrive.service
+Requires=screwdrive.service
 
 [Service]
-Type=simple
+ExecStartPre=/opt/splash/clear-splash.sh
 User=root
-Environment=DISPLAY=:0
-Environment=QT_QPA_PLATFORM=linuxfb
-Environment=QT_QPA_FB_DRM=1
 WorkingDirectory=/opt/screwdrive
-ExecStartPre=/bin/bash -c 'pkill -9 fbi || true'
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
 ExecStart=/usr/bin/python3 /opt/screwdrive/touchdesk.py
 Restart=always
-RestartSec=5
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Увімкніть службу:
+Увімкніть служби:
 
 ```bash
 sudo systemctl daemon-reload
+sudo systemctl enable screwdrive.service
 sudo systemctl enable touchdesk.service
 ```
 
-### Крок 8: Перезавантаження
+### Крок 10: Налаштування змінних середовища
+
+Створіть файл `/etc/profile.d/screwdrive.sh`:
+
+```bash
+sudo nano /etc/profile.d/screwdrive.sh
+```
+
+Вміст:
+
+```bash
+# ScrewDrive TouchDesk PyQt eglfs KMS setup
+export QT_QPA_PLATFORM=eglfs
+export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+export QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
+```
+
+### Крок 11: Перезавантаження
 
 ```bash
 sudo reboot
@@ -177,14 +239,20 @@ sudo reboot
    sudo systemctl status splashscreen.service
    ```
 
-2. **Перевірити статус TouchDesk:**
+2. **Перевірити статус screwdrive:**
+   ```bash
+   sudo systemctl status screwdrive.service
+   ```
+
+3. **Перевірити статус TouchDesk:**
    ```bash
    sudo systemctl status touchdesk.service
    ```
 
-3. **Переглянути логи:**
+4. **Переглянути логи:**
    ```bash
    journalctl -u splashscreen.service
+   journalctl -u screwdrive.service
    journalctl -u touchdesk.service
    ```
 
@@ -196,8 +264,11 @@ sudo reboot
 # Увімкнути графічний target
 sudo systemctl set-default graphical.target
 
-# Увімкнути display manager
-sudo systemctl enable lightdm.service
+# Змінити boot behaviour на Desktop
+sudo raspi-config nonint do_boot_behaviour B4
+
+# Відновити cmdline.txt з бекапу
+sudo cp /boot/firmware/cmdline.txt.backup /boot/firmware/cmdline.txt
 
 # Перезавантажити
 sudo reboot
@@ -205,12 +276,32 @@ sudo reboot
 
 ## Зміна splash-зображення
 
-1. Підготуйте зображення PNG з роздільністю екрану (рекомендовано 1920x1080 або 1024x600)
+1. Підготуйте зображення PNG з роздільністю екрану (рекомендовано 1280x800)
 2. Замініть файл:
    ```bash
-   sudo cp your_new_splash.png /opt/screwdrive/splash.png
+   sudo cp your_new_splash.png /opt/splash/splash.png
    ```
 3. Перезавантажте систему
+
+## Налаштування kms.json
+
+Файл `/opt/screwdrive/kms.json` визначає параметри екрану:
+
+```json
+{
+  "device": "/dev/dri/card0",
+  "outputs": [
+    {
+      "name": "HDMI-A-1",
+      "mode": "1280x800@60",
+      "format": "ARGB8888",
+      "transform": "normal"
+    }
+  ]
+}
+```
+
+Змініть `mode` відповідно до вашого екрану (наприклад, `1920x1080@60`).
 
 ## Вирішення проблем
 
@@ -218,7 +309,7 @@ sudo reboot
 
 1. Перевірте чи існує файл:
    ```bash
-   ls -la /opt/screwdrive/splash.png
+   ls -la /opt/splash/splash.png
    ```
 
 2. Перевірте чи встановлено fbi:
@@ -226,19 +317,21 @@ sudo reboot
    which fbi
    ```
 
-3. Спробуйте запустити вручну:
+3. Перевірте чи видалено plymouth:
    ```bash
-   sudo fbi -a -T 1 -d /dev/fb0 --noverbose /opt/screwdrive/splash.png
+   dpkg -l | grep plymouth
+   ```
+
+4. Спробуйте запустити вручну:
+   ```bash
+   sudo fbi -a -T 1 -d /dev/fb0 --noverbose /opt/splash/splash.png
    ```
 
 ### Видно текст завантаження
 
-Перевірте що cmdline.txt містить всі параметри:
-- `quiet`
-- `splash`
-- `loglevel=0`
-- `logo.nologo`
-- `vt.global_cursor_default=0`
+Перевірте cmdline.txt:
+- Консоль має бути `console=tty3` (не tty1)
+- Повинні бути параметри: `quiet loglevel=3 vt.global_cursor_default=0`
 
 ### TouchDesk не запускається
 
@@ -247,12 +340,28 @@ sudo reboot
    journalctl -u touchdesk.service -f
    ```
 
-2. Перевірте чи існує скрипт:
+2. Перевірте чи існує kms.json:
    ```bash
-   ls -la /opt/screwdrive/touchdesk.py
+   ls -la /opt/screwdrive/kms.json
    ```
 
-3. Спробуйте запустити вручну:
+3. Перевірте змінні середовища:
    ```bash
+   echo $QT_QPA_PLATFORM
+   ```
+
+4. Спробуйте запустити вручну:
+   ```bash
+   export QT_QPA_PLATFORM=eglfs
+   export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+   export QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
    sudo python3 /opt/screwdrive/touchdesk.py
    ```
+
+### Помилка "Could not open framebuffer device"
+
+Перевірте права доступу:
+```bash
+ls -la /dev/fb0
+sudo chmod 666 /dev/fb0
+```

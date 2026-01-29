@@ -1,0 +1,20 @@
+[Unit]
+Description=ScrewDrive TouchDesk UI (PyQt5 EGLFS)
+After=screwdrive.service
+Requires=screwdrive.service
+
+[Service]
+ExecStartPre=/opt/splash/clear-splash.sh
+User=root
+WorkingDirectory=/opt/screwdrive
+Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
+ExecStart=/usr/bin/python3 /opt/screwdrive/touchdesk.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
