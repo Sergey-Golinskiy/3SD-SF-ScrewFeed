@@ -163,9 +163,16 @@ class XYTableController:
             return None
 
         timeout = timeout or self._timeout
+        cmd_upper = cmd.strip().upper()
+
+        # Commands that return single line without "ok" suffix
+        single_line_commands = {"PING", "M119"}
 
         with self._lock:
             try:
+                # Clear buffers before sending
+                self._serial.reset_input_buffer()
+
                 # Send command
                 self._serial.write((cmd + "\n").encode('utf-8'))
                 self._serial.flush()
@@ -179,10 +186,19 @@ class XYTableController:
                         line = self._serial.readline().decode('utf-8', errors='ignore').strip()
                         if line:
                             response_lines.append(line)
+
+                            # For single-line commands, return immediately
+                            if cmd_upper in single_line_commands:
+                                return line
+
                             # Check for completion markers
                             if line.startswith("ok") or line.startswith("err"):
                                 return "\n".join(response_lines)
                     time.sleep(0.001)
+
+                # If we got any response but no "ok", return what we have
+                if response_lines:
+                    return "\n".join(response_lines)
 
                 print(f"WARNING: Command '{cmd}' timed out")
                 return None
