@@ -19,12 +19,12 @@ from dataclasses import asdict
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from ..core import (
+from core import (
     GPIOController, RelayController, SensorController,
     XYTableController, CycleStateMachine, CycleState
 )
-from ..core.xy_table import XYTableMode
-from ..core.state_machine import DeviceProgram, ProgramStep
+from core.xy_table import XYTableMode
+from core.state_machine import DeviceProgram, ProgramStep
 
 
 def create_app(

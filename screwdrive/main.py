@@ -10,12 +10,18 @@ Usage:
 """
 
 import sys
+import os
 import argparse
 import signal
 import time
 import logging
 from pathlib import Path
 from typing import Optional
+
+# Add screwdrive directory to path for imports
+SCRIPT_DIR = Path(__file__).parent.absolute()
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 import yaml
 
