@@ -1,0 +1,18 @@
+[Unit]
+Description=Splash Screen for ScrewDrive System
+DefaultDependencies=no
+After=local-fs.target systemd-udev-settle.service
+Before=sysinit.target
+ConditionPathExists=/opt/screwdrive/splash.png
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=FRAMEBUFFER=/dev/fb0
+ExecStartPre=/bin/sleep 0.5
+ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /opt/screwdrive/splash.png
+StandardInput=tty
+StandardOutput=tty
+
+[Install]
+WantedBy=sysinit.target
