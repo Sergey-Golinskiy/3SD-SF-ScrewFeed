@@ -6,11 +6,11 @@ Requires=screwdrive-api.service
 [Service]
 ExecStartPre=/opt/splash/clear-splash.sh
 User=root
-WorkingDirectory=/opt/screwdrive
+WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-Environment=QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
-ExecStart=/usr/bin/python3 /opt/screwdrive/ui/touchdesk.py
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/home/user/3SD-SF-ScrewFeed/screwdrive/resources/kms.json
+ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/ui/touchdesk.py
 Restart=always
 RestartSec=3
 StandardOutput=journal
