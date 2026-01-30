@@ -789,11 +789,24 @@ async function refreshStatus() {
     // Sensors
     const sensorsBody = document.querySelector('#sensorsTable tbody');
     sensorsBody.innerHTML = '';
+    // Emergency sensors - ACTIVE state is danger (red)
+    const emergencySensors = ['emergency_stop', 'ger_c2_down'];
     for (const [name, state] of Object.entries(data.sensors || {})) {
       const tr = document.createElement('tr');
       const isActive = state === 'ACTIVE';
       const displayName = getSensorName(name);
-      tr.innerHTML = `<td title="${name}">${displayName}</td><td class="${isActive ? 'ok' : 'off'}">${isActive ? 'ТАК' : 'НІ'}</td>`;
+      const isEmergency = emergencySensors.includes(name);
+      // For emergency sensors: ACTIVE = danger (red), INACTIVE = ok (green)
+      // For normal sensors: ACTIVE = ok (green), INACTIVE = off (gray)
+      let stateClass, stateText;
+      if (isEmergency) {
+        stateClass = isActive ? 'error' : 'ok';
+        stateText = isActive ? 'АВАРІЯ!' : 'НІ';
+      } else {
+        stateClass = isActive ? 'ok' : 'off';
+        stateText = isActive ? 'ТАК' : 'НІ';
+      }
+      tr.innerHTML = `<td title="${name}">${displayName}</td><td class="${stateClass}">${stateText}</td>`;
       sensorsBody.appendChild(tr);
     }
 
