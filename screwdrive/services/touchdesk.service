@@ -5,14 +5,19 @@ Requires=screwdrive-api.service
 
 [Service]
 ExecStartPre=/opt/splash/clear-splash.sh
-User=user
+User=root
+Group=root
 WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive
-Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
+Environment=QT_QPA_FB_DRM=1
+Environment=XDG_RUNTIME_DIR=/run/user/0
+TTYPath=/dev/tty1
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
 ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/ui/touchdesk.py
 Restart=always
 RestartSec=3
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
