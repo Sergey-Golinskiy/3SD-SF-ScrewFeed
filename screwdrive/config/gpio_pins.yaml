@@ -138,6 +138,16 @@ sensors:
     description_en: "Torque reached signal (DO2_OK)"
     pull_up: true
 
+  # Аварійна кнопка (грибок) - зупиняє всю систему
+  # HIGH = не натиснута
+  # LOW = натиснута (АВАРІЯ!)
+  emergency_stop:
+    gpio: 27
+    active_low: true
+    description: "Аварійна кнопка (грибок)"
+    description_en: "Emergency stop button (mushroom)"
+    pull_up: true
+
 # =========================
 # Communication
 # =========================

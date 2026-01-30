@@ -76,6 +76,11 @@ class SensorController:
             gpio=25, active_low=True, pull_up=True,
             description="Момент досягнуто - OK", debounce_ms=10
         ),
+        # Аварійна кнопка (грибок) - HIGH=не натиснута, LOW=АВАРІЯ
+        'emergency_stop': SensorConfig(
+            gpio=27, active_low=True, pull_up=True,
+            description="Аварійна кнопка (грибок)", debounce_ms=50
+        ),
     }
 
     def __init__(self, gpio: Optional[GPIOController] = None,
@@ -280,7 +285,8 @@ class SensorController:
         """Check if all safety sensors allow operation."""
         area_ok = self.is_inactive('area_sensor')  # Area should be clear (no obstruction)
         cylinder_emergency_ok = self.is_inactive('ger_c2_down')  # Cylinder not at emergency position
-        return area_ok and cylinder_emergency_ok
+        emergency_ok = self.is_inactive('emergency_stop')  # Emergency button not pressed
+        return area_ok and cylinder_emergency_ok and emergency_ok
 
     def is_area_blocked(self) -> bool:
         """Check if safety area is blocked (obstruction detected)."""
@@ -324,6 +330,14 @@ class SensorController:
     def is_torque_not_reached(self) -> bool:
         """Check if torque not yet reached."""
         return self.is_inactive('do2_ok')
+
+    def is_emergency_stop_pressed(self) -> bool:
+        """Check if emergency stop button (mushroom) is pressed."""
+        return self.is_active('emergency_stop')
+
+    def is_emergency_stop_released(self) -> bool:
+        """Check if emergency stop button is released (normal state)."""
+        return self.is_inactive('emergency_stop')
 
     def wait_for(self, name: str, state: SensorState,
                  timeout_s: float = 10.0) -> bool:

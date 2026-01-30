@@ -673,7 +673,8 @@ const SENSOR_NAMES = {
   'ger_c2_up': 'Циліндр вгорі',
   'ger_c2_down': 'Циліндр внизу - АВАРІЯ!',
   'ind_scrw': 'Датчик гвинта',
-  'do2_ok': 'Момент OK'
+  'do2_ok': 'Момент OK',
+  'emergency_stop': 'Аварійна кнопка (грибок)'
 };
 
 // Default pulse durations in ms
