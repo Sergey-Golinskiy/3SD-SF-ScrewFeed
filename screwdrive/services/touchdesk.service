@@ -8,6 +8,7 @@ User=user
 Group=video
 WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive
 Environment=QT_QPA_PLATFORM=eglfs
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/home/user/3SD-SF-ScrewFeed/screwdrive/resources/kms.json
 ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/ui/touchdesk.py
 Restart=always
 RestartSec=3
