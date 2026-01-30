@@ -94,6 +94,14 @@ echo "Set boot to: Console Autologin (B2)"
 systemctl set-default multi-user.target
 echo "Set default target: multi-user.target"
 
+# Disable getty on tty1 to prevent console from taking over display
+systemctl disable getty@tty1.service 2>/dev/null || true
+echo "Disabled: getty@tty1.service (prevents console from overriding touchdesk)"
+
+# Add user to video group for DRM access
+usermod -aG video,render user 2>/dev/null || true
+echo "Added user to video,render groups"
+
 # 8. Install splash screen service
 header "Installing splashscreen.service"
 cp "$PROJECT_DIR/screwdrive/services/splashscreen.service" /etc/systemd/system/
@@ -152,6 +160,8 @@ echo "  [✓] Disabled Raspberry Pi rainbow splash"
 echo "  [✓] Redirected console from tty1 to tty3"
 echo "  [✓] Added quiet boot parameters"
 echo "  [✓] Set boot to Console Autologin (B2)"
+echo "  [✓] Disabled getty@tty1 (prevents console takeover)"
+echo "  [✓] Added user to video,render groups"
 echo "  [✓] Enabled splashscreen.service"
 echo "  [✓] Enabled touchdesk.service (depends on screwdrive-api.service)"
 echo "  [✓] Deployed project to /opt/screwdrive/"

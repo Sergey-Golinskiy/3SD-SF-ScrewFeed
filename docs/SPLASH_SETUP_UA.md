@@ -101,7 +101,19 @@ sudo raspi-config nonint do_boot_behaviour B2
 sudo systemctl set-default multi-user.target
 ```
 
-### Крок 7: Створення служби splashscreen
+### Крок 7: Вимкнення getty на tty1
+
+**ВАЖЛИВО:** Якщо не вимкнути getty@tty1, консоль буде "перекривати" TouchDesk UI:
+
+```bash
+# Вимкнути autologin консоль на tty1
+sudo systemctl disable getty@tty1.service
+
+# Додати користувача в групи video та render для доступу до DRM
+sudo usermod -aG video,render user
+```
+
+### Крок 8: Створення служби splashscreen
 
 Створіть файл `/etc/systemd/system/splashscreen.service`:
 
@@ -135,38 +147,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable splashscreen.service
 ```
 
-### Крок 8: Створення служби screwdrive (API)
-
-Створіть файл `/etc/systemd/system/screwdrive.service`:
-
-```bash
-sudo nano /etc/systemd/system/screwdrive.service
-```
-
-Вміст:
-
-```ini
-[Unit]
-Description=ScrewDrive Control System API
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=root
-Group=root
-WorkingDirectory=/opt/screwdrive
-ExecStart=/usr/bin/python3 /opt/screwdrive/main.py
-Restart=on-failure
-RestartSec=3
-Environment=PYTHONUNBUFFERED=1
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
 ### Крок 9: Створення служби TouchDesk
+
+**Примітка:** API сервер вже має бути налаштований як `screwdrive-api.service`.
 
 Створіть файл `/etc/systemd/system/touchdesk.service`:
 
@@ -179,17 +162,16 @@ sudo nano /etc/systemd/system/touchdesk.service
 ```ini
 [Unit]
 Description=ScrewDrive TouchDesk UI (PyQt5 EGLFS)
-After=screwdrive.service
-Requires=screwdrive.service
+After=screwdrive-api.service
+Requires=screwdrive-api.service
 
 [Service]
-ExecStartPre=/opt/splash/clear-splash.sh
-User=root
-WorkingDirectory=/opt/screwdrive
+User=user
+Group=video
+WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive
 Environment=QT_QPA_PLATFORM=eglfs
-Environment=QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-Environment=QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
-ExecStart=/usr/bin/python3 /opt/screwdrive/touchdesk.py
+Environment=QT_QPA_EGLFS_KMS_CONFIG=/home/user/3SD-SF-ScrewFeed/screwdrive/resources/kms.json
+ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/ui/touchdesk.py
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -199,11 +181,26 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-Увімкніть служби:
+**ВАЖЛИВО:** На Raspberry Pi 5 дисплей підключено до `/dev/dri/card1`, тому `kms.json` повинен містити:
+
+```json
+{
+  "device": "/dev/dri/card1",
+  "outputs": [
+    {
+      "name": "HDMI-A-1",
+      "mode": "1280x800@60",
+      "format": "ARGB8888",
+      "transform": "normal"
+    }
+  ]
+}
+```
+
+Увімкніть службу:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable screwdrive.service
 sudo systemctl enable touchdesk.service
 ```
 
@@ -239,9 +236,9 @@ sudo reboot
    sudo systemctl status splashscreen.service
    ```
 
-2. **Перевірити статус screwdrive:**
+2. **Перевірити статус screwdrive-api:**
    ```bash
-   sudo systemctl status screwdrive.service
+   sudo systemctl status screwdrive-api.service
    ```
 
 3. **Перевірити статус TouchDesk:**
@@ -252,7 +249,7 @@ sudo reboot
 4. **Переглянути логи:**
    ```bash
    journalctl -u splashscreen.service
-   journalctl -u screwdrive.service
+   journalctl -u screwdrive-api.service
    journalctl -u touchdesk.service
    ```
 
@@ -289,7 +286,7 @@ sudo reboot
 
 ```json
 {
-  "device": "/dev/dri/card0",
+  "device": "/dev/dri/card1",
   "outputs": [
     {
       "name": "HDMI-A-1",
@@ -300,6 +297,8 @@ sudo reboot
   ]
 }
 ```
+
+**ВАЖЛИВО:** На Raspberry Pi 5 дисплей підключено до `/dev/dri/card1` (card0 - це тільки GPU v3d без виходів на дисплей).
 
 Змініть `mode` відповідно до вашого екрану (наприклад, `1920x1080@60`).
 
