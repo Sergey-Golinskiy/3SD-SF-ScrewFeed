@@ -1,7 +1,7 @@
 [Unit]
 Description=ScrewDrive TouchDesk UI (PyQt5 EGLFS)
-After=screwdrive.service
-Requires=screwdrive.service
+After=screwdrive-api.service
+Requires=screwdrive-api.service
 
 [Service]
 ExecStartPre=/opt/splash/clear-splash.sh

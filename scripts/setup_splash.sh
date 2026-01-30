@@ -101,12 +101,15 @@ systemctl daemon-reload
 systemctl enable splashscreen.service
 echo "Enabled: splashscreen.service"
 
-# 9. Install main screwdrive service
-header "Installing screwdrive.service"
-cp "$PROJECT_DIR/screwdrive/services/screwdrive.service" /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable screwdrive.service
-echo "Enabled: screwdrive.service"
+# 9. Check screwdrive-api.service exists
+header "Checking screwdrive-api.service"
+if systemctl list-unit-files | grep -q "screwdrive-api.service"; then
+    echo "Found: screwdrive-api.service"
+    systemctl enable screwdrive-api.service
+else
+    echo "WARNING: screwdrive-api.service not found!"
+    echo "TouchDesk requires screwdrive-api.service to be installed."
+fi
 
 # 10. Install touchdesk service
 header "Installing touchdesk.service"
@@ -150,13 +153,12 @@ echo "  [✓] Redirected console from tty1 to tty3"
 echo "  [✓] Added quiet boot parameters"
 echo "  [✓] Set boot to Console Autologin (B2)"
 echo "  [✓] Enabled splashscreen.service"
-echo "  [✓] Enabled screwdrive.service"
-echo "  [✓] Enabled touchdesk.service"
+echo "  [✓] Enabled touchdesk.service (depends on screwdrive-api.service)"
 echo "  [✓] Deployed project to /opt/screwdrive/"
 echo ""
 echo "Services status:"
 systemctl is-enabled splashscreen.service || true
-systemctl is-enabled screwdrive.service || true
+systemctl is-enabled screwdrive-api.service || true
 systemctl is-enabled touchdesk.service || true
 echo ""
 echo -e "\033[1;32mIMPORTANT: Reboot your Raspberry Pi to apply changes!\033[0m"
