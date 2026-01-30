@@ -57,13 +57,15 @@ class SensorController:
             description="Педаль старту циклу", debounce_ms=50
         ),
         # Циліндр вгорі - ACTIVE=циліндр у верхньому положенні
+        # Геркони Festo N/C (normally closed) - замкнуті без магніту
         'ger_c2_up': SensorConfig(
-            gpio=22, active_low=True, pull_up=True,
+            gpio=22, active_low=False, pull_up=True,
             description="Циліндр вгорі", debounce_ms=10
         ),
         # Циліндр внизу - АВАРІЯ! ACTIVE=досяг низу, вимкнути R04_C2
+        # Геркони Festo N/C (normally closed) - замкнуті без магніту
         'ger_c2_down': SensorConfig(
-            gpio=23, active_low=True, pull_up=True,
+            gpio=23, active_low=False, pull_up=True,
             description="Циліндр внизу - АВАРІЯ!", debounce_ms=10
         ),
         # Індуктивний датчик гвинта - HIGH=немає, LOW=гвинт пройшов
