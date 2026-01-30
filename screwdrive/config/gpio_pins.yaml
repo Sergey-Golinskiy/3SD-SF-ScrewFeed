@@ -101,10 +101,9 @@ sensors:
 
   # Датчик верхнього положення циліндра
   # ACTIVE = циліндр у верхньому положенні
-  # Festo N/C reed switch - замкнутий без магніту
   ger_c2_up:
     gpio: 22
-    active_low: false
+    active_low: true
     description: "Циліндр у верхньому положенні"
     description_en: "Cylinder UP position (GER_C2_UP)"
     pull_up: true
@@ -112,10 +111,9 @@ sensors:
   # Датчик нижнього положення циліндра - АВАРІЯ!
   # Якщо спрацював - вимкнути R04_C2 (реле циліндра)
   # ACTIVE = циліндр досяг низу (аварійний стан)
-  # Festo N/C reed switch - замкнутий без магніту
   ger_c2_down:
     gpio: 23
-    active_low: false
+    active_low: true
     description: "Циліндр внизу - АВАРІЯ!"
     description_en: "Cylinder DOWN position - EMERGENCY (GER_C2_DOWN)"
     pull_up: true
