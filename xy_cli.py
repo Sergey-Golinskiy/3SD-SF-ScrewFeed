@@ -520,10 +520,14 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
         # Check for cancel request
         if cancel_requested:
             # Update position based on steps done so far
+            old_x, old_y = cur_x_mm, cur_y_mm
             if done_x > 0:
                 cur_x_mm += (done_x / STEPS_PER_MM_X) * (1 if dx >= 0 else -1)
             if done_y > 0:
                 cur_y_mm += (done_y / STEPS_PER_MM_Y) * (1 if dy >= 0 else -1)
+            print(f"CANCEL: Movement stopped at step {step_i}/{total_steps}")
+            print(f"CANCEL: Position updated: ({old_x:.2f}, {old_y:.2f}) -> ({cur_x_mm:.2f}, {cur_y_mm:.2f})")
+            print(f"CANCEL: Steps done: X={done_x}/{sx}, Y={done_y}/{sy}")
             return False
 
         # Calculate distance traveled based on steps done

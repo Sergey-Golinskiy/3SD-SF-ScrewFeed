@@ -564,6 +564,7 @@ def create_app(
         """
         Cancel all XY table commands - immediate stop without persistent E-STOP.
         Sends M112 (stop) followed by M999 (clear) for instant halt.
+        Returns actual position after stop.
         """
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
@@ -586,6 +587,21 @@ def create_app(
         except Exception as e:
             errors.append(f'clear_estop: {str(e)}')
 
+        # Wait a bit for xy_cli to update its position
+        time.sleep(0.1)
+
+        # Get actual position after cancel
+        actual_position = {'x': 0, 'y': 0}
+        try:
+            # Request current status to get actual position
+            app.xy_table.get_status()
+            actual_position = {
+                'x': app.xy_table.position.x,
+                'y': app.xy_table.position.y
+            }
+        except Exception as e:
+            errors.append(f'get_position: {str(e)}')
+
         # Also stop any running cycle
         try:
             if app.cycle:
@@ -594,9 +610,16 @@ def create_app(
             errors.append(f'cycle_stop: {str(e)}')
 
         if errors:
-            return jsonify({'status': 'cancelled_with_errors', 'errors': errors})
+            return jsonify({
+                'status': 'cancelled_with_errors',
+                'errors': errors,
+                'position': actual_position
+            })
 
-        return jsonify({'status': 'cancelled'})
+        return jsonify({
+            'status': 'cancelled',
+            'position': actual_position
+        })
 
     # === Cycle Control ===
 
