@@ -12,7 +12,8 @@ const state = {
     devices: [],
     selectedDevice: null,
     editingDevice: null,
-    coordRows: []
+    coordRows: [],
+    lastEstopState: null  // Track emergency stop button state
 };
 
 // API Functions
@@ -89,11 +90,45 @@ async function updateStatus() {
         updateXYTab(status);
         updateSettingsXYPos(status);
 
+        // Monitor emergency stop button
+        checkEmergencyStopButton(status);
+
     } catch (error) {
         state.connected = false;
         updateConnectionIndicator(false);
         console.error('Status update failed:', error);
     }
+}
+
+// Emergency Stop Button Monitor
+async function checkEmergencyStopButton(status) {
+    const sensors = status.sensors || {};
+    const estopActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
+
+    // Check if state changed
+    if (state.lastEstopState !== null && state.lastEstopState !== estopActive) {
+        if (estopActive) {
+            // Button pressed - trigger E-STOP
+            console.log('Emergency stop button PRESSED - triggering E-STOP');
+            try {
+                await api.post('/cycle/estop');
+                await api.post('/xy/estop');
+            } catch (error) {
+                console.error('E-STOP trigger failed:', error);
+            }
+        } else {
+            // Button released - clear E-STOP
+            console.log('Emergency stop button RELEASED - clearing E-STOP');
+            try {
+                await api.post('/cycle/clear_estop');
+                await api.post('/xy/clear_estop');
+            } catch (error) {
+                console.error('Clear E-STOP failed:', error);
+            }
+        }
+    }
+
+    state.lastEstopState = estopActive;
 }
 
 function updateConnectionIndicator(connected) {
