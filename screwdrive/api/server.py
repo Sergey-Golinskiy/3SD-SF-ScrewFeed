@@ -12,6 +12,7 @@ Provides endpoints for:
 import os
 import yaml
 import threading
+import time
 from typing import Optional, Dict, Any
 from pathlib import Path
 from dataclasses import asdict
@@ -25,6 +26,81 @@ from core import (
 )
 from core.xy_table import XYTableMode
 from core.state_machine import DeviceProgram, ProgramStep
+
+
+class EstopMonitor:
+    """
+    Background monitor for physical E-STOP button.
+
+    Polls the emergency_stop sensor and triggers XY table estop/clear
+    commands immediately when button state changes.
+    """
+
+    def __init__(self, sensors: SensorController, xy_table: XYTableController,
+                 cycle: Optional[CycleStateMachine] = None, poll_interval: float = 0.05):
+        """
+        Initialize E-STOP monitor.
+
+        Args:
+            sensors: Sensor controller to read E-STOP button
+            xy_table: XY table controller to send estop/clear commands
+            cycle: Optional cycle state machine for cycle estop
+            poll_interval: Polling interval in seconds (default 50ms)
+        """
+        self._sensors = sensors
+        self._xy_table = xy_table
+        self._cycle = cycle
+        self._poll_interval = poll_interval
+        self._last_state: Optional[bool] = None
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        """Start the E-STOP monitoring thread."""
+        if self._running:
+            return
+
+        self._running = True
+        self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._thread.start()
+        print("E-STOP monitor started (polling every 50ms)")
+
+    def stop(self) -> None:
+        """Stop the E-STOP monitoring thread."""
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=1.0)
+            self._thread = None
+        print("E-STOP monitor stopped")
+
+    def _monitor_loop(self) -> None:
+        """Main monitoring loop."""
+        while self._running:
+            try:
+                # Read emergency stop button state
+                estop_pressed = self._sensors.is_emergency_stop_pressed()
+
+                # Check if state changed
+                if self._last_state is not None and self._last_state != estop_pressed:
+                    if estop_pressed:
+                        # Button pressed - trigger E-STOP immediately
+                        print("E-STOP BUTTON PRESSED - sending M112 to XY table")
+                        self._xy_table.estop()
+                        if self._cycle:
+                            self._cycle.emergency_stop()
+                    else:
+                        # Button released - clear E-STOP
+                        print("E-STOP BUTTON RELEASED - sending M999 to XY table")
+                        self._xy_table.clear_estop()
+                        if self._cycle:
+                            self._cycle.clear_estop()
+
+                self._last_state = estop_pressed
+
+            except Exception as e:
+                print(f"E-STOP monitor error: {e}")
+
+            time.sleep(self._poll_interval)
 
 
 def create_app(
@@ -71,6 +147,12 @@ def create_app(
 
     # Load devices configuration
     _load_devices(app)
+
+    # Start E-STOP hardware monitor (polls every 50ms for immediate response)
+    app.estop_monitor = None
+    if sensors and xy_table:
+        app.estop_monitor = EstopMonitor(sensors, xy_table, cycle, poll_interval=0.05)
+        app.estop_monitor.start()
 
     # === Web UI Routes ===
 
