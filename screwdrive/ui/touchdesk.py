@@ -1196,6 +1196,8 @@ class MainWindow(QMainWindow):
         # Tabs
         tabs = QTabWidget()
         tabs.setObjectName("tabs")
+        # Make tabs expand to fill full width and disable scroll arrows
+        tabs.tabBar().setExpanding(True)
         tabs.tabBar().setUsesScrollButtons(False)
         root.addWidget(tabs)
 
@@ -1204,17 +1206,27 @@ class MainWindow(QMainWindow):
         self.tabService = ServiceTab(self.api)
         self.tabSettings = SettingsTab(self.api)
 
-        # Add only START and WORK tabs initially
-        # SERVICE and SETTINGS are added when pedal held 4 seconds
+        # Add ALL tabs at startup to keep geometry stable (prevents touch offset issues)
         tabs.addTab(self.tabStart, "START")
         tabs.addTab(self.tabWork, "WORK")
+        tabs.addTab(self.tabService, "SERVICE")
+        tabs.addTab(self.tabSettings, "SETTINGS")
+
+        # Hide SERVICE and SETTINGS tabs initially
+        # Use setTabVisible if available (Qt 5.15+), otherwise use tab removal
+        self._use_tab_visible = hasattr(tabs.tabBar(), 'setTabVisible')
+        if self._use_tab_visible:
+            tabs.tabBar().setTabVisible(2, False)  # SERVICE
+            tabs.tabBar().setTabVisible(3, False)  # SETTINGS
+        else:
+            # Fallback: remove tabs but keep references (will add back on unlock)
+            tabs.removeTab(3)  # Remove SETTINGS first (higher index)
+            tabs.removeTab(2)  # Remove SERVICE
 
         self.tabs = tabs
         self._service_tab_visible = False
         self._settings_tab_visible = False
         self._device_selected = False
-
-        # Tab widths will be updated in showEvent when window geometry is known
 
         # Block tab changes until device is selected
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -1239,17 +1251,6 @@ class MainWindow(QMainWindow):
 
         # Fullscreen
         self.showFullScreen()
-
-    def showEvent(self, event):
-        """Update tab widths when window is shown."""
-        super().showEvent(event)
-        # Delay the update to ensure geometry is calculated
-        QTimer.singleShot(100, self._update_tab_widths)
-
-    def resizeEvent(self, event):
-        """Update tab widths when window is resized."""
-        super().resizeEvent(event)
-        self._update_tab_widths()
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - block if device not selected."""
@@ -1301,41 +1302,22 @@ class MainWindow(QMainWindow):
             self._pedal_hold_start = None
             self._pedal_was_active = False
 
-    def _update_tab_widths(self):
-        """Update tab widths to fill the screen evenly."""
-        tab_count = self.tabs.count()
-        if tab_count == 0:
-            return
-        # Calculate width per tab (screen width minus margins)
-        screen_width = self.width() - 2 * BORDER_W
-        if screen_width <= 0:
-            return  # Window not shown yet
-        tab_width = screen_width // tab_count
-        if tab_width <= 0:
-            return
-        # Apply stylesheet with calculated width
-        self.tabs.tabBar().setStyleSheet(f"""
-            QTabBar::tab {{
-                min-width: {tab_width}px;
-                max-width: {tab_width}px;
-            }}
-        """)
-
     def _unlock_service_tab(self):
         """Show SERVICE and SETTINGS tabs (unlock them)."""
         if self._service_tab_visible:
             return
 
-        # Add the hidden tabs
-        self.tabs.addTab(self.tabService, "SERVICE")
-        self.tabs.addTab(self.tabSettings, "SETTINGS")
+        if self._use_tab_visible:
+            # Qt 5.15+: just show the hidden tabs
+            self.tabs.tabBar().setTabVisible(2, True)  # SERVICE
+            self.tabs.tabBar().setTabVisible(3, True)  # SETTINGS
+        else:
+            # Fallback: add tabs back
+            self.tabs.addTab(self.tabService, "SERVICE")
+            self.tabs.addTab(self.tabSettings, "SETTINGS")
 
         self._service_tab_visible = True
         self._settings_tab_visible = True
-
-        # Update tab widths to accommodate new tabs
-        self._update_tab_widths()
-
         print("[UI] SERVICE and SETTINGS tabs unlocked (pedal held 4s)")
 
     def set_border(self, state: str):
