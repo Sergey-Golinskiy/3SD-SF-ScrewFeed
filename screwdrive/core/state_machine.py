@@ -65,6 +65,9 @@ class DeviceProgram:
     name: str
     holes: int
     steps: List[ProgramStep] = field(default_factory=list)
+    what: str = ""  # What we're screwing (description)
+    screw_size: str = ""  # Screw size (e.g., "M3x10")
+    task: str = ""  # Task number
 
 
 @dataclass

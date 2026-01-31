@@ -459,6 +459,9 @@ def create_app(
             'key': prog.key,
             'name': prog.name,
             'holes': prog.holes,
+            'what': prog.what,
+            'screw_size': prog.screw_size,
+            'task': prog.task,
             'steps': [
                 {'type': s.step_type, 'x': s.x, 'y': s.y, 'feed': s.feed}
                 for s in prog.steps
@@ -480,6 +483,9 @@ def create_app(
 
         name = data.get('name', key)
         holes = int(data.get('holes', 0))
+        what = data.get('what', '')
+        screw_size = data.get('screw_size', '')
+        task = data.get('task', '')
         steps_data = data.get('steps', [])
 
         steps = []
@@ -495,7 +501,10 @@ def create_app(
             key=key,
             name=name,
             holes=holes,
-            steps=steps
+            steps=steps,
+            what=what,
+            screw_size=screw_size,
+            task=task
         )
 
         _save_devices(app)
@@ -516,8 +525,12 @@ def create_app(
         if new_key != key and new_key in app.devices:
             return jsonify({'error': f'Device {new_key} already exists'}), 400
 
-        name = data.get('name', app.devices[key].name)
-        holes = int(data.get('holes', app.devices[key].holes))
+        old_dev = app.devices[key]
+        name = data.get('name', old_dev.name)
+        holes = int(data.get('holes', old_dev.holes))
+        what = data.get('what', old_dev.what)
+        screw_size = data.get('screw_size', old_dev.screw_size)
+        task = data.get('task', old_dev.task)
         steps_data = data.get('steps', None)
 
         if steps_data is not None:
@@ -530,7 +543,7 @@ def create_app(
                     feed=float(s.get('feed', 60000))
                 ))
         else:
-            steps = app.devices[key].steps
+            steps = old_dev.steps
 
         # Remove old key if changed
         if new_key != key:
@@ -540,7 +553,10 @@ def create_app(
             key=new_key,
             name=name,
             holes=holes,
-            steps=steps
+            steps=steps,
+            what=what,
+            screw_size=screw_size,
+            task=task
         )
 
         _save_devices(app)
@@ -575,6 +591,9 @@ def _save_devices(app: Flask) -> None:
             'key': prog.key,
             'name': prog.name,
             'holes': prog.holes,
+            'what': prog.what,
+            'screw_size': prog.screw_size,
+            'task': prog.task,
             'program': [
                 {'type': s.step_type, 'x': s.x, 'y': s.y, 'f': s.feed}
                 for s in prog.steps
@@ -1349,7 +1368,10 @@ def _load_devices(app: Flask) -> None:
                         key=key,
                         name=dev.get('name', key),
                         holes=int(dev.get('holes', 0)),
-                        steps=steps
+                        steps=steps,
+                        what=dev.get('what', ''),
+                        screw_size=dev.get('screw_size', ''),
+                        task=dev.get('task', '')
                     )
 
                 print(f"Loaded {len(app.devices)} devices from {path}")

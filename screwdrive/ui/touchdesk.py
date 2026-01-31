@@ -612,205 +612,327 @@ class SettingsTab(QWidget):
         self.api = api
         self._devices = []
         self._editing_device = None
+        self._selected_device_key = None
+        self._device_buttons = {}
+        self._coord_rows = []  # List of coordinate row widgets
 
         root = QHBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(18)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(16)
 
-        # Left: XY Table Control
+        # ========== LEFT COLUMN ==========
         left = QVBoxLayout()
-        left.setSpacing(18)
+        left.setSpacing(12)
 
-        # XY Position card
-        self.xyCard = make_card("XY Table Control")
-        xyLay = self.xyCard.layout()
+        # --- ДЕВАЙСИ section ---
+        devHeader = QHBoxLayout()
+        lblDevices = QLabel("ДЕВАЙСИ")
+        lblDevices.setStyleSheet("font-size: 18px; font-weight: bold;")
+        devHeader.addWidget(lblDevices)
+        devHeader.addStretch(1)
+        self.btnAddDevice = QPushButton("+")
+        self.btnAddDevice.setFixedSize(36, 36)
+        self.btnAddDevice.setStyleSheet("font-size: 24px; font-weight: bold; color: #2a5; background: transparent; border: none;")
+        self.btnAddDevice.clicked.connect(self._new_device)
+        devHeader.addWidget(self.btnAddDevice)
+        left.addLayout(devHeader)
 
-        # Position display
-        posRow = QHBoxLayout()
-        self.lblPos = QLabel("X: 0.00  Y: 0.00")
-        self.lblPos.setObjectName("state")
-        self.lblPos.setStyleSheet("font-size: 24px; font-weight: bold;")
-        posRow.addWidget(self.lblPos)
-        self.btnHome = QPushButton("HOME")
-        self.btnHome.setMinimumHeight(50)
-        self.btnHome.clicked.connect(self._on_home)
-        posRow.addWidget(self.btnHome)
-        xyLay.addLayout(posRow)
-
-        # Step size selector
-        stepRow = QHBoxLayout()
-        stepRow.addWidget(QLabel("Крок:"))
-        self.cbStep = QComboBox()
-        for step in ["0.1", "0.5", "1", "5", "10", "50", "100"]:
-            self.cbStep.addItem(f"{step} mm", float(step))
-        self.cbStep.setCurrentIndex(4)  # Default 10mm
-        stepRow.addWidget(self.cbStep, 1)
-        xyLay.addLayout(stepRow)
-
-        # Jog buttons grid
-        jogGrid = QGridLayout()
-        jogGrid.setSpacing(10)
-
-        self.btnYPlus = QPushButton("Y+")
-        self.btnYMinus = QPushButton("Y-")
-        self.btnXPlus = QPushButton("X+")
-        self.btnXMinus = QPushButton("X-")
-
-        for btn in [self.btnYPlus, self.btnYMinus, self.btnXPlus, self.btnXMinus]:
-            btn.setMinimumSize(80, 80)
-            btn.setStyleSheet("font-size: 20px; font-weight: bold;")
-
-        jogGrid.addWidget(self.btnYPlus, 0, 1)
-        jogGrid.addWidget(self.btnXMinus, 1, 0)
-        jogGrid.addWidget(self.btnXPlus, 1, 2)
-        jogGrid.addWidget(self.btnYMinus, 2, 1)
-
-        self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
-        self.btnYMinus.clicked.connect(lambda: self._jog(0, -1))
-        self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
-        self.btnXMinus.clicked.connect(lambda: self._jog(-1, 0))
-
-        xyLay.addLayout(jogGrid)
-
-        # Move to coordinates
-        moveCard = make_card("Перемістити в координати")
-        moveLay = moveCard.layout()
-
-        coordRow = QHBoxLayout()
-        coordRow.addWidget(QLabel("X:"))
-        self.edMoveX = QLineEdit("0")
-        self.edMoveX.setMaximumWidth(80)
-        coordRow.addWidget(self.edMoveX)
-        coordRow.addWidget(QLabel("Y:"))
-        self.edMoveY = QLineEdit("0")
-        self.edMoveY.setMaximumWidth(80)
-        coordRow.addWidget(self.edMoveY)
-        coordRow.addWidget(QLabel("F:"))
-        self.edMoveFeed = QLineEdit("10000")
-        self.edMoveFeed.setMaximumWidth(80)
-        coordRow.addWidget(self.edMoveFeed)
-        self.btnMove = QPushButton("GO")
-        self.btnMove.setMinimumHeight(40)
-        self.btnMove.clicked.connect(self._on_move)
-        coordRow.addWidget(self.btnMove)
-        moveLay.addLayout(coordRow)
-
-        left.addWidget(self.xyCard)
-        left.addWidget(moveCard)
-        left.addStretch(1)
-
-        # Right: Device Management
-        right = QVBoxLayout()
-        right.setSpacing(18)
-
-        # Device list card
-        self.devCard = make_card("Девайси")
-        devLay = self.devCard.layout()
-
+        # Device list (max 3 visible, scrollable)
         self.devScroll = QScrollArea()
         self.devScroll.setWidgetResizable(True)
-        self.devScroll.setMaximumHeight(200)
+        self.devScroll.setFixedHeight(130)  # ~3 items
+        self.devScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.devListWidget = QWidget()
         self.devListLay = QVBoxLayout(self.devListWidget)
         self.devListLay.setContentsMargins(0, 0, 0, 0)
-        self.devListLay.setSpacing(5)
+        self.devListLay.setSpacing(4)
         self.devScroll.setWidget(self.devListWidget)
-        devLay.addWidget(self.devScroll)
+        left.addWidget(self.devScroll)
 
-        devBtnRow = QHBoxLayout()
-        self.btnNewDevice = QPushButton("+ Новий")
-        self.btnNewDevice.clicked.connect(self._new_device)
-        self.btnEditDevice = QPushButton("Редагувати")
-        self.btnEditDevice.clicked.connect(self._edit_device)
-        self.btnDeleteDevice = QPushButton("Видалити")
-        self.btnDeleteDevice.clicked.connect(self._delete_device)
-        self.btnDeleteDevice.setStyleSheet("background: #3a1c1c;")
-        devBtnRow.addWidget(self.btnNewDevice)
-        devBtnRow.addWidget(self.btnEditDevice)
-        devBtnRow.addWidget(self.btnDeleteDevice)
-        devLay.addLayout(devBtnRow)
+        # --- XY TABLE CONTROL section ---
+        xyHeader = QLabel("XY TABLE CONTROL")
+        xyHeader.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 12px;")
+        left.addWidget(xyHeader)
 
-        right.addWidget(self.devCard)
+        # Position display
+        self.lblPos = QLabel("X: 0.00  Y: 0.00")
+        self.lblPos.setStyleSheet("font-size: 22px; font-weight: bold; padding: 8px;")
+        left.addWidget(self.lblPos)
 
-        # Device editor card
-        self.editCard = make_card("Редактор девайсу")
-        editLay = self.editCard.layout()
+        # Jog buttons in cross pattern
+        jogGrid = QGridLayout()
+        jogGrid.setSpacing(8)
 
-        # Key & Name
-        row1 = QHBoxLayout()
-        row1.addWidget(QLabel("Key:"))
-        self.edKey = QLineEdit()
-        self.edKey.setPlaceholderText("device_key")
-        row1.addWidget(self.edKey)
-        row1.addWidget(QLabel("Name:"))
+        self.btnYMinus = QPushButton("Y -")
+        self.btnYPlus = QPushButton("Y +")
+        self.btnXMinus = QPushButton("X -")
+        self.btnXPlus = QPushButton("X +")
+
+        for btn in [self.btnYPlus, self.btnYMinus, self.btnXPlus, self.btnXMinus]:
+            btn.setMinimumSize(70, 60)
+            btn.setStyleSheet("font-size: 18px; font-weight: bold; background: #3a6fbf; border-radius: 8px;")
+
+        jogGrid.addWidget(self.btnYMinus, 0, 1)
+        jogGrid.addWidget(self.btnXMinus, 1, 0)
+        jogGrid.addWidget(self.btnXPlus, 1, 2)
+        jogGrid.addWidget(self.btnYPlus, 2, 1)
+
+        self.btnYMinus.clicked.connect(lambda: self._jog(0, -1))
+        self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
+        self.btnXMinus.clicked.connect(lambda: self._jog(-1, 0))
+        self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
+
+        left.addLayout(jogGrid)
+
+        # Step selector dropdown
+        self.cbStep = QComboBox()
+        self.cbStep.addItem("Вільне переміщення", 0)
+        for step in ["0.1", "0.5", "1", "5", "10", "50", "100"]:
+            self.cbStep.addItem(f"{step} mm", float(step))
+        self.cbStep.setCurrentIndex(5)  # Default 10mm
+        self.cbStep.setMinimumHeight(40)
+        left.addWidget(self.cbStep)
+
+        # HOME buttons row
+        homeRow = QHBoxLayout()
+        self.btnHome = QPushButton("HOME")
+        self.btnHomeY = QPushButton("HOME Y")
+        self.btnHomeX = QPushButton("HOME X")
+        for btn in [self.btnHome, self.btnHomeY, self.btnHomeX]:
+            btn.setMinimumHeight(44)
+            btn.setStyleSheet("font-size: 14px; background: #3a6fbf; border-radius: 6px;")
+        self.btnHome.clicked.connect(self._on_home)
+        self.btnHomeY.clicked.connect(self._on_home_y)
+        self.btnHomeX.clicked.connect(self._on_home_x)
+        homeRow.addWidget(self.btnHome)
+        homeRow.addWidget(self.btnHomeY)
+        homeRow.addWidget(self.btnHomeX)
+        left.addLayout(homeRow)
+
+        left.addStretch(1)
+
+        # ========== RIGHT COLUMN ==========
+        right = QVBoxLayout()
+        right.setSpacing(12)
+
+        # --- КООРДИНАТИ ПЕРЕМІЩЕННЯ section ---
+        coordHeader = QHBoxLayout()
+        lblCoords = QLabel("КООРДИНАТИ ПЕРЕМІЩЕННЯ")
+        lblCoords.setStyleSheet("font-size: 18px; font-weight: bold;")
+        coordHeader.addWidget(lblCoords)
+        coordHeader.addStretch(1)
+        self.btnAddCoord = QPushButton("+")
+        self.btnAddCoord.setFixedSize(36, 36)
+        self.btnAddCoord.setStyleSheet("font-size: 24px; font-weight: bold; color: #2a5; background: transparent; border: none;")
+        self.btnAddCoord.clicked.connect(self._add_coord_row)
+        coordHeader.addWidget(self.btnAddCoord)
+        right.addLayout(coordHeader)
+
+        # Coordinate list (max 7 visible, scrollable)
+        self.coordScroll = QScrollArea()
+        self.coordScroll.setWidgetResizable(True)
+        self.coordScroll.setFixedHeight(280)  # ~7 rows
+        self.coordScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.coordListWidget = QWidget()
+        self.coordListLay = QVBoxLayout(self.coordListWidget)
+        self.coordListLay.setContentsMargins(4, 4, 4, 4)
+        self.coordListLay.setSpacing(4)
+        self.coordScroll.setWidget(self.coordListWidget)
+        right.addWidget(self.coordScroll)
+
+        # --- Редактор девайсу section ---
+        editorHeader = QLabel("Редактор девайсу")
+        editorHeader.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 8px;")
+        editorHeader.setAlignment(Qt.AlignCenter)
+        right.addWidget(editorHeader)
+
+        # Device parameters row 1: Name, What, Holes, Size
+        paramRow1 = QHBoxLayout()
+        paramRow1.setSpacing(8)
+
         self.edName = QLineEdit()
-        self.edName.setPlaceholderText("Device Name")
-        row1.addWidget(self.edName)
-        row1.addWidget(QLabel("Holes:"))
+        self.edName.setPlaceholderText("Назва (3 літери)")
+        self.edName.setMinimumHeight(40)
+        paramRow1.addWidget(self.edName, 1)
+
+        self.edWhat = QLineEdit()
+        self.edWhat.setPlaceholderText("Що крутим")
+        self.edWhat.setMinimumHeight(40)
+        paramRow1.addWidget(self.edWhat, 1)
+
         self.spHoles = QSpinBox()
         self.spHoles.setRange(0, 100)
-        row1.addWidget(self.spHoles)
-        editLay.addLayout(row1)
+        self.spHoles.setMinimumHeight(40)
+        self.spHoles.setPrefix("Гвинтів: ")
+        paramRow1.addWidget(self.spHoles)
 
-        # Steps editor
-        editLay.addWidget(QLabel("Кроки програми (type, x, y, feed):"))
-        self.txtSteps = QTextEdit()
-        self.txtSteps.setPlaceholderText("free, 0, 0, 60000\nwork, 10, 20, 30000\n...")
-        self.txtSteps.setMinimumHeight(150)
-        editLay.addWidget(self.txtSteps)
+        self.edSize = QLineEdit()
+        self.edSize.setPlaceholderText("Розмір гвинтів")
+        self.edSize.setMinimumHeight(40)
+        self.edSize.setMaximumWidth(120)
+        paramRow1.addWidget(self.edSize)
 
-        # Save/Cancel
-        saveBtnRow = QHBoxLayout()
-        self.btnSaveDevice = QPushButton("Зберегти")
-        self.btnSaveDevice.setStyleSheet("background: #153f2c; border-color: #1ac06b;")
-        self.btnSaveDevice.clicked.connect(self._save_device)
-        self.btnCancelEdit = QPushButton("Скасувати")
-        self.btnCancelEdit.clicked.connect(self._cancel_edit)
-        saveBtnRow.addWidget(self.btnSaveDevice)
-        saveBtnRow.addWidget(self.btnCancelEdit)
-        editLay.addLayout(saveBtnRow)
+        right.addLayout(paramRow1)
 
-        right.addWidget(self.editCard, 1)
+        # Device parameters row 2: Task number (hidden field for key)
+        paramRow2 = QHBoxLayout()
+        paramRow2.setSpacing(8)
 
+        self.edTask = QLineEdit()
+        self.edTask.setPlaceholderText("Номер таски")
+        self.edTask.setMinimumHeight(40)
+        paramRow2.addWidget(self.edTask, 1)
+
+        # Hidden key field (used internally)
+        self.edKey = QLineEdit()
+        self.edKey.setVisible(False)
+
+        paramRow2.addStretch(1)
+        right.addLayout(paramRow2)
+
+        # Save/Cancel buttons
+        btnRow = QHBoxLayout()
+        btnRow.setSpacing(16)
+
+        self.btnSave = QPushButton("Зберегти параметри")
+        self.btnSave.setMinimumHeight(50)
+        self.btnSave.setStyleSheet("font-size: 16px; background: #3a6fbf; border-radius: 8px;")
+        self.btnSave.clicked.connect(self._save_device)
+        btnRow.addWidget(self.btnSave, 1)
+
+        self.btnCancel = QPushButton("Скасувати")
+        self.btnCancel.setMinimumHeight(50)
+        self.btnCancel.setStyleSheet("font-size: 16px; background: #555; border-radius: 8px;")
+        self.btnCancel.clicked.connect(self._cancel_edit)
+        btnRow.addWidget(self.btnCancel, 1)
+
+        right.addLayout(btnRow)
+
+        # Add columns to root
         root.addLayout(left, 4)
         root.addLayout(right, 6)
-
-        self._selected_device_key = None
-        self._device_buttons = {}
 
     def _jog(self, dx: int, dy: int):
         """Jog XY table by selected step."""
         try:
             step = self.cbStep.currentData()
-            self.api.xy_jog(dx * step, dy * step, 1000)
+            if step == 0:
+                # Free movement - continuous jog (use larger step)
+                step = 1000
+            self.api.xy_jog(dx * step, dy * step, 5000)
         except Exception as e:
             print(f"[Settings] Jog error: {e}")
 
     def _on_home(self):
-        """Home XY table."""
+        """Home both axes."""
         try:
             self.api.xy_home()
         except Exception as e:
             print(f"[Settings] Home error: {e}")
 
-    def _on_move(self):
-        """Move to specified coordinates."""
+    def _on_home_y(self):
+        """Home Y axis only."""
         try:
-            x = float(self.edMoveX.text())
-            y = float(self.edMoveY.text())
-            feed = float(self.edMoveFeed.text())
-            self.api.xy_move(x, y, feed)
+            self.api.xy_send_gcode("G28 Y")
         except Exception as e:
-            print(f"[Settings] Move error: {e}")
+            print(f"[Settings] Home Y error: {e}")
+
+    def _on_home_x(self):
+        """Home X axis only."""
+        try:
+            self.api.xy_send_gcode("G28 X")
+        except Exception as e:
+            print(f"[Settings] Home X error: {e}")
+
+    def _add_coord_row(self, x="", y="", coord_type="FREE", feed="5000"):
+        """Add a coordinate row to the list."""
+        row_num = len(self._coord_rows) + 1
+
+        rowWidget = QWidget()
+        rowLay = QHBoxLayout(rowWidget)
+        rowLay.setContentsMargins(0, 0, 0, 0)
+        rowLay.setSpacing(6)
+
+        # Row number
+        lblNum = QLabel(f"{row_num}.")
+        lblNum.setFixedWidth(24)
+        rowLay.addWidget(lblNum)
+
+        # X coordinate
+        edX = QLineEdit(str(x))
+        edX.setPlaceholderText("X")
+        edX.setMinimumHeight(36)
+        edX.setMaximumWidth(70)
+        rowLay.addWidget(edX)
+
+        # Y coordinate
+        edY = QLineEdit(str(y))
+        edY.setPlaceholderText("Y")
+        edY.setMinimumHeight(36)
+        edY.setMaximumWidth(70)
+        rowLay.addWidget(edY)
+
+        # Type dropdown (FREE/WORK)
+        cbType = QComboBox()
+        cbType.addItems(["FREE", "WORK"])
+        cbType.setCurrentText(coord_type.upper())
+        cbType.setMinimumHeight(36)
+        cbType.setMinimumWidth(80)
+        rowLay.addWidget(cbType)
+
+        # Feed rate
+        edFeed = QLineEdit(str(feed))
+        edFeed.setPlaceholderText("F")
+        edFeed.setMinimumHeight(36)
+        edFeed.setMaximumWidth(70)
+        rowLay.addWidget(edFeed)
+
+        # Delete button
+        btnDel = QPushButton("−")
+        btnDel.setFixedSize(36, 36)
+        btnDel.setStyleSheet("font-size: 20px; color: #c55; background: transparent; border: none;")
+        btnDel.clicked.connect(lambda _, w=rowWidget: self._remove_coord_row(w))
+        rowLay.addWidget(btnDel)
+
+        # Store references
+        rowWidget.edX = edX
+        rowWidget.edY = edY
+        rowWidget.cbType = cbType
+        rowWidget.edFeed = edFeed
+
+        self._coord_rows.append(rowWidget)
+        self.coordListLay.addWidget(rowWidget)
+
+    def _remove_coord_row(self, rowWidget):
+        """Remove a coordinate row."""
+        if rowWidget in self._coord_rows:
+            self._coord_rows.remove(rowWidget)
+            rowWidget.setParent(None)
+            rowWidget.deleteLater()
+            self._renumber_coord_rows()
+
+    def _renumber_coord_rows(self):
+        """Renumber coordinate rows after deletion."""
+        for i, row in enumerate(self._coord_rows):
+            lbl = row.findChild(QLabel)
+            if lbl:
+                lbl.setText(f"{i + 1}.")
+
+    def _clear_coord_rows(self):
+        """Clear all coordinate rows."""
+        for row in self._coord_rows:
+            row.setParent(None)
+            row.deleteLater()
+        self._coord_rows.clear()
 
     def _rebuild_device_list(self, devices: list):
         """Rebuild device list."""
         # Clear
         for i in reversed(range(self.devListLay.count())):
-            w = self.devListLay.itemAt(i).widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+            item = self.devListLay.itemAt(i)
+            if item and item.widget():
+                item.widget().setParent(None)
+                item.widget().deleteLater()
         self._device_buttons.clear()
 
         for d in devices:
@@ -819,8 +941,9 @@ class SettingsTab(QWidget):
             holes = d.get("holes", 0)
 
             btn = QPushButton(f"{name} ({holes} holes)")
-            btn.setObjectName("devButton")
+            btn.setMinimumHeight(38)
             btn.setCheckable(True)
+            btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px;")
             btn.clicked.connect(lambda _, k=key: self._select_device(k))
             self.devListLay.addWidget(btn)
             self._device_buttons[key] = btn
@@ -830,82 +953,96 @@ class SettingsTab(QWidget):
 
     def _apply_device_styles(self):
         for key, btn in self._device_buttons.items():
-            btn.setChecked(key == self._selected_device_key)
+            is_selected = (key == self._selected_device_key)
+            btn.setChecked(is_selected)
+            if is_selected:
+                btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px; background: #3a6fbf;")
+            else:
+                btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px;")
 
     def _select_device(self, key: str):
+        """Select device and load its data for editing."""
         self._selected_device_key = key
         self._apply_device_styles()
+        self._load_device_for_edit(key)
+
+    def _load_device_for_edit(self, key: str):
+        """Load device data into editor."""
+        try:
+            full = req_get(f"devices/{key}")
+            self._editing_device = key
+            self.edKey.setText(full.get("key", ""))
+            self.edName.setText(full.get("name", ""))
+            self.edWhat.setText(full.get("what", ""))
+            self.spHoles.setValue(full.get("holes", 0))
+            self.edSize.setText(full.get("screw_size", ""))
+            self.edTask.setText(full.get("task", ""))
+
+            # Load coordinate steps
+            self._clear_coord_rows()
+            for s in full.get("steps", []):
+                self._add_coord_row(
+                    x=s.get("x", ""),
+                    y=s.get("y", ""),
+                    coord_type=s.get("type", "FREE"),
+                    feed=s.get("feed", 5000)
+                )
+        except Exception as e:
+            print(f"[Settings] Load device error: {e}")
 
     def _new_device(self):
         """Start creating new device."""
         self._editing_device = None
+        self._selected_device_key = None
+        self._apply_device_styles()
+
+        # Clear editor
         self.edKey.setText("")
-        self.edKey.setEnabled(True)
         self.edName.setText("")
+        self.edWhat.setText("")
         self.spHoles.setValue(0)
-        self.txtSteps.setText("")
+        self.edSize.setText("")
+        self.edTask.setText("")
+        self._clear_coord_rows()
 
-    def _edit_device(self):
-        """Edit selected device."""
-        if not self._selected_device_key:
-            return
-        try:
-            dev = self.api.devices()
-            for d in dev:
-                if d.get("key") == self._selected_device_key:
-                    self._editing_device = self._selected_device_key
-                    self.edKey.setText(d.get("key", ""))
-                    self.edKey.setEnabled(False)  # Can't change key when editing
-                    self.edName.setText(d.get("name", ""))
-                    self.spHoles.setValue(d.get("holes", 0))
-
-                    # Load full device with steps
-                    full = req_get(f"devices/{self._selected_device_key}")
-                    steps_text = ""
-                    for s in full.get("steps", []):
-                        steps_text += f"{s['type']}, {s['x']}, {s['y']}, {s['feed']}\n"
-                    self.txtSteps.setText(steps_text.strip())
-                    break
-        except Exception as e:
-            print(f"[Settings] Edit error: {e}")
-
-    def _delete_device(self):
-        """Delete selected device."""
-        if not self._selected_device_key:
-            return
-        try:
-            req_post(f"devices/{self._selected_device_key}", None)  # DELETE via custom method
-            # Actually need DELETE method, let's use requests directly
-            import requests
-            requests.delete(f"{API_BASE}/devices/{self._selected_device_key}", timeout=5)
-            self._selected_device_key = None
-        except Exception as e:
-            print(f"[Settings] Delete error: {e}")
+        # Add one empty coordinate row
+        self._add_coord_row()
 
     def _save_device(self):
         """Save device (create or update)."""
-        key = self.edKey.text().strip()
-        if not key:
+        name = self.edName.text().strip()
+        if not name:
             return
 
-        name = self.edName.text().strip() or key
-        holes = self.spHoles.value()
+        # Generate key from name if new device
+        key = self.edKey.text().strip() or name.upper().replace(" ", "_")
 
-        # Parse steps
+        # Collect steps from coordinate rows
         steps = []
-        for line in self.txtSteps.toPlainText().strip().split("\n"):
-            if not line.strip():
-                continue
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 4:
+        for row in self._coord_rows:
+            try:
+                x_val = float(row.edX.text()) if row.edX.text() else 0
+                y_val = float(row.edY.text()) if row.edY.text() else 0
+                feed_val = float(row.edFeed.text()) if row.edFeed.text() else 5000
+                step_type = row.cbType.currentText().lower()
                 steps.append({
-                    "type": parts[0],
-                    "x": float(parts[1]),
-                    "y": float(parts[2]),
-                    "feed": float(parts[3])
+                    "type": step_type,
+                    "x": x_val,
+                    "y": y_val,
+                    "feed": feed_val
                 })
+            except ValueError:
+                continue
 
-        data = {"key": key, "name": name, "holes": holes, "steps": steps}
+        data = {
+            "key": key,
+            "name": name,
+            "what": self.edWhat.text().strip(),
+            "holes": self.spHoles.value(),
+            "screw_size": self.edSize.text().strip(),
+            "task": self.edTask.text().strip(),
+            "steps": steps
+        }
 
         try:
             import requests
@@ -916,19 +1053,23 @@ class SettingsTab(QWidget):
             else:
                 # Create new
                 requests.post(f"{API_BASE}/devices", json=data, timeout=5)
+
             self._editing_device = None
-            self._cancel_edit()
+            # Refresh device list
+            self._devices = []
         except Exception as e:
             print(f"[Settings] Save error: {e}")
 
     def _cancel_edit(self):
-        """Cancel editing."""
+        """Cancel editing and clear editor."""
         self._editing_device = None
         self.edKey.setText("")
-        self.edKey.setEnabled(True)
         self.edName.setText("")
+        self.edWhat.setText("")
         self.spHoles.setValue(0)
-        self.txtSteps.setText("")
+        self.edSize.setText("")
+        self.edTask.setText("")
+        self._clear_coord_rows()
 
     def render(self, st: dict):
         """Update display with current status."""
