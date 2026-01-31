@@ -369,6 +369,16 @@ function updateXYTab(status) {
     endstopYEl.textContent = endstops.y_min ? 'TRIGGERED' : 'open';
     endstopYEl.className = `value ${endstops.y_min ? 'status-warning' : ''}`;
 
+    // Limit warning
+    const limitWarningRow = $('xyLimitWarningRow');
+    const limitWarningEl = $('xyLimitWarning');
+    if (health.last_limit_warning) {
+        limitWarningEl.textContent = health.last_limit_warning;
+        limitWarningRow.style.display = 'flex';
+    } else {
+        limitWarningRow.style.display = 'none';
+    }
+
     // Error
     const errorEl = $('xyLastError');
     if (health.last_error) {

@@ -201,7 +201,8 @@ def create_app(
                     'last_ping_ok': health.last_ping_ok,
                     'last_ping_latency_ms': round(health.last_ping_latency_ms, 1),
                     'consecutive_errors': health.consecutive_errors,
-                    'last_error': health.last_error
+                    'last_error': health.last_error,
+                    'last_limit_warning': health.last_limit_warning
                 }
             }
 

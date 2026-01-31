@@ -64,6 +64,7 @@ class XYHealthStatus:
     last_command_time: Optional[datetime] = None
     last_command_ok: bool = False
     last_error: Optional[str] = None
+    last_limit_warning: Optional[str] = None  # Soft limit warning from last command
     consecutive_errors: int = 0
     total_commands: int = 0
     failed_commands: int = 0
@@ -311,6 +312,37 @@ class XYTableController:
         except Exception:
             pass
 
+    def _parse_limit_warnings(self, response: str) -> Optional[str]:
+        """
+        Parse limit warnings from response.
+
+        Warnings are in format: LIMIT_X_MAX:220.0 LIMIT_Y_MAX:500.0
+
+        Returns:
+            Warning message in Ukrainian or None if no warnings.
+        """
+        if not response:
+            return None
+
+        warnings = []
+        for part in response.split():
+            if part.startswith("LIMIT_X_MIN:"):
+                val = part.split(":")[1]
+                warnings.append(f"X обмежено мін: {val} мм")
+            elif part.startswith("LIMIT_X_MAX:"):
+                val = part.split(":")[1]
+                warnings.append(f"X обмежено макс: {val} мм")
+            elif part.startswith("LIMIT_Y_MIN:"):
+                val = part.split(":")[1]
+                warnings.append(f"Y обмежено мін: {val} мм")
+            elif part.startswith("LIMIT_Y_MAX:"):
+                val = part.split(":")[1]
+                warnings.append(f"Y обмежено макс: {val} мм")
+
+        if warnings:
+            return "; ".join(warnings)
+        return None
+
     def _send_command(self, cmd: str, timeout: Optional[float] = None) -> Optional[str]:
         """
         Send command and wait for response.
@@ -473,13 +505,11 @@ class XYTableController:
         if x is None and y is None:
             return True
 
-        # Build command
+        # Build command - send original values, let xy_cli enforce limits
         cmd_parts = ["G"]
         if x is not None:
-            x = max(0, min(x, self._x_max))
             cmd_parts.append(f"X{x:.3f}")
         if y is not None:
-            y = max(0, min(y, self._y_max))
             cmd_parts.append(f"Y{y:.3f}")
         cmd_parts.append(f"F{feed:.0f}")
 
@@ -491,15 +521,21 @@ class XYTableController:
         response = self._send_command(cmd)
 
         if response and "ok" in response.lower():
+            # Parse limit warnings from response
+            limit_warning = self._parse_limit_warnings(response)
+            self._health.last_limit_warning = limit_warning
+
+            # Update position to clamped values
             if x is not None:
-                self._position.x = x
+                self._position.x = max(0, min(x, self._x_max))
             if y is not None:
-                self._position.y = y
+                self._position.y = max(0, min(y, self._y_max))
             self._state = XYTableState.READY
             self._notify_state_change()
             self._notify_position_change()
             return True
         else:
+            self._health.last_limit_warning = None
             self._state = XYTableState.ERROR
             self._notify_state_change()
             return False
@@ -525,8 +561,15 @@ class XYTableController:
         cmd = f"DX {distance:+.3f} F{feed:.0f}"
         response = self._send_command(cmd)
         if response and "ok" in response.lower():
-            self._position.x += distance
+            # Parse limit warnings
+            limit_warning = self._parse_limit_warnings(response)
+            self._health.last_limit_warning = limit_warning
+
+            # Update position (clamped by xy_cli)
+            new_x = self._position.x + distance
+            self._position.x = max(0, min(new_x, self._x_max))
             return True
+        self._health.last_limit_warning = None
         return False
 
     def jog_y(self, distance: float, feed: float = 600.0) -> bool:
@@ -534,8 +577,15 @@ class XYTableController:
         cmd = f"DY {distance:+.3f} F{feed:.0f}"
         response = self._send_command(cmd)
         if response and "ok" in response.lower():
-            self._position.y += distance
+            # Parse limit warnings
+            limit_warning = self._parse_limit_warnings(response)
+            self._health.last_limit_warning = limit_warning
+
+            # Update position (clamped by xy_cli)
+            new_y = self._position.y + distance
+            self._position.y = max(0, min(new_y, self._y_max))
             return True
+        self._health.last_limit_warning = None
         return False
 
     def go_to_zero(self) -> bool:
@@ -684,6 +734,7 @@ class XYTableController:
                 'last_command_time': self._health.last_command_time.isoformat() if self._health.last_command_time else None,
                 'last_command_ok': self._health.last_command_ok,
                 'last_error': self._health.last_error,
+                'last_limit_warning': self._health.last_limit_warning,
                 'consecutive_errors': self._health.consecutive_errors,
                 'total_commands': self._health.total_commands,
                 'failed_commands': self._health.failed_commands,

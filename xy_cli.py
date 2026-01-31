@@ -994,6 +994,37 @@ def get_endstop_str() -> str:
 
 
 # =========================
+# Limit checking helper
+# =========================
+def check_limits(x: Optional[float], y: Optional[float]) -> tuple:
+    """
+    Check if coordinates exceed soft limits and return clamped values with warnings.
+
+    Returns:
+        tuple: (clamped_x, clamped_y, warnings_list)
+    """
+    warnings = []
+
+    if x is not None:
+        if x < X_MIN_MM:
+            warnings.append(f"LIMIT_X_MIN:{X_MIN_MM:.1f}")
+            x = X_MIN_MM
+        elif x > X_MAX_MM:
+            warnings.append(f"LIMIT_X_MAX:{X_MAX_MM:.1f}")
+            x = X_MAX_MM
+
+    if y is not None:
+        if y < Y_MIN_MM:
+            warnings.append(f"LIMIT_Y_MIN:{Y_MIN_MM:.1f}")
+            y = Y_MIN_MM
+        elif y > Y_MAX_MM:
+            warnings.append(f"LIMIT_Y_MAX:{Y_MAX_MM:.1f}")
+            y = Y_MAX_MM
+
+    return x, y, warnings
+
+
+# =========================
 # Command handler
 # =========================
 def handle_command(line: str) -> str:
@@ -1190,7 +1221,11 @@ def handle_command(line: str) -> str:
                     d = float(tok)
                 elif t.startswith("F"):
                     f = float(tok[1:])
-            move_axis_abs("X", cur_x_mm + d, f)
+            target_x = cur_x_mm + d
+            x_clamped, _, warnings = check_limits(target_x, None)
+            move_axis_abs("X", x_clamped, f)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         if up.startswith("DY "):
@@ -1203,7 +1238,11 @@ def handle_command(line: str) -> str:
                     d = float(tok)
                 elif t.startswith("F"):
                     f = float(tok[1:])
-            move_axis_abs("Y", cur_y_mm + d, f)
+            target_y = cur_y_mm + d
+            _, y_clamped, warnings = check_limits(None, target_y)
+            move_axis_abs("Y", y_clamped, f)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         # === Legacy JX/JY jog commands ===
@@ -1218,7 +1257,11 @@ def handle_command(line: str) -> str:
             for t in toks[2:]:
                 if t.upper().startswith("F"):
                     feed = float(t[1:])
-            move_axis_abs("X", cur_x_mm + delta, feed)
+            target_x = cur_x_mm + delta
+            x_clamped, _, warnings = check_limits(target_x, None)
+            move_axis_abs("X", x_clamped, feed)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         if up.startswith("JY "):
@@ -1232,7 +1275,11 @@ def handle_command(line: str) -> str:
             for t in toks[2:]:
                 if t.upper().startswith("F"):
                     feed = float(t[1:])
-            move_axis_abs("Y", cur_y_mm + delta, feed)
+            target_y = cur_y_mm + delta
+            _, y_clamped, warnings = check_limits(None, target_y)
+            move_axis_abs("Y", y_clamped, feed)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         # === GF command (fast move, no PED - same as G for us) ===
@@ -1250,7 +1297,11 @@ def handle_command(line: str) -> str:
                     f = float(tok[1:])
             if x is None and y is None:
                 return "err BAD_ARGS"
-            move_xy_abs(x, y, f)
+            # Check and apply soft limits
+            x_clamped, y_clamped, warnings = check_limits(x, y)
+            move_xy_abs(x_clamped, y_clamped, f)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         # === G command (guarded move) ===
@@ -1268,7 +1319,11 @@ def handle_command(line: str) -> str:
                     f = float(tok[1:])
             if x is None and y is None:
                 return "err BAD_ARGS"
-            move_xy_abs(x, y, f)
+            # Check and apply soft limits
+            x_clamped, y_clamped, warnings = check_limits(x, y)
+            move_xy_abs(x_clamped, y_clamped, f)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         # === Standalone F command (set feed rate) ===
@@ -1292,7 +1347,11 @@ def handle_command(line: str) -> str:
                     cur_feed_mm_min = f  # Update default feed rate
             if x is None and y is None:
                 return "err BAD_ARGS"
-            move_xy_abs(x, y, f)
+            # Check and apply soft limits
+            x_clamped, y_clamped, warnings = check_limits(x, y)
+            move_xy_abs(x_clamped, y_clamped, f)
+            if warnings:
+                return "ok " + " ".join(warnings)
             return "ok"
 
         # === G2/G3 arc commands (circular interpolation) ===
