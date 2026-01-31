@@ -113,6 +113,15 @@ class ApiClient:
     def xy_jog(self, dx: float, dy: float, feed: float = 1000):
         return req_post("xy/jog", {"dx": dx, "dy": dy, "feed": feed})
 
+    def xy_home_x(self):
+        return req_post("xy/home/x")
+
+    def xy_home_y(self):
+        return req_post("xy/home/y")
+
+    def xy_command(self, command: str):
+        return req_post("xy/command", {"command": command})
+
 
 # Serial reader thread
 try:
@@ -1044,14 +1053,14 @@ class SettingsTab(QWidget):
     def _on_home_y(self):
         """Home Y axis only."""
         try:
-            self.api.xy_send_gcode("G28 Y")
+            self.api.xy_home_y()
         except Exception as e:
             print(f"[Settings] Home Y error: {e}")
 
     def _on_home_x(self):
         """Home X axis only."""
         try:
-            self.api.xy_send_gcode("G28 X")
+            self.api.xy_home_x()
         except Exception as e:
             print(f"[Settings] Home X error: {e}")
 
