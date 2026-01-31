@@ -1366,3 +1366,58 @@ body {
     background: linear-gradient(145deg, #34c759, #28a745);
     box-shadow: 0 4px 12px rgba(40, 167, 69, 0.5);
 }
+
+/* Cancel Button */
+.btn-cancel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 140px;
+    padding: 12px 20px;
+    font-size: 16px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: 2px solid #ff6b00;
+    background: linear-gradient(145deg, #ff8c00, #ff6b00);
+    color: white;
+    box-shadow: 0 4px 12px rgba(255, 107, 0, 0.4);
+    margin-left: auto;
+}
+
+.btn-cancel:hover {
+    background: linear-gradient(145deg, #ffa033, #ff8c00);
+    box-shadow: 0 6px 16px rgba(255, 107, 0, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-cancel:active {
+    transform: translateY(1px);
+    box-shadow: 0 2px 8px rgba(255, 107, 0, 0.4);
+}
+
+.btn-cancel .cancel-icon {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.btn-cancel .cancel-text {
+    font-size: 14px;
+}
+
+/* Cancel button animation when cancelling */
+.btn-cancel.cancelling {
+    background: linear-gradient(145deg, #ff4444, #cc0000);
+    border-color: #cc0000;
+    animation: cancel-pulse 0.3s ease-in-out;
+}
+
+@keyframes cancel-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(0.95); }
+    100% { transform: scale(1); }
+}

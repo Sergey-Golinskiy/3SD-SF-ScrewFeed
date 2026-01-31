@@ -559,6 +559,31 @@ def create_app(
             return jsonify({'status': 'estop_cleared'})
         return jsonify({'error': 'Clear ESTOP failed'}), 500
 
+    @app.route('/api/xy/cancel', methods=['POST'])
+    def xy_cancel():
+        """
+        Cancel all XY table commands - immediate stop without persistent E-STOP.
+        Sends M112 (stop) followed by M999 (clear) for instant halt.
+        """
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+
+        # Stop XY table immediately
+        app.xy_table.estop()
+
+        # Small delay to ensure command is processed
+        import time
+        time.sleep(0.05)
+
+        # Clear E-STOP to allow new commands
+        app.xy_table.clear_estop()
+
+        # Also stop any running cycle
+        if app.cycle:
+            app.cycle.stop()
+
+        return jsonify({'status': 'cancelled'})
+
     # === Cycle Control ===
 
     @app.route('/api/cycle/status', methods=['GET'])
