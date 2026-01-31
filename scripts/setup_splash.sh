@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # ScrewDrive Splash Screen Setup Script
-# Based on working configuration from old project
+# All services run from /home/user/3SD-SF-ScrewFeed (no /opt/screwdrive)
 # =============================================================================
 
 set -euo pipefail
@@ -17,6 +17,7 @@ header() {
 echo "========================================"
 echo "ScrewDrive Splash Screen Setup"
 echo "========================================"
+echo "Project directory: $PROJECT_DIR"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -30,27 +31,14 @@ apt update
 
 # 2. Install required packages
 header "Installing required packages"
-apt install -y fbi imagemagick python3-pyqt5 python3-serial python3-flask python3-yaml
+apt install -y fbi imagemagick python3-pyqt5 python3-serial python3-flask python3-yaml python3-lgpio
 
 # 3. Purge plymouth completely
 header "Removing Plymouth (boot splash)"
 apt purge -y plymouth plymouth-themes 2>/dev/null || true
 rm -rf /usr/share/plymouth 2>/dev/null || true
 
-# 4. Create splash directory and copy files
-header "Setting up splash files"
-mkdir -p /opt/splash
-mkdir -p /opt/screwdrive
-
-cp "$PROJECT_DIR/screwdrive/resources/splash.png" /opt/splash/splash.png
-cp "$PROJECT_DIR/screwdrive/services/clear-splash.sh" /opt/splash/clear-splash.sh
-cp "$PROJECT_DIR/screwdrive/resources/kms.json" /opt/screwdrive/kms.json
-
-chmod 644 /opt/splash/splash.png
-chmod +x /opt/splash/clear-splash.sh
-chmod 644 /opt/screwdrive/kms.json
-
-# 5. Configure boot config.txt
+# 4. Configure boot config.txt
 header "Configuring /boot/firmware/config.txt"
 CONFIG_FILE="/boot/firmware/config.txt"
 
@@ -65,7 +53,7 @@ sed -i '/^disable_splash=/d' "$CONFIG_FILE"
 echo "disable_splash=1" >> "$CONFIG_FILE"
 echo "Added: disable_splash=1"
 
-# 6. Configure kernel command line
+# 5. Configure kernel command line
 header "Configuring /boot/firmware/cmdline.txt"
 CMDLINE_FILE="/boot/firmware/cmdline.txt"
 
@@ -85,7 +73,7 @@ if [[ ! "$CMDLINE" =~ "quiet" ]]; then
     echo "Added: quiet loglevel=3 vt.global_cursor_default=0"
 fi
 
-# 7. Set boot behaviour to Console Autologin
+# 6. Set boot behaviour to Console Autologin
 header "Configuring boot behaviour"
 raspi-config nonint do_boot_behaviour B2
 echo "Set boot to: Console Autologin (B2)"
@@ -102,47 +90,40 @@ echo "Disabled: getty@tty1.service (prevents console from overriding touchdesk)"
 usermod -aG video,render user 2>/dev/null || true
 echo "Added user to video,render groups"
 
-# 8. Install splash screen service
+# 7. Install splash screen service
 header "Installing splashscreen.service"
 cp "$PROJECT_DIR/screwdrive/services/splashscreen.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable splashscreen.service
 echo "Enabled: splashscreen.service"
 
-# 9. Check screwdrive-api.service exists
-header "Checking screwdrive-api.service"
-if systemctl list-unit-files | grep -q "screwdrive-api.service"; then
-    echo "Found: screwdrive-api.service"
-    systemctl enable screwdrive-api.service
-else
-    echo "WARNING: screwdrive-api.service not found!"
-    echo "TouchDesk requires screwdrive-api.service to be installed."
-fi
+# 8. Install screwdrive-api service
+header "Installing screwdrive-api.service"
+cp "$PROJECT_DIR/screwdrive/services/screwdrive-api.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable screwdrive-api.service
+echo "Enabled: screwdrive-api.service"
 
-# 10. Install touchdesk service
+# 9. Install touchdesk service
 header "Installing touchdesk.service"
 cp "$PROJECT_DIR/screwdrive/services/touchdesk.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable touchdesk.service
 echo "Enabled: touchdesk.service"
 
-# 11. Copy project files to /opt/screwdrive
-header "Deploying project files"
-cp -r "$PROJECT_DIR/screwdrive"/* /opt/screwdrive/ 2>/dev/null || true
-cp "$PROJECT_DIR"/*.py /opt/screwdrive/ 2>/dev/null || true
-
-# Create necessary temp files
+# 10. Create necessary temp files
+header "Creating temp files"
 touch /tmp/selected_device.json
 touch /tmp/screw_events.jsonl
+echo "Created temp files"
 
-# 12. Setup environment variables for eglfs
+# 11. Setup environment variables for eglfs
 header "Setting up environment variables"
 PROFILE="/etc/profile.d/screwdrive.sh"
-cat > "$PROFILE" << 'EOF'
+cat > "$PROFILE" << EOF
 # ScrewDrive TouchDesk PyQt eglfs KMS setup
 export QT_QPA_PLATFORM=eglfs
-export QT_QPA_EGLFS_INTEGRATION=eglfs_kms
-export QT_QPA_EGLFS_KMS_CONFIG=/opt/screwdrive/kms.json
+export QT_QPA_EGLFS_KMS_CONFIG=$PROJECT_DIR/screwdrive/resources/kms.json
 EOF
 chmod 644 "$PROFILE"
 echo "Created: $PROFILE"
@@ -153,9 +134,8 @@ echo "Setup complete!"
 echo "========================================"
 echo ""
 echo "Changes made:"
-echo "  [✓] Installed fbi, imagemagick"
+echo "  [✓] Installed fbi, imagemagick, python3-lgpio"
 echo "  [✓] Removed Plymouth completely"
-echo "  [✓] Copied splash.png to /opt/splash/"
 echo "  [✓] Disabled Raspberry Pi rainbow splash"
 echo "  [✓] Redirected console from tty1 to tty3"
 echo "  [✓] Added quiet boot parameters"
@@ -163,8 +143,10 @@ echo "  [✓] Set boot to Console Autologin (B2)"
 echo "  [✓] Disabled getty@tty1 (prevents console takeover)"
 echo "  [✓] Added user to video,render groups"
 echo "  [✓] Enabled splashscreen.service"
-echo "  [✓] Enabled touchdesk.service (depends on screwdrive-api.service)"
-echo "  [✓] Deployed project to /opt/screwdrive/"
+echo "  [✓] Enabled screwdrive-api.service"
+echo "  [✓] Enabled touchdesk.service"
+echo ""
+echo "All services run from: $PROJECT_DIR"
 echo ""
 echo "Services status:"
 systemctl is-enabled splashscreen.service || true

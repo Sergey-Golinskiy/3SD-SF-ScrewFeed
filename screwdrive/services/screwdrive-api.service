@@ -1,0 +1,17 @@
+[Unit]
+Description=ScrewDrive Control System API
+After=network.target
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive
+ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/main.py
+Restart=on-failure
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

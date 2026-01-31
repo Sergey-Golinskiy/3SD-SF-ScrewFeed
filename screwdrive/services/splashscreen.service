@@ -8,7 +8,7 @@ Before=graphical.target
 Type=simple
 RemainAfterExit=yes
 Environment=FRAMEBUFFER=/dev/fb0
-ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /opt/splash/splash.png
+ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /home/user/3SD-SF-ScrewFeed/screwdrive/resources/splash.png
 
 [Install]
 WantedBy=multi-user.target
