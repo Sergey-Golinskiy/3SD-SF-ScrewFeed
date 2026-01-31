@@ -420,12 +420,17 @@ class StartTab(QWidget):
         if (now - self._devices_refresh_ts) > 2.0 or not self._devices:
             self._devices_refresh_ts = now
             try:
+                log_to_file("StartTab: fetching devices...")
                 devices = self.api.devices()
+                log_to_file(f"StartTab: got {len(devices) if devices else 0} devices")
                 if devices and isinstance(devices, list) and devices != self._devices:
+                    log_to_file(f"StartTab: rebuilding devices list...")
                     self._devices = devices
                     self._rebuild_devices(devices)
+                    log_to_file("StartTab: rebuild DONE")
             except Exception as e:
-                print(f"[StartTab] devices error: {e}")
+                import traceback
+                log_to_file(f"StartTab: devices error: {e}\n{traceback.format_exc()}")
 
         try:
             cycle = st.get("cycle") or {}
@@ -435,7 +440,8 @@ class StartTab(QWidget):
             for btn in self._device_buttons.values():
                 btn.setEnabled(not is_running)
         except Exception as e:
-            print(f"[StartTab] render error: {e}")
+            import traceback
+            log_to_file(f"StartTab: render error: {e}\n{traceback.format_exc()}")
 
 
 class ServiceTab(QWidget):
