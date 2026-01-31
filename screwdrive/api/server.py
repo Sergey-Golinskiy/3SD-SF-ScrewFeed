@@ -568,19 +568,33 @@ def create_app(
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
 
-        # Stop XY table immediately
-        app.xy_table.estop()
+        errors = []
+
+        try:
+            # Stop XY table immediately
+            app.xy_table.estop()
+        except Exception as e:
+            errors.append(f'estop: {str(e)}')
 
         # Small delay to ensure command is processed
         import time
         time.sleep(0.05)
 
-        # Clear E-STOP to allow new commands
-        app.xy_table.clear_estop()
+        try:
+            # Clear E-STOP to allow new commands
+            app.xy_table.clear_estop()
+        except Exception as e:
+            errors.append(f'clear_estop: {str(e)}')
 
         # Also stop any running cycle
-        if app.cycle:
-            app.cycle.stop()
+        try:
+            if app.cycle:
+                app.cycle.stop()
+        except Exception as e:
+            errors.append(f'cycle_stop: {str(e)}')
+
+        if errors:
+            return jsonify({'status': 'cancelled_with_errors', 'errors': errors})
 
         return jsonify({'status': 'cancelled'})
 
