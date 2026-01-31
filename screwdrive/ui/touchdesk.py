@@ -353,17 +353,26 @@ class StartTab(QWidget):
         self.btnStart.clicked.connect(self.on_start)
 
     def _rebuild_devices(self, devices: list):
-        # Clear old
-        for i in reversed(range(self.devListLay.count())):
-            w = self.devListLay.itemAt(i).widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        # Clear old widgets safely
+        while self.devListLay.count():
+            item = self.devListLay.takeAt(0)
+            if item:
+                w = item.widget()
+                if w:
+                    w.deleteLater()
         self._device_buttons.clear()
 
+        # Safety check for devices
+        if not devices:
+            return
+
         for d in devices:
+            if not isinstance(d, dict):
+                continue
             key = d.get("key")
-            name = d.get("name", key or "?")
+            if not key:
+                continue
+            name = d.get("name", key)
             holes = d.get("holes", 0)
             text = f"{name}\n{holes} holes"
 
@@ -408,18 +417,21 @@ class StartTab(QWidget):
         # Refresh devices periodically
         try:
             devices = self.api.devices()
-            if devices != self._devices:
+            if devices and devices != self._devices:
                 self._devices = devices
                 self._rebuild_devices(devices)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[StartTab] devices error: {e}")
 
-        cycle = st.get("cycle", {})
-        is_running = cycle.get("state", "IDLE") not in ("IDLE", "COMPLETED")
-        self.btnStart.setEnabled(not is_running and bool(self._selected_key))
+        try:
+            cycle = st.get("cycle") or {}
+            is_running = cycle.get("state", "IDLE") not in ("IDLE", "COMPLETED")
+            self.btnStart.setEnabled(not is_running and bool(self._selected_key))
 
-        for btn in self._device_buttons.values():
-            btn.setEnabled(not is_running)
+            for btn in self._device_buttons.values():
+                btn.setEnabled(not is_running)
+        except Exception as e:
+            print(f"[StartTab] render error: {e}")
 
 
 class ServiceTab(QWidget):
