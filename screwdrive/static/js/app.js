@@ -99,7 +99,7 @@ async function updateStatus() {
 function updateConnectionIndicator(connected) {
     const indicator = $('connectionStatus');
     indicator.className = `status-indicator ${connected ? 'connected' : 'error'}`;
-    indicator.querySelector('.text').textContent = connected ? 'Connected' : 'Disconnected';
+    indicator.querySelector('.text').textContent = connected ? 'Підключено' : 'Відключено';
 }
 
 function updateStatusTab(status) {

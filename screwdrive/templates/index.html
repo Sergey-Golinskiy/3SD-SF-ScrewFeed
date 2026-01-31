@@ -3,26 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScrewDrive Control Panel</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Панель керування відкруткою</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.2">
 </head>
 <body>
     <div class="app">
         <!-- Header -->
         <header class="header">
-            <h1>ScrewDrive Control Panel</h1>
-            <div class="status-indicator" id="connectionStatus">
-                <span class="dot"></span>
-                <span class="text">Connecting...</span>
+            <h1>Панель керування відкруткою</h1>
+            <div class="header-right">
+                <span class="version">v1.0.2</span>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="dot"></span>
+                    <span class="text">Підключення...</span>
+                </div>
             </div>
         </header>
 
         <!-- Tab Navigation -->
         <nav class="tabs">
-            <button class="tab-btn active" data-tab="status">Status</button>
-            <button class="tab-btn" data-tab="control">Control</button>
-            <button class="tab-btn" data-tab="xy">XY Table</button>
-            <button class="tab-btn" data-tab="settings">Settings</button>
+            <button class="tab-btn active" data-tab="status">Статус</button>
+            <button class="tab-btn" data-tab="control">Керування</button>
+            <button class="tab-btn" data-tab="xy">XY Стіл</button>
+            <button class="tab-btn" data-tab="settings">Налаштування</button>
         </nav>
 
         <!-- Tab Content -->
@@ -306,6 +312,6 @@
         </main>
     </div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=1.0.2"></script>
 </body>
 </html>

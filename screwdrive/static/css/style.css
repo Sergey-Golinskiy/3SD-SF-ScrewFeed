@@ -58,6 +58,21 @@ body {
     color: var(--text-primary);
 }
 
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.version {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-weight: 500;
+}
+
 .status-indicator {
     display: flex;
     align-items: center;
