@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Панель керування відкруткою</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.0.13">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.14">
 </head>
 <body>
     <div class="app">
@@ -15,7 +15,7 @@
         <header class="header">
             <h1>Панель керування відкруткою</h1>
             <div class="header-right">
-                <span class="version">v1.0.13</span>
+                <span class="version">v1.0.14</span>
                 <div class="status-indicator" id="connectionStatus">
                     <span class="dot"></span>
                     <span class="text">Підключення...</span>
@@ -243,6 +243,20 @@
                         <button class="btn btn-secondary" id="btnEnableMotors">Enable Motors</button>
                         <button class="btn btn-secondary" id="btnDisableMotors">Disable Motors</button>
                     </div>
+                    <div class="control-row brake-controls">
+                        <div class="brake-control">
+                            <span class="brake-label">Гальмо X:</span>
+                            <button class="btn btn-brake" id="btnBrakeX" data-brake="x">
+                                <span class="brake-status" id="brakeXStatus">--</span>
+                            </button>
+                        </div>
+                        <div class="brake-control">
+                            <span class="brake-label">Гальмо Y:</span>
+                            <button class="btn btn-brake" id="btnBrakeY" data-brake="y">
+                                <span class="brake-status" id="brakeYStatus">--</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -358,6 +372,6 @@
         </main>
     </div>
 
-    <script src="/static/js/app.js?v=1.0.13"></script>
+    <script src="/static/js/app.js?v=1.0.14"></script>
 </body>
 </html>

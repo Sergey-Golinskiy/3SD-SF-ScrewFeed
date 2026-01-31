@@ -13,7 +13,9 @@ const state = {
     selectedDevice: null,
     editingDevice: null,
     coordRows: [],
-    lastEstopState: null  // Track emergency stop button state
+    lastEstopState: null,  // Track emergency stop button state
+    brakeX: false,  // true = brake released (relay ON), false = brake engaged (relay OFF)
+    brakeY: false   // true = brake released (relay ON), false = brake engaged (relay OFF)
 };
 
 // API Functions
@@ -397,6 +399,33 @@ function updateXYTab(status) {
     const homedY = $('xyHomedY');
     homedY.textContent = xy.y_homed ? 'Y: захомлено' : 'Y: не захомлено';
     homedY.className = `homed-indicator ${xy.y_homed ? 'homed' : 'not-homed'}`;
+
+    // Update brake states from relays
+    updateBrakeStatus(status.relays || {});
+}
+
+// Brake status update
+function updateBrakeStatus(relays) {
+    // r02_brake_x: ON = brake released (can move), OFF = brake engaged (blocked)
+    // r03_brake_y: ON = brake released (can move), OFF = brake engaged (blocked)
+    state.brakeX = relays.r02_brake_x === 'ON';
+    state.brakeY = relays.r03_brake_y === 'ON';
+
+    // Update brake X button
+    const brakeXBtn = $('btnBrakeX');
+    const brakeXStatus = $('brakeXStatus');
+    if (brakeXBtn && brakeXStatus) {
+        brakeXStatus.textContent = state.brakeX ? 'ВІДПУЩЕНО' : 'ЗАТИСНУТО';
+        brakeXBtn.className = `btn btn-brake ${state.brakeX ? 'brake-released' : 'brake-engaged'}`;
+    }
+
+    // Update brake Y button
+    const brakeYBtn = $('btnBrakeY');
+    const brakeYStatus = $('brakeYStatus');
+    if (brakeYBtn && brakeYStatus) {
+        brakeYStatus.textContent = state.brakeY ? 'ВІДПУЩЕНО' : 'ЗАТИСНУТО';
+        brakeYBtn.className = `btn btn-brake ${state.brakeY ? 'brake-released' : 'brake-engaged'}`;
+    }
 }
 
 function getServiceStatusText(status) {
@@ -486,15 +515,31 @@ function initXYTab() {
             if (dir === 'y+') dy = step;
             if (dir === 'y-') dy = -step;
 
+            // Check brakes before jogging
+            if (dx !== 0 && !checkBrakeX()) return;
+            if (dy !== 0 && !checkBrakeY()) return;
+
             api.post('/xy/jog', { dx, dy, feed });
         });
     });
 
-    // Home buttons
-    $('btnXYHome').addEventListener('click', () => api.post('/xy/home'));
-    $('btnHomeX').addEventListener('click', () => api.post('/xy/home/x'));
-    $('btnHomeY').addEventListener('click', () => api.post('/xy/home/y'));
-    $('btnZero').addEventListener('click', () => api.post('/xy/zero'));
+    // Home buttons with brake checks
+    $('btnXYHome').addEventListener('click', () => {
+        if (!checkBothBrakes()) return;
+        api.post('/xy/home');
+    });
+    $('btnHomeX').addEventListener('click', () => {
+        if (!checkBrakeX()) return;
+        api.post('/xy/home/x');
+    });
+    $('btnHomeY').addEventListener('click', () => {
+        if (!checkBrakeY()) return;
+        api.post('/xy/home/y');
+    });
+    $('btnZero').addEventListener('click', () => {
+        if (!checkBothBrakes()) return;
+        api.post('/xy/zero');
+    });
 
     // Motor control
     $('btnEnableMotors').addEventListener('click', async () => {
@@ -518,8 +563,89 @@ function initXYTab() {
         const x = parseFloat($('moveX').value);
         const y = parseFloat($('moveY').value);
         const feed = parseFloat($('moveFeed').value);
+
+        // Check brakes before moving
+        if (!checkBrakesForMove(x, y)) {
+            return;
+        }
         api.post('/xy/move', { x, y, feed });
     });
+
+    // Brake control buttons
+    $('btnBrakeX').addEventListener('click', toggleBrakeX);
+    $('btnBrakeY').addEventListener('click', toggleBrakeY);
+}
+
+// Brake toggle functions
+async function toggleBrakeX() {
+    try {
+        const newState = state.brakeX ? 'off' : 'on';
+        await api.post('/relays/r02_brake_x', { state: newState });
+        // Status will be updated on next poll
+    } catch (error) {
+        console.error('Toggle brake X failed:', error);
+        alert('Помилка перемикання гальма X: ' + error.message);
+    }
+}
+
+async function toggleBrakeY() {
+    try {
+        const newState = state.brakeY ? 'off' : 'on';
+        await api.post('/relays/r03_brake_y', { state: newState });
+        // Status will be updated on next poll
+    } catch (error) {
+        console.error('Toggle brake Y failed:', error);
+        alert('Помилка перемикання гальма Y: ' + error.message);
+    }
+}
+
+// Check brakes before movement
+function checkBrakesForMove(targetX, targetY) {
+    const currentX = state.status?.xy_table?.x || 0;
+    const currentY = state.status?.xy_table?.y || 0;
+
+    const movingX = Math.abs(targetX - currentX) > 0.01;
+    const movingY = Math.abs(targetY - currentY) > 0.01;
+
+    if (movingX && !state.brakeX) {
+        alert('Гальмо X затиснуто! Відпустіть гальмо X перед рухом по осі X.');
+        return false;
+    }
+
+    if (movingY && !state.brakeY) {
+        alert('Гальмо Y затиснуто! Відпустіть гальмо Y перед рухом по осі Y.');
+        return false;
+    }
+
+    return true;
+}
+
+function checkBrakeX() {
+    if (!state.brakeX) {
+        alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+function checkBrakeY() {
+    if (!state.brakeY) {
+        alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+function checkBothBrakes() {
+    if (!state.brakeX) {
+        alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
+        return false;
+    }
+    if (!state.brakeY) {
+        alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
+        return false;
+    }
+    return true;
 }
 
 // Settings Tab - Device Management
@@ -744,6 +870,11 @@ async function goToCoord(btn) {
     const feedStr = row.querySelector('.coord-feed').value || '5000';
     const feed = parseFloat(feedStr.replace(/[Ff]\s*/g, '')) || 5000;
 
+    // Check brakes before moving
+    if (!checkBrakesForMove(x, y)) {
+        return;
+    }
+
     try {
         await api.post('/xy/move', { x, y, feed });
     } catch (error) {
@@ -771,14 +902,27 @@ function initSettingsTab() {
             if (dir === 'y+') dy = step;
             if (dir === 'y-') dy = -step;
 
+            // Check brakes before jogging
+            if (dx !== 0 && !checkBrakeX()) return;
+            if (dy !== 0 && !checkBrakeY()) return;
+
             api.post('/xy/jog', { dx, dy, feed });
         });
     });
 
-    // Home buttons in settings
-    $('btnHomeSettings').addEventListener('click', () => api.post('/xy/home'));
-    $('btnHomeXSettings').addEventListener('click', () => api.post('/xy/home/x'));
-    $('btnHomeYSettings').addEventListener('click', () => api.post('/xy/home/y'));
+    // Home buttons in settings with brake checks
+    $('btnHomeSettings').addEventListener('click', () => {
+        if (!checkBothBrakes()) return;
+        api.post('/xy/home');
+    });
+    $('btnHomeXSettings').addEventListener('click', () => {
+        if (!checkBrakeX()) return;
+        api.post('/xy/home/x');
+    });
+    $('btnHomeYSettings').addEventListener('click', () => {
+        if (!checkBrakeY()) return;
+        api.post('/xy/home/y');
+    });
 }
 
 // Update XY position on settings tab
