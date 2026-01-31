@@ -1068,55 +1068,65 @@ body {
 
 /* ========== RELAY CONTROL NEW STYLES ========== */
 
-.relay-control-new {
-    display: flex;
-    align-items: center;
+.relay-control-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;
-    padding: 12px 16px;
+}
+
+.relay-control-new {
     background: var(--bg-secondary);
     border-radius: var(--radius);
-    margin-bottom: 10px;
-    flex-wrap: wrap;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.relay-control-new .relay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .relay-control-new .relay-name {
     font-weight: 600;
     color: var(--text-primary);
-    min-width: 150px;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .relay-control-new .relay-status {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 10px;
     font-weight: 700;
-    min-width: 50px;
-    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .relay-control-new .relay-status.on {
-    background: #d4edda;
-    color: #155724;
+    background: #28a745;
+    color: white;
 }
 
 .relay-control-new .relay-status.off {
-    background: #f8d7da;
-    color: #721c24;
+    background: #6c757d;
+    color: white;
 }
 
 .relay-control-new .relay-buttons {
     display: flex;
-    gap: 8px;
-    align-items: center;
-    margin-left: auto;
+    gap: 6px;
 }
 
 .btn-relay {
-    padding: 6px 14px;
+    flex: 1;
+    padding: 8px 4px;
     border: none;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
@@ -1149,8 +1159,20 @@ body {
     background: #e0a800;
 }
 
+.relay-control-new .pulse-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.relay-control-new .pulse-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
 .pulse-duration {
-    width: 70px;
+    flex: 1;
     padding: 6px 8px;
     border: 1px solid var(--border-light);
     border-radius: 4px;
@@ -1161,5 +1183,10 @@ body {
 }
 
 .pulse-duration::placeholder {
+    color: var(--text-muted);
+}
+
+.pulse-unit {
+    font-size: 11px;
     color: var(--text-muted);
 }

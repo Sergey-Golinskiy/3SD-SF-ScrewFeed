@@ -165,18 +165,24 @@ function updateControlTab(status) {
     const relays = status.relays || {};
 
     if (grid.children.length === 0) {
-        // Initial render with ON/OFF/PULSE buttons
+        // Initial render with card-style layout
         for (const [name, value] of Object.entries(relays)) {
             const isOn = value === 'ON' || value === true;
             grid.innerHTML += `
                 <div class="relay-control-new" data-relay-name="${name}">
-                    <span class="relay-name">${formatName(name)}</span>
-                    <span class="relay-status ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
+                    <div class="relay-header">
+                        <span class="relay-name">${formatName(name)}</span>
+                        <span class="relay-status ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
+                    </div>
                     <div class="relay-buttons">
                         <button class="btn-relay btn-on" onclick="relayOn('${name}')">ON</button>
                         <button class="btn-relay btn-off" onclick="relayOff('${name}')">OFF</button>
+                    </div>
+                    <div class="pulse-row">
+                        <span class="pulse-label">Імпульс:</span>
+                        <input type="number" class="pulse-duration" value="500" min="50" max="5000" step="50">
+                        <span class="pulse-unit">мс</span>
                         <button class="btn-relay btn-pulse" onclick="relayPulse('${name}')">PULSE</button>
-                        <input type="number" class="pulse-duration" value="500" min="50" max="5000" step="50" placeholder="мс">
                     </div>
                 </div>
             `;
