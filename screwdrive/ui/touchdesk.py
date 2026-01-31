@@ -884,18 +884,39 @@ QTextEdit {{
 """
 
 
+def exception_hook(exctype, value, tb):
+    """Global exception handler to log crashes."""
+    import traceback
+    print("=" * 50)
+    print("UNCAUGHT EXCEPTION:")
+    print("".join(traceback.format_exception(exctype, value, tb)))
+    print("=" * 50)
+    sys.__excepthook__(exctype, value, tb)
+
+
 def main():
-    app = QApplication(sys.argv)
-    app.setOverrideCursor(QCursor(Qt.BlankCursor))
-    app.setStyleSheet(APP_QSS)
-    f = QFont()
-    f.setPixelSize(16)
-    app.setFont(f)
+    # Install global exception hook
+    sys.excepthook = exception_hook
 
-    w = MainWindow()
-    w.show()
+    try:
+        app = QApplication(sys.argv)
+        app.setOverrideCursor(QCursor(Qt.BlankCursor))
+        app.setStyleSheet(APP_QSS)
+        f = QFont()
+        f.setPixelSize(16)
+        app.setFont(f)
 
-    sys.exit(app.exec_())
+        w = MainWindow()
+        w.show()
+
+        sys.exit(app.exec_())
+    except Exception as e:
+        import traceback
+        print("=" * 50)
+        print(f"FATAL ERROR: {e}")
+        print(traceback.format_exc())
+        print("=" * 50)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
