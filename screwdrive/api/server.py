@@ -564,38 +564,62 @@ def create_app(
         """
         Cancel all XY table commands - immediate stop without persistent E-STOP.
         Sends M112 (stop) followed by M999 (clear) for instant halt.
-        Position will be updated via normal polling after cancel.
+        Returns actual position after stop.
         """
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
 
-        import time
+        errors = []
 
         try:
-            # Stop XY table immediately (bypasses lock)
+            # Stop XY table immediately
             app.xy_table.estop()
         except Exception as e:
-            print(f"Cancel estop error: {e}")
+            errors.append(f'estop: {str(e)}')
 
-        # Small delay to ensure M112 is processed
+        # Small delay to ensure command is processed
+        import time
         time.sleep(0.05)
 
         try:
-            # Clear E-STOP to allow new commands (bypasses lock)
+            # Clear E-STOP to allow new commands
             app.xy_table.clear_estop()
         except Exception as e:
-            print(f"Cancel clear_estop error: {e}")
+            errors.append(f'clear_estop: {str(e)}')
+
+        # Wait a bit for xy_cli to update its position
+        time.sleep(0.1)
+
+        # Get actual position after cancel
+        actual_position = {'x': 0, 'y': 0}
+        try:
+            # Request current status to get actual position
+            app.xy_table.get_status()
+            actual_position = {
+                'x': app.xy_table.position.x,
+                'y': app.xy_table.position.y
+            }
+        except Exception as e:
+            errors.append(f'get_position: {str(e)}')
 
         # Also stop any running cycle
         try:
             if app.cycle:
                 app.cycle.stop()
         except Exception as e:
-            print(f"Cancel cycle_stop error: {e}")
+            errors.append(f'cycle_stop: {str(e)}')
 
-        # Position will be updated via normal polling (next /api/status call)
-        # Don't try to get_status() here as it may conflict with pending commands
-        return jsonify({'status': 'cancelled'})
+        if errors:
+            return jsonify({
+                'status': 'cancelled_with_errors',
+                'errors': errors,
+                'position': actual_position
+            })
+
+        return jsonify({
+            'status': 'cancelled',
+            'position': actual_position
+        })
 
     # === Cycle Control ===
 
