@@ -100,9 +100,14 @@ cur_x_mm = 0.0
 cur_y_mm = 0.0
 cur_feed_mm_min = 1000.0  # Current/default feed rate (mm/min)
 estop = False  # Emergency stop flag
+cancel_requested = False  # Flag to cancel current motion (checked in step loops)
 
 # Lazy GPIO initialization
 io: Optional["GPIO"] = None
+
+# Serial reader thread for background command processing
+_serial_lock = None  # threading.Lock for serial access
+_serial_port = None  # Serial port object for background reader
 
 
 # =========================
@@ -227,8 +232,10 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
         use_accel: Enable acceleration/deceleration ramp
         steps_per_mm: Steps per mm (for acceleration calculation)
 
-    Returns True if finished normally, False if stopped by endstop.
+    Returns True if finished normally, False if stopped by endstop or cancel.
     """
+    global cancel_requested
+
     if steps <= 0:
         return True
 
@@ -245,6 +252,9 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
         t = time.perf_counter_ns()
 
         for _ in range(steps):
+            # Check for cancel request
+            if cancel_requested:
+                return False
             if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
                 return False
 
@@ -295,6 +305,9 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
     step_count = 0
 
     for i in range(steps):
+        # Check for cancel request
+        if cancel_requested:
+            return False
         if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
             return False
 
@@ -410,9 +423,9 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     Uses trapezoidal motion profile for smooth acceleration/deceleration.
     Returns True if move completed successfully.
     """
-    global cur_x_mm, cur_y_mm
+    global cur_x_mm, cur_y_mm, cancel_requested
 
-    if estop:
+    if estop or cancel_requested:
         return False
 
     if x_mm is None:
@@ -504,6 +517,15 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     t = time.perf_counter_ns()
 
     for step_i in range(total_steps):
+        # Check for cancel request
+        if cancel_requested:
+            # Update position based on steps done so far
+            if done_x > 0:
+                cur_x_mm += (done_x / STEPS_PER_MM_X) * (1 if dx >= 0 else -1)
+            if done_y > 0:
+                cur_y_mm += (done_y / STEPS_PER_MM_Y) * (1 if dy >= 0 else -1)
+            return False
+
         # Calculate distance traveled based on steps done
         actual_dx = done_x / STEPS_PER_MM_X if STEPS_PER_MM_X > 0 else 0
         actual_dy = done_y / STEPS_PER_MM_Y if STEPS_PER_MM_Y > 0 else 0
@@ -1514,19 +1536,27 @@ def run_cli_mode() -> None:
 
 
 def run_serial_mode(port: str, baud: int) -> None:
-    """Run serial mode for remote control."""
+    """Run serial mode for remote control with background command reading."""
+    global cancel_requested, estop, _serial_port, _serial_lock
+
     try:
         import serial
     except ImportError:
         print("ERROR: pyserial not found. Install with: pip install pyserial")
         sys.exit(1)
 
+    import threading
+    import queue
+
     print(f"Opening serial port {port} at {baud} baud...")
     try:
-        ser = serial.Serial(port, baud, timeout=0.1)
+        ser = serial.Serial(port, baud, timeout=0.01)  # Short timeout for responsive reading
     except Exception as e:
         print(f"ERROR: Cannot open serial port: {e}")
         sys.exit(1)
+
+    _serial_port = ser
+    _serial_lock = threading.Lock()
 
     print(f"Serial mode active. Listening on {port}")
     enable_all(True)
@@ -1534,18 +1564,26 @@ def run_serial_mode(port: str, baud: int) -> None:
     # Send ready message
     ser.write(b"ok READY\n")
 
-    buffer = ""
+    # Command queue for non-emergency commands
+    cmd_queue = queue.Queue()
+    reader_running = True
 
-    try:
-        while True:
-            # Read available data
-            if ser.in_waiting > 0:
-                data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
-                buffer += data
+    def serial_reader():
+        """Background thread to read serial commands."""
+        global cancel_requested, estop
+        nonlocal reader_running
+
+        buffer = ""
+
+        while reader_running:
+            try:
+                with _serial_lock:
+                    if ser.in_waiting > 0:
+                        data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                        buffer += data
 
                 # Process complete lines
                 while '\n' in buffer or '\r' in buffer:
-                    # Find line ending
                     idx = -1
                     for i, c in enumerate(buffer):
                         if c in '\n\r':
@@ -1553,23 +1591,73 @@ def run_serial_mode(port: str, baud: int) -> None:
                             break
 
                     if idx >= 0:
-                        line = buffer[:idx].strip()
+                        line = buffer[:idx].strip().upper()
                         buffer = buffer[idx+1:].lstrip('\n\r')
 
                         if line:
-                            response = handle_command(line)
-                            if response == "QUIT":
-                                ser.write(b"ok BYE\n")
-                                return
-                            if response:
-                                ser.write((response + "\n").encode('utf-8'))
+                            # Check for emergency commands - handle immediately
+                            if line == 'M112' or line == 'CANCEL':
+                                print(f"EMERGENCY: {line} received - stopping immediately")
+                                cancel_requested = True
+                                estop = True
+                                enable_all(False)
+                                # Send response immediately
+                                with _serial_lock:
+                                    ser.write(b"ok ESTOP\n")
+                            elif line == 'M999':
+                                print("CLEAR: M999 received - clearing cancel/estop")
+                                cancel_requested = False
+                                estop = False
+                                enable_all(True)
+                                with _serial_lock:
+                                    ser.write(b"ok CLEAR\n")
+                            else:
+                                # Queue other commands for main thread
+                                cmd_queue.put(line)
+
+                time.sleep(0.001)
+            except Exception as e:
+                print(f"Serial reader error: {e}")
+                time.sleep(0.01)
+
+    # Start background reader thread
+    reader_thread = threading.Thread(target=serial_reader, daemon=True)
+    reader_thread.start()
+    print("Background serial reader started")
+
+    try:
+        while True:
+            # Process commands from queue
+            try:
+                line = cmd_queue.get(timeout=0.01)
+
+                # Skip if we're in cancel/estop state
+                if cancel_requested or estop:
+                    with _serial_lock:
+                        ser.write(b"err ESTOP\n")
+                    continue
+
+                response = handle_command(line)
+                if response == "QUIT":
+                    with _serial_lock:
+                        ser.write(b"ok BYE\n")
+                    return
+                if response:
+                    with _serial_lock:
+                        ser.write((response + "\n").encode('utf-8'))
+
+            except queue.Empty:
+                pass
 
             time.sleep(0.001)
 
     except KeyboardInterrupt:
         print("\nSerial mode interrupted")
     finally:
+        reader_running = False
+        reader_thread.join(timeout=1.0)
         ser.close()
+        print("Serial port closed")
 
 
 def main() -> None:
