@@ -618,22 +618,49 @@ class XYTableController:
     # === Control Commands ===
 
     def estop(self) -> bool:
-        """Trigger emergency stop."""
-        response = self._send_command("M112")
-        if response and "ok" in response.lower():
+        """
+        Trigger emergency stop - BYPASSES LOCK for immediate response.
+        This is intentional to allow stopping during movement.
+        """
+        if self._serial is None:
+            return False
+
+        try:
+            # Write directly to serial WITHOUT waiting for lock
+            # This allows M112 to be sent even while another command is in progress
+            self._serial.write(b"M112\n")
+            self._serial.flush()
+            print("ESTOP: M112 sent directly (bypassing lock)")
+
             self._state = XYTableState.ESTOP
             self._notify_state_change()
             return True
-        return False
+        except Exception as e:
+            print(f"ESTOP error: {e}")
+            return False
 
     def clear_estop(self) -> bool:
-        """Clear emergency stop."""
-        response = self._send_command("M999")
-        if response and "ok" in response.lower():
+        """
+        Clear emergency stop - BYPASSES LOCK for immediate response.
+        """
+        if self._serial is None:
+            return False
+
+        try:
+            # Write directly to serial WITHOUT waiting for lock
+            self._serial.write(b"M999\n")
+            self._serial.flush()
+            print("CLEAR: M999 sent directly (bypassing lock)")
+
+            # Small delay to let xy_cli process the command
+            time.sleep(0.05)
+
             self._state = XYTableState.READY
             self._notify_state_change()
             return True
-        return False
+        except Exception as e:
+            print(f"Clear ESTOP error: {e}")
+            return False
 
     def enable_motors(self) -> bool:
         """Enable stepper motors."""
