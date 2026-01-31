@@ -700,3 +700,353 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
+
+/* ========== NEW SETTINGS TAB STYLES ========== */
+
+/* Settings Layout - Two Column */
+.settings-layout-new {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    min-height: calc(100vh - 200px);
+}
+
+@media (max-width: 1024px) {
+    .settings-layout-new {
+        grid-template-columns: 1fr;
+    }
+}
+
+.settings-left {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-right {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Device List - Light Theme Style */
+.settings-left .device-list {
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.device-item {
+    padding: 10px 14px;
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: #333;
+}
+
+.device-item:hover {
+    background: #eee;
+    border-color: #ccc;
+}
+
+.device-item.selected {
+    background: #e3f2fd;
+    border-color: var(--accent-blue);
+}
+
+.device-item .device-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.device-item .device-info {
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+}
+
+/* XY Control Compact */
+.xy-control-compact {
+    text-align: center;
+}
+
+.xy-pos-display {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    padding: 12px;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+}
+
+.jog-grid-compact {
+    display: grid;
+    grid-template-columns: repeat(3, 60px);
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+
+.btn-jog-compact {
+    width: 60px;
+    height: 45px;
+    background: var(--accent-blue);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-jog-compact:hover {
+    background: var(--accent-blue-hover);
+}
+
+.jog-step-compact {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.jog-step-compact label {
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.input-select-sm {
+    padding: 6px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.home-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn-home-sm {
+    padding: 8px 16px;
+    background: var(--accent-blue);
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-home-sm:hover {
+    background: var(--accent-blue-hover);
+}
+
+.btn-home-sm.btn-home-y {
+    background: #2196f3;
+}
+
+.btn-home-sm.btn-home-x {
+    background: #f44336;
+}
+
+/* Coordinates Table - New Style */
+.coords-table {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 12px;
+}
+
+.coords-header-new {
+    display: grid;
+    grid-template-columns: 40px 1fr 1fr 140px 100px 40px;
+    gap: 10px;
+    padding: 10px 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 8px;
+}
+
+.coords-list-new {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.coord-row-new {
+    display: grid;
+    grid-template-columns: 40px 1fr 1fr 140px 100px 40px;
+    gap: 10px;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    align-items: center;
+}
+
+.coord-row-new .row-num {
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: center;
+    font-size: 14px;
+}
+
+.coord-row-new input,
+.coord-row-new select {
+    padding: 8px 10px;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    color: #333;
+    font-size: 13px;
+    width: 100%;
+}
+
+.coord-row-new input:focus,
+.coord-row-new select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.coord-row-new input::placeholder {
+    color: #999;
+}
+
+.coord-row-new .coord-type {
+    background: #fff;
+}
+
+.coord-row-new .coord-type option {
+    padding: 8px;
+}
+
+.coord-row-new .btn-del-new {
+    width: 32px;
+    height: 32px;
+    background: #ffebee;
+    color: #f44336;
+    border: none;
+    border-radius: 4px;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.coord-row-new .btn-del-new:hover {
+    background: #ffcdd2;
+}
+
+/* Type dropdown styling */
+.coord-type-dropdown {
+    position: relative;
+}
+
+.coord-type-work {
+    background: #fff3e0 !important;
+    color: #e65100;
+    font-weight: 600;
+}
+
+.coord-type-free {
+    background: #f5f5f5 !important;
+    color: #666;
+}
+
+/* Editor Form - New Style */
+.editor-form-new {
+    margin-bottom: 16px;
+}
+
+.form-row-new {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.form-group-new {
+    flex: 1;
+    min-width: 140px;
+}
+
+.form-group-new input {
+    width: 100%;
+    padding: 12px 14px;
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #333;
+    font-size: 14px;
+}
+
+.form-group-new input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.form-group-new input::placeholder {
+    color: #999;
+}
+
+.form-group-buttons {
+    display: flex;
+    gap: 10px;
+    flex: 2;
+}
+
+.btn-save-large {
+    flex: 2;
+    padding: 12px 20px;
+    background: #ffc107;
+    color: #333;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-save-large:hover {
+    background: #ffb300;
+}
+
+.btn-cancel-large {
+    flex: 1;
+    padding: 12px 20px;
+    background: #f44336;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-cancel-large:hover {
+    background: #d32f2f;
+}
+
+.btn-delete-device {
+    width: 100%;
+    margin-top: 12px;
+    padding: 10px;
+    background: #5a2d2d;
+    color: var(--accent-red);
+}

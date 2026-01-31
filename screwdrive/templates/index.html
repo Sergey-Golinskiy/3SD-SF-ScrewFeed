@@ -196,79 +196,109 @@
 
             <!-- Settings Tab -->
             <section id="settings" class="tab-panel">
-                <div class="settings-layout">
-                    <!-- Left: Device List -->
-                    <div class="card settings-devices">
-                        <div class="card-header">
-                            <h2>Devices</h2>
-                            <button class="btn btn-add" id="btnNewDevice">+</button>
-                        </div>
-                        <div class="device-list" id="deviceList">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-
-                    <!-- Right: Editor -->
-                    <div class="card settings-editor">
-                        <h2>Device Editor</h2>
-
-                        <div class="editor-form">
-                            <input type="hidden" id="editDeviceKey">
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Name (Key)</label>
-                                    <input type="text" id="editName" class="input-text" placeholder="MCO_BACK">
-                                </div>
-                                <div class="form-group">
-                                    <label>Description</label>
-                                    <input type="text" id="editWhat" class="input-text" placeholder="What to screw">
-                                </div>
-                            </div>
-
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Holes Count</label>
-                                    <input type="number" id="editHoles" class="input-number" value="0" min="0">
-                                </div>
-                                <div class="form-group">
-                                    <label>Screw Size</label>
-                                    <input type="text" id="editScrewSize" class="input-text" placeholder="M3x10">
-                                </div>
-                                <div class="form-group">
-                                    <label>Task Number</label>
-                                    <input type="text" id="editTask" class="input-text" placeholder="TASK-001">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Coordinates Section -->
-                        <div class="coords-section">
+                <div class="settings-layout-new">
+                    <!-- Left Column -->
+                    <div class="settings-left">
+                        <!-- Devices List -->
+                        <div class="card">
                             <div class="card-header">
-                                <h3>Movement Coordinates</h3>
-                                <button class="btn btn-add" id="btnAddCoord">+</button>
+                                <h2>ДЕВАЙСИ</h2>
+                                <button class="btn btn-add" id="btnNewDevice">+</button>
                             </div>
-
-                            <div class="coords-header">
-                                <span class="col-num">#</span>
-                                <span class="col-x">X</span>
-                                <span class="col-y">Y</span>
-                                <span class="col-type">Type</span>
-                                <span class="col-feed">Feed</span>
-                                <span class="col-action">Go</span>
-                                <span class="col-del"></span>
-                            </div>
-
-                            <div class="coords-list" id="coordsList">
+                            <div class="device-list" id="deviceList">
                                 <!-- Populated by JS -->
                             </div>
                         </div>
 
-                        <!-- Action Buttons -->
-                        <div class="editor-actions">
-                            <button class="btn btn-primary" id="btnSaveDevice">Save Device</button>
-                            <button class="btn btn-secondary" id="btnCancelEdit">Cancel</button>
-                            <button class="btn btn-danger" id="btnDeleteDevice">Delete</button>
+                        <!-- XY Table Control -->
+                        <div class="card">
+                            <h2>XY TABLE CONTROL</h2>
+                            <div class="xy-control-compact">
+                                <div class="xy-pos-display" id="settingsXYPos">X: 0.00  Y: 0.00</div>
+                                <div class="jog-grid-compact">
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y-">Y-</button>
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x+">X+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y+">Y+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x-">X-</button>
+                                </div>
+                                <div class="jog-step-compact">
+                                    <label>Крок</label>
+                                    <select id="jogStepSettings" class="input-select-sm">
+                                        <option value="0.1">0.1</option>
+                                        <option value="0.5">0.5</option>
+                                        <option value="1">1</option>
+                                        <option value="5">5</option>
+                                        <option value="10" selected>10</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </div>
+                                <div class="home-buttons">
+                                    <button class="btn btn-home-sm" id="btnHomeSettings">HOME</button>
+                                    <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">HOME Y</button>
+                                    <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">HOME X</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="settings-right">
+                        <!-- Movement Coordinates -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>КООРДИНАТИ ПЕРЕМІЩЕННЯ</h2>
+                                <button class="btn btn-add" id="btnAddCoord">+</button>
+                            </div>
+
+                            <div class="coords-table">
+                                <div class="coords-header-new">
+                                    <span class="col-num">#</span>
+                                    <span class="col-x">Координата X1</span>
+                                    <span class="col-y">Координата Y1</span>
+                                    <span class="col-type">Тип координати</span>
+                                    <span class="col-feed">Швидкість</span>
+                                    <span class="col-del"></span>
+                                </div>
+
+                                <div class="coords-list-new" id="coordsList">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Device Editor -->
+                        <div class="card">
+                            <h2>Редактор девайсу</h2>
+                            <input type="hidden" id="editDeviceKey">
+
+                            <div class="editor-form-new">
+                                <div class="form-row-new">
+                                    <div class="form-group-new">
+                                        <input type="text" id="editName" class="input-text" placeholder="Назва (3 літери)">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="text" id="editWhat" class="input-text" placeholder="Що крутим">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="number" id="editHoles" class="input-number" value="0" min="0" placeholder="Кількість гвінтів">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="text" id="editScrewSize" class="input-text" placeholder="Розмір гвінів">
+                                    </div>
+                                </div>
+                                <div class="form-row-new">
+                                    <div class="form-group-new">
+                                        <input type="text" id="editTask" class="input-text" placeholder="Номер таски">
+                                    </div>
+                                    <div class="form-group-new form-group-buttons">
+                                        <button class="btn btn-save-large" id="btnSaveDevice">Зберегти параметри</button>
+                                        <button class="btn btn-cancel-large" id="btnCancelEdit">Скасувати</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-danger btn-delete-device" id="btnDeleteDevice">Видалити девайс</button>
                         </div>
                     </div>
                 </div>

@@ -87,6 +87,7 @@ async function updateStatus() {
         updateStatusTab(status);
         updateControlTab(status);
         updateXYTab(status);
+        updateSettingsXYPos(status);
 
     } catch (error) {
         state.connected = false;
@@ -281,12 +282,15 @@ function renderDeviceList() {
 
     for (const device of state.devices) {
         const isSelected = state.selectedDevice === device.key;
+        // Format: NAME_SCREWSIZE (X holes)
+        const displayName = device.screw_size
+            ? `${device.name}_${device.screw_size} (${device.holes} holes)`
+            : `${device.name} (${device.holes} holes)`;
         list.innerHTML += `
             <div class="device-item ${isSelected ? 'selected' : ''}"
                  data-key="${device.key}"
                  onclick="selectDevice('${device.key}')">
-                <div class="device-name">${device.name}</div>
-                <div class="device-info">${device.holes} holes, ${device.steps} steps</div>
+                <div class="device-name">${displayName}</div>
             </div>
         `;
     }
@@ -351,7 +355,7 @@ async function saveDevice() {
     const name = $('editName').value.trim();
 
     if (!name) {
-        alert('Device name is required');
+        alert('Назва девайсу обов\'язкова');
         return;
     }
 
@@ -360,12 +364,14 @@ async function saveDevice() {
 
     // Collect coordinates
     const steps = [];
-    const rows = $('coordsList').querySelectorAll('.coord-row');
+    const rows = $('coordsList').querySelectorAll('.coord-row-new');
     rows.forEach(row => {
         const x = parseFloat(row.querySelector('.coord-x').value) || 0;
         const y = parseFloat(row.querySelector('.coord-y').value) || 0;
         const type = row.querySelector('.coord-type').value;
-        const feed = parseFloat(row.querySelector('.coord-feed').value) || 5000;
+        // Parse feed value, removing "F " prefix if present
+        const feedStr = row.querySelector('.coord-feed').value || '5000';
+        const feed = parseFloat(feedStr.replace(/[Ff]\s*/g, '')) || 5000;
         steps.push({ x, y, type, feed });
     });
 
@@ -424,52 +430,66 @@ function clearCoordRows() {
     state.coordRows = [];
 }
 
-function addCoordRow(x = '', y = '', type = 'free', feed = 5000) {
+function addCoordRow(x = '', y = '', type = 'FREE', feed = 5000) {
     const list = $('coordsList');
     const rowNum = list.children.length + 1;
 
+    // Normalize type to uppercase
+    const typeUpper = (type || 'FREE').toUpperCase();
+
     const row = document.createElement('div');
-    row.className = 'coord-row';
+    row.className = 'coord-row-new';
     row.innerHTML = `
-        <span class="row-num">${rowNum}</span>
-        <input type="number" class="coord-x" value="${x}" step="0.1" placeholder="0">
-        <input type="number" class="coord-y" value="${y}" step="0.1" placeholder="0">
-        <select class="coord-type">
-            <option value="free" ${type === 'free' ? 'selected' : ''}>FREE</option>
-            <option value="work" ${type === 'work' ? 'selected' : ''}>WORK</option>
+        <span class="row-num">${rowNum}.</span>
+        <input type="text" class="coord-x" value="${x}" placeholder="X">
+        <input type="text" class="coord-y" value="${y}" placeholder="Y">
+        <select class="coord-type ${typeUpper === 'WORK' ? 'coord-type-work' : 'coord-type-free'}" onchange="updateTypeStyle(this)">
+            <option value="FREE" ${typeUpper === 'FREE' ? 'selected' : ''}>FREE</option>
+            <option value="WORK" ${typeUpper === 'WORK' ? 'selected' : ''}>WORK</option>
         </select>
-        <input type="number" class="coord-feed" value="${feed}" step="100" placeholder="5000">
-        <button class="btn-go" onclick="goToCoord(this)">GO</button>
-        <button class="btn btn-del" onclick="removeCoordRow(this)">-</button>
+        <input type="text" class="coord-feed" value="F ${feed}" placeholder="F 5000">
+        <button class="btn-del-new" onclick="removeCoordRow(this)">−</button>
     `;
 
     list.appendChild(row);
     state.coordRows.push(row);
 }
 
+function updateTypeStyle(select) {
+    if (select.value === 'WORK') {
+        select.classList.remove('coord-type-free');
+        select.classList.add('coord-type-work');
+    } else {
+        select.classList.remove('coord-type-work');
+        select.classList.add('coord-type-free');
+    }
+}
+
 function removeCoordRow(btn) {
-    const row = btn.closest('.coord-row');
+    const row = btn.closest('.coord-row-new');
     row.remove();
     renumberCoordRows();
 }
 
 function renumberCoordRows() {
-    const rows = $('coordsList').querySelectorAll('.coord-row');
+    const rows = $('coordsList').querySelectorAll('.coord-row-new');
     rows.forEach((row, i) => {
-        row.querySelector('.row-num').textContent = i + 1;
+        row.querySelector('.row-num').textContent = (i + 1) + '.';
     });
 }
 
 async function goToCoord(btn) {
-    const row = btn.closest('.coord-row');
+    const row = btn.closest('.coord-row-new');
     const x = parseFloat(row.querySelector('.coord-x').value) || 0;
     const y = parseFloat(row.querySelector('.coord-y').value) || 0;
-    const feed = parseFloat(row.querySelector('.coord-feed').value) || 5000;
+    // Parse feed value, removing "F " prefix if present
+    const feedStr = row.querySelector('.coord-feed').value || '5000';
+    const feed = parseFloat(feedStr.replace(/[Ff]\s*/g, '')) || 5000;
 
     try {
         await api.post('/xy/move', { x, y, feed });
     } catch (error) {
-        alert('Move failed: ' + error.message);
+        alert('Помилка переміщення: ' + error.message);
     }
 }
 
@@ -479,6 +499,39 @@ function initSettingsTab() {
     $('btnSaveDevice').addEventListener('click', saveDevice);
     $('btnCancelEdit').addEventListener('click', cancelEdit);
     $('btnDeleteDevice').addEventListener('click', deleteDevice);
+
+    // XY Control in Settings Tab
+    $$('[data-jog-settings]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dir = btn.dataset.jogSettings;
+            const step = parseFloat($('jogStepSettings').value);
+            const feed = 5000;
+
+            let dx = 0, dy = 0;
+            if (dir === 'x+') dx = step;
+            if (dir === 'x-') dx = -step;
+            if (dir === 'y+') dy = step;
+            if (dir === 'y-') dy = -step;
+
+            api.post('/xy/jog', { dx, dy, feed });
+        });
+    });
+
+    // Home buttons in settings
+    $('btnHomeSettings').addEventListener('click', () => api.post('/xy/home'));
+    $('btnHomeXSettings').addEventListener('click', () => api.post('/xy/home/x'));
+    $('btnHomeYSettings').addEventListener('click', () => api.post('/xy/home/y'));
+}
+
+// Update XY position on settings tab
+function updateSettingsXYPos(status) {
+    const xy = status.xy_table || {};
+    const x = (xy.x || 0).toFixed(2);
+    const y = (xy.y || 0).toFixed(2);
+    const posDisplay = $('settingsXYPos');
+    if (posDisplay) {
+        posDisplay.textContent = `X: ${x}  Y: ${y}`;
+    }
 }
 
 // Initialize Application
@@ -504,3 +557,4 @@ window.selectDevice = selectDevice;
 window.toggleRelay = toggleRelay;
 window.goToCoord = goToCoord;
 window.removeCoordRow = removeCoordRow;
+window.updateTypeStyle = updateTypeStyle;
