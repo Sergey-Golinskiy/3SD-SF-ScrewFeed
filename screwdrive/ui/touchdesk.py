@@ -604,6 +604,351 @@ class ServiceTab(QWidget):
             lblState.style().polish(lblState)
 
 
+class SettingsTab(QWidget):
+    """Settings tab with device management and XY table controls."""
+
+    def __init__(self, api: ApiClient, parent=None):
+        super().__init__(parent)
+        self.api = api
+        self._devices = []
+        self._editing_device = None
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(24, 24, 24, 24)
+        root.setSpacing(18)
+
+        # Left: XY Table Control
+        left = QVBoxLayout()
+        left.setSpacing(18)
+
+        # XY Position card
+        self.xyCard = make_card("XY Table Control")
+        xyLay = self.xyCard.layout()
+
+        # Position display
+        posRow = QHBoxLayout()
+        self.lblPos = QLabel("X: 0.00  Y: 0.00")
+        self.lblPos.setObjectName("state")
+        self.lblPos.setStyleSheet("font-size: 24px; font-weight: bold;")
+        posRow.addWidget(self.lblPos)
+        self.btnHome = QPushButton("HOME")
+        self.btnHome.setMinimumHeight(50)
+        self.btnHome.clicked.connect(self._on_home)
+        posRow.addWidget(self.btnHome)
+        xyLay.addLayout(posRow)
+
+        # Step size selector
+        stepRow = QHBoxLayout()
+        stepRow.addWidget(QLabel("Крок:"))
+        self.cbStep = QComboBox()
+        for step in ["0.1", "0.5", "1", "5", "10", "50", "100"]:
+            self.cbStep.addItem(f"{step} mm", float(step))
+        self.cbStep.setCurrentIndex(4)  # Default 10mm
+        stepRow.addWidget(self.cbStep, 1)
+        xyLay.addLayout(stepRow)
+
+        # Jog buttons grid
+        jogGrid = QGridLayout()
+        jogGrid.setSpacing(10)
+
+        self.btnYPlus = QPushButton("Y+")
+        self.btnYMinus = QPushButton("Y-")
+        self.btnXPlus = QPushButton("X+")
+        self.btnXMinus = QPushButton("X-")
+
+        for btn in [self.btnYPlus, self.btnYMinus, self.btnXPlus, self.btnXMinus]:
+            btn.setMinimumSize(80, 80)
+            btn.setStyleSheet("font-size: 20px; font-weight: bold;")
+
+        jogGrid.addWidget(self.btnYPlus, 0, 1)
+        jogGrid.addWidget(self.btnXMinus, 1, 0)
+        jogGrid.addWidget(self.btnXPlus, 1, 2)
+        jogGrid.addWidget(self.btnYMinus, 2, 1)
+
+        self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
+        self.btnYMinus.clicked.connect(lambda: self._jog(0, -1))
+        self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
+        self.btnXMinus.clicked.connect(lambda: self._jog(-1, 0))
+
+        xyLay.addLayout(jogGrid)
+
+        # Move to coordinates
+        moveCard = make_card("Перемістити в координати")
+        moveLay = moveCard.layout()
+
+        coordRow = QHBoxLayout()
+        coordRow.addWidget(QLabel("X:"))
+        self.edMoveX = QLineEdit("0")
+        self.edMoveX.setMaximumWidth(80)
+        coordRow.addWidget(self.edMoveX)
+        coordRow.addWidget(QLabel("Y:"))
+        self.edMoveY = QLineEdit("0")
+        self.edMoveY.setMaximumWidth(80)
+        coordRow.addWidget(self.edMoveY)
+        coordRow.addWidget(QLabel("F:"))
+        self.edMoveFeed = QLineEdit("10000")
+        self.edMoveFeed.setMaximumWidth(80)
+        coordRow.addWidget(self.edMoveFeed)
+        self.btnMove = QPushButton("GO")
+        self.btnMove.setMinimumHeight(40)
+        self.btnMove.clicked.connect(self._on_move)
+        coordRow.addWidget(self.btnMove)
+        moveLay.addLayout(coordRow)
+
+        left.addWidget(self.xyCard)
+        left.addWidget(moveCard)
+        left.addStretch(1)
+
+        # Right: Device Management
+        right = QVBoxLayout()
+        right.setSpacing(18)
+
+        # Device list card
+        self.devCard = make_card("Девайси")
+        devLay = self.devCard.layout()
+
+        self.devScroll = QScrollArea()
+        self.devScroll.setWidgetResizable(True)
+        self.devScroll.setMaximumHeight(200)
+        self.devListWidget = QWidget()
+        self.devListLay = QVBoxLayout(self.devListWidget)
+        self.devListLay.setContentsMargins(0, 0, 0, 0)
+        self.devListLay.setSpacing(5)
+        self.devScroll.setWidget(self.devListWidget)
+        devLay.addWidget(self.devScroll)
+
+        devBtnRow = QHBoxLayout()
+        self.btnNewDevice = QPushButton("+ Новий")
+        self.btnNewDevice.clicked.connect(self._new_device)
+        self.btnEditDevice = QPushButton("Редагувати")
+        self.btnEditDevice.clicked.connect(self._edit_device)
+        self.btnDeleteDevice = QPushButton("Видалити")
+        self.btnDeleteDevice.clicked.connect(self._delete_device)
+        self.btnDeleteDevice.setStyleSheet("background: #3a1c1c;")
+        devBtnRow.addWidget(self.btnNewDevice)
+        devBtnRow.addWidget(self.btnEditDevice)
+        devBtnRow.addWidget(self.btnDeleteDevice)
+        devLay.addLayout(devBtnRow)
+
+        right.addWidget(self.devCard)
+
+        # Device editor card
+        self.editCard = make_card("Редактор девайсу")
+        editLay = self.editCard.layout()
+
+        # Key & Name
+        row1 = QHBoxLayout()
+        row1.addWidget(QLabel("Key:"))
+        self.edKey = QLineEdit()
+        self.edKey.setPlaceholderText("device_key")
+        row1.addWidget(self.edKey)
+        row1.addWidget(QLabel("Name:"))
+        self.edName = QLineEdit()
+        self.edName.setPlaceholderText("Device Name")
+        row1.addWidget(self.edName)
+        row1.addWidget(QLabel("Holes:"))
+        self.spHoles = QSpinBox()
+        self.spHoles.setRange(0, 100)
+        row1.addWidget(self.spHoles)
+        editLay.addLayout(row1)
+
+        # Steps editor
+        editLay.addWidget(QLabel("Кроки програми (type, x, y, feed):"))
+        self.txtSteps = QTextEdit()
+        self.txtSteps.setPlaceholderText("free, 0, 0, 60000\nwork, 10, 20, 30000\n...")
+        self.txtSteps.setMinimumHeight(150)
+        editLay.addWidget(self.txtSteps)
+
+        # Save/Cancel
+        saveBtnRow = QHBoxLayout()
+        self.btnSaveDevice = QPushButton("Зберегти")
+        self.btnSaveDevice.setStyleSheet("background: #153f2c; border-color: #1ac06b;")
+        self.btnSaveDevice.clicked.connect(self._save_device)
+        self.btnCancelEdit = QPushButton("Скасувати")
+        self.btnCancelEdit.clicked.connect(self._cancel_edit)
+        saveBtnRow.addWidget(self.btnSaveDevice)
+        saveBtnRow.addWidget(self.btnCancelEdit)
+        editLay.addLayout(saveBtnRow)
+
+        right.addWidget(self.editCard, 1)
+
+        root.addLayout(left, 4)
+        root.addLayout(right, 6)
+
+        self._selected_device_key = None
+        self._device_buttons = {}
+
+    def _jog(self, dx: int, dy: int):
+        """Jog XY table by selected step."""
+        try:
+            step = self.cbStep.currentData()
+            self.api.xy_jog(dx * step, dy * step, 1000)
+        except Exception as e:
+            print(f"[Settings] Jog error: {e}")
+
+    def _on_home(self):
+        """Home XY table."""
+        try:
+            self.api.xy_home()
+        except Exception as e:
+            print(f"[Settings] Home error: {e}")
+
+    def _on_move(self):
+        """Move to specified coordinates."""
+        try:
+            x = float(self.edMoveX.text())
+            y = float(self.edMoveY.text())
+            feed = float(self.edMoveFeed.text())
+            self.api.xy_move(x, y, feed)
+        except Exception as e:
+            print(f"[Settings] Move error: {e}")
+
+    def _rebuild_device_list(self, devices: list):
+        """Rebuild device list."""
+        # Clear
+        for i in reversed(range(self.devListLay.count())):
+            w = self.devListLay.itemAt(i).widget()
+            if w:
+                w.setParent(None)
+                w.deleteLater()
+        self._device_buttons.clear()
+
+        for d in devices:
+            key = d.get("key", "")
+            name = d.get("name", key)
+            holes = d.get("holes", 0)
+
+            btn = QPushButton(f"{name} ({holes} holes)")
+            btn.setObjectName("devButton")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda _, k=key: self._select_device(k))
+            self.devListLay.addWidget(btn)
+            self._device_buttons[key] = btn
+
+        self.devListLay.addStretch(1)
+        self._apply_device_styles()
+
+    def _apply_device_styles(self):
+        for key, btn in self._device_buttons.items():
+            btn.setChecked(key == self._selected_device_key)
+
+    def _select_device(self, key: str):
+        self._selected_device_key = key
+        self._apply_device_styles()
+
+    def _new_device(self):
+        """Start creating new device."""
+        self._editing_device = None
+        self.edKey.setText("")
+        self.edKey.setEnabled(True)
+        self.edName.setText("")
+        self.spHoles.setValue(0)
+        self.txtSteps.setText("")
+
+    def _edit_device(self):
+        """Edit selected device."""
+        if not self._selected_device_key:
+            return
+        try:
+            dev = self.api.devices()
+            for d in dev:
+                if d.get("key") == self._selected_device_key:
+                    self._editing_device = self._selected_device_key
+                    self.edKey.setText(d.get("key", ""))
+                    self.edKey.setEnabled(False)  # Can't change key when editing
+                    self.edName.setText(d.get("name", ""))
+                    self.spHoles.setValue(d.get("holes", 0))
+
+                    # Load full device with steps
+                    full = req_get(f"devices/{self._selected_device_key}")
+                    steps_text = ""
+                    for s in full.get("steps", []):
+                        steps_text += f"{s['type']}, {s['x']}, {s['y']}, {s['feed']}\n"
+                    self.txtSteps.setText(steps_text.strip())
+                    break
+        except Exception as e:
+            print(f"[Settings] Edit error: {e}")
+
+    def _delete_device(self):
+        """Delete selected device."""
+        if not self._selected_device_key:
+            return
+        try:
+            req_post(f"devices/{self._selected_device_key}", None)  # DELETE via custom method
+            # Actually need DELETE method, let's use requests directly
+            import requests
+            requests.delete(f"{API_BASE}/devices/{self._selected_device_key}", timeout=5)
+            self._selected_device_key = None
+        except Exception as e:
+            print(f"[Settings] Delete error: {e}")
+
+    def _save_device(self):
+        """Save device (create or update)."""
+        key = self.edKey.text().strip()
+        if not key:
+            return
+
+        name = self.edName.text().strip() or key
+        holes = self.spHoles.value()
+
+        # Parse steps
+        steps = []
+        for line in self.txtSteps.toPlainText().strip().split("\n"):
+            if not line.strip():
+                continue
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 4:
+                steps.append({
+                    "type": parts[0],
+                    "x": float(parts[1]),
+                    "y": float(parts[2]),
+                    "feed": float(parts[3])
+                })
+
+        data = {"key": key, "name": name, "holes": holes, "steps": steps}
+
+        try:
+            import requests
+            if self._editing_device:
+                # Update existing
+                requests.put(f"{API_BASE}/devices/{self._editing_device}",
+                            json=data, timeout=5)
+            else:
+                # Create new
+                requests.post(f"{API_BASE}/devices", json=data, timeout=5)
+            self._editing_device = None
+            self._cancel_edit()
+        except Exception as e:
+            print(f"[Settings] Save error: {e}")
+
+    def _cancel_edit(self):
+        """Cancel editing."""
+        self._editing_device = None
+        self.edKey.setText("")
+        self.edKey.setEnabled(True)
+        self.edName.setText("")
+        self.spHoles.setValue(0)
+        self.txtSteps.setText("")
+
+    def render(self, st: dict):
+        """Update display with current status."""
+        # Update XY position
+        xy = st.get("xy_table", {})
+        if xy:
+            x = xy.get("x", 0)
+            y = xy.get("y", 0)
+            self.lblPos.setText(f"X: {x:.2f}  Y: {y:.2f}")
+
+        # Refresh device list
+        try:
+            devices = self.api.devices()
+            if devices != self._devices:
+                self._devices = devices
+                self._rebuild_device_list(devices)
+        except Exception:
+            pass
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -630,14 +975,17 @@ class MainWindow(QMainWindow):
         self.tabStart = StartTab(self.api)
         self.tabWork = WorkTab(self.api)
         self.tabService = ServiceTab(self.api)
+        self.tabSettings = SettingsTab(self.api)
 
-        # Add only START and WORK tabs initially (SERVICE is hidden)
+        # Add only START and WORK tabs initially (SERVICE and SETTINGS are hidden)
         tabs.addTab(self.tabStart, "START")
         tabs.addTab(self.tabWork, "WORK")
-        # SERVICE tab is NOT added initially - hidden by default
+        # SERVICE and SETTINGS tabs are NOT added initially - hidden by default
+        # They unlock after holding pedal for 4 seconds
 
         self.tabs = tabs
         self._service_tab_visible = False
+        self._settings_tab_visible = False
         self._device_selected = False
 
         # Block tab changes until device is selected
@@ -715,12 +1063,14 @@ class MainWindow(QMainWindow):
             self._pedal_was_active = False
 
     def _unlock_service_tab(self):
-        """Add SERVICE tab (unlock it)."""
+        """Add SERVICE and SETTINGS tabs (unlock them)."""
         if self._service_tab_visible:
             return
         self.tabs.addTab(self.tabService, "SERVICE")
+        self.tabs.addTab(self.tabSettings, "SETTINGS")
         self._service_tab_visible = True
-        print("[UI] SERVICE tab unlocked (pedal held 4s)")
+        self._settings_tab_visible = True
+        print("[UI] SERVICE and SETTINGS tabs unlocked (pedal held 4s)")
 
     def set_border(self, state: str):
         self.frame.setProperty("state", state)
@@ -743,7 +1093,7 @@ class MainWindow(QMainWindow):
             self._device_selected = True
 
         # Render all tabs
-        for tab in (self.tabWork, self.tabStart, self.tabService):
+        for tab in (self.tabWork, self.tabStart, self.tabService, self.tabSettings):
             try:
                 tab.render(st)
             except Exception as e:

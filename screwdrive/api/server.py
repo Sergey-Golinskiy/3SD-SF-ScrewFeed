@@ -465,6 +465,97 @@ def create_app(
             ]
         })
 
+    @app.route('/api/devices', methods=['POST'])
+    def create_device():
+        """Create a new device program."""
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        key = data.get('key', '').strip()
+        if not key:
+            return jsonify({'error': 'Device key is required'}), 400
+        if key in app.devices:
+            return jsonify({'error': f'Device {key} already exists'}), 400
+
+        name = data.get('name', key)
+        holes = int(data.get('holes', 0))
+        steps_data = data.get('steps', [])
+
+        steps = []
+        for s in steps_data:
+            steps.append(ProgramStep(
+                step_type=s.get('type', 'free'),
+                x=float(s.get('x', 0)),
+                y=float(s.get('y', 0)),
+                feed=float(s.get('feed', 60000))
+            ))
+
+        app.devices[key] = DeviceProgram(
+            key=key,
+            name=name,
+            holes=holes,
+            steps=steps
+        )
+
+        _save_devices(app)
+        return jsonify({'success': True, 'key': key})
+
+    @app.route('/api/devices/<key>', methods=['PUT'])
+    def update_device(key):
+        """Update an existing device program."""
+        if key not in app.devices:
+            return jsonify({'error': f'Unknown device: {key}'}), 404
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Check if key is being changed
+        new_key = data.get('key', key).strip()
+        if new_key != key and new_key in app.devices:
+            return jsonify({'error': f'Device {new_key} already exists'}), 400
+
+        name = data.get('name', app.devices[key].name)
+        holes = int(data.get('holes', app.devices[key].holes))
+        steps_data = data.get('steps', None)
+
+        if steps_data is not None:
+            steps = []
+            for s in steps_data:
+                steps.append(ProgramStep(
+                    step_type=s.get('type', 'free'),
+                    x=float(s.get('x', 0)),
+                    y=float(s.get('y', 0)),
+                    feed=float(s.get('feed', 60000))
+                ))
+        else:
+            steps = app.devices[key].steps
+
+        # Remove old key if changed
+        if new_key != key:
+            del app.devices[key]
+
+        app.devices[new_key] = DeviceProgram(
+            key=new_key,
+            name=name,
+            holes=holes,
+            steps=steps
+        )
+
+        _save_devices(app)
+        return jsonify({'success': True, 'key': new_key})
+
+    @app.route('/api/devices/<key>', methods=['DELETE'])
+    def delete_device(key):
+        """Delete a device program."""
+        if key not in app.devices:
+            return jsonify({'error': f'Unknown device: {key}'}), 404
+
+        del app.devices[key]
+        _save_devices(app)
+        return jsonify({'success': True, 'deleted': key})
+
     # === Web UI ===
     @app.route('/', methods=['GET'])
     def index():
@@ -472,6 +563,29 @@ def create_app(
         return Response(WEB_UI_HTML, mimetype='text/html')
 
     return app
+
+
+def _save_devices(app: Flask) -> None:
+    """Save device programs to devices.yaml."""
+    config_path = Path(__file__).parent.parent / 'config' / 'devices.yaml'
+
+    devices_list = []
+    for key, prog in app.devices.items():
+        device_data = {
+            'key': prog.key,
+            'name': prog.name,
+            'holes': prog.holes,
+            'program': [
+                {'type': s.step_type, 'x': s.x, 'y': s.y, 'f': s.feed}
+                for s in prog.steps
+            ]
+        }
+        devices_list.append(device_data)
+
+    data = {'devices': devices_list}
+
+    with open(config_path, 'w') as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
 # === Web UI HTML ===
@@ -652,6 +766,47 @@ G0 X50 Y100 F1000" style="width: 100%; font-family: monospace; font-size: 13px; 
   </div>
 </div>
 
+<!-- Device Management -->
+<details class="card" style="margin-top: 20px;">
+  <summary style="cursor: pointer; font-weight: 600; font-size: 18px; padding: 10px;">
+    📦 Управління девайсами
+  </summary>
+  <div style="padding: 15px;">
+    <div class="row">
+      <div style="flex: 1; min-width: 250px;">
+        <h4>Існуючі девайси</h4>
+        <div id="deviceList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px;"></div>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-primary" onclick="newDevice()">+ Новий</button>
+          <button class="btn btn-secondary" onclick="editDevice()">Редагувати</button>
+          <button class="btn btn-danger" onclick="deleteDevice()">Видалити</button>
+        </div>
+      </div>
+      <div style="flex: 2; min-width: 400px;">
+        <h4 id="editorTitle">Редактор девайсу</h4>
+        <div class="form-row">
+          <label>Key:</label>
+          <input type="text" id="devKey" placeholder="device_key" style="flex: 1;">
+          <label style="margin-left: 15px;">Name:</label>
+          <input type="text" id="devName" placeholder="Device Name" style="flex: 1;">
+          <label style="margin-left: 15px;">Holes:</label>
+          <input type="number" id="devHoles" value="0" min="0" style="width: 60px;">
+        </div>
+        <div style="margin-top: 10px;">
+          <label>Кроки програми (type, x, y, feed):</label>
+          <textarea id="devSteps" rows="6" placeholder="free, 0, 0, 60000
+work, 10, 20, 30000
+free, 10, 30, 60000" style="width: 100%; font-family: monospace; font-size: 12px;"></textarea>
+        </div>
+        <div style="margin-top: 10px;">
+          <button class="btn btn-success" onclick="saveDevice()">💾 Зберегти</button>
+          <button class="btn btn-secondary" onclick="cancelEdit()">Скасувати</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</details>
+
 <script>
 const API = '';
 let selectedDevice = null;
@@ -761,9 +916,14 @@ async function sendGcode() {
   refreshStatus();
 }
 
+let selectedDeviceKey = null;
+let editingDevice = null;
+
 async function loadDevices() {
   try {
     const devices = await api('/api/devices');
+
+    // Populate cycle control select
     const sel = document.getElementById('deviceSelect');
     sel.innerHTML = '<option value="">-- Select Device --</option>';
     devices.forEach(d => {
@@ -772,9 +932,145 @@ async function loadDevices() {
       opt.textContent = `${d.name} (${d.holes} holes)`;
       sel.appendChild(opt);
     });
+
+    // Populate device management list
+    const list = document.getElementById('deviceList');
+    if (list) {
+      list.innerHTML = '';
+      devices.forEach(d => {
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 8px; margin: 4px 0; border-radius: 6px; cursor: pointer; background: ' + (d.key === selectedDeviceKey ? '#d4edda' : '#f8f9fa');
+        div.textContent = `${d.name} (${d.holes} holes)`;
+        div.onclick = () => selectDeviceForEdit(d.key);
+        list.appendChild(div);
+      });
+    }
   } catch (e) {
     log('Error loading devices: ' + e.message);
   }
+}
+
+function selectDeviceForEdit(key) {
+  selectedDeviceKey = key;
+  loadDevices(); // Refresh to show selection
+}
+
+function newDevice() {
+  editingDevice = null;
+  document.getElementById('devKey').value = '';
+  document.getElementById('devKey').disabled = false;
+  document.getElementById('devName').value = '';
+  document.getElementById('devHoles').value = 0;
+  document.getElementById('devSteps').value = '';
+  document.getElementById('editorTitle').textContent = 'Новий девайс';
+}
+
+async function editDevice() {
+  if (!selectedDeviceKey) {
+    log('Спочатку виберіть девайс!');
+    return;
+  }
+  try {
+    const dev = await api('/api/devices/' + selectedDeviceKey);
+    editingDevice = selectedDeviceKey;
+    document.getElementById('devKey').value = dev.key;
+    document.getElementById('devKey').disabled = true; // Can't change key when editing
+    document.getElementById('devName').value = dev.name;
+    document.getElementById('devHoles').value = dev.holes;
+
+    // Format steps as text
+    let stepsText = '';
+    dev.steps.forEach(s => {
+      stepsText += `${s.type}, ${s.x}, ${s.y}, ${s.feed}\\n`;
+    });
+    document.getElementById('devSteps').value = stepsText.trim();
+    document.getElementById('editorTitle').textContent = 'Редагування: ' + dev.name;
+  } catch (e) {
+    log('Помилка завантаження девайсу: ' + e.message);
+  }
+}
+
+async function deleteDevice() {
+  if (!selectedDeviceKey) {
+    log('Спочатку виберіть девайс!');
+    return;
+  }
+  if (!confirm('Видалити девайс ' + selectedDeviceKey + '?')) {
+    return;
+  }
+  try {
+    await fetch(API + '/api/devices/' + selectedDeviceKey, { method: 'DELETE' });
+    log('Девайс видалено: ' + selectedDeviceKey);
+    selectedDeviceKey = null;
+    cancelEdit();
+    loadDevices();
+  } catch (e) {
+    log('Помилка видалення: ' + e.message);
+  }
+}
+
+async function saveDevice() {
+  const key = document.getElementById('devKey').value.trim();
+  const name = document.getElementById('devName').value.trim() || key;
+  const holes = parseInt(document.getElementById('devHoles').value) || 0;
+  const stepsText = document.getElementById('devSteps').value.trim();
+
+  if (!key) {
+    log('Key обов\\'язковий!');
+    return;
+  }
+
+  // Parse steps
+  const steps = [];
+  stepsText.split('\\n').forEach(line => {
+    line = line.trim();
+    if (!line) return;
+    const parts = line.split(',').map(p => p.trim());
+    if (parts.length >= 4) {
+      steps.push({
+        type: parts[0],
+        x: parseFloat(parts[1]),
+        y: parseFloat(parts[2]),
+        feed: parseFloat(parts[3])
+      });
+    }
+  });
+
+  const data = { key, name, holes, steps };
+
+  try {
+    if (editingDevice) {
+      // Update existing
+      await fetch(API + '/api/devices/' + editingDevice, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      log('Девайс оновлено: ' + key);
+    } else {
+      // Create new
+      await fetch(API + '/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      log('Девайс створено: ' + key);
+    }
+    cancelEdit();
+    loadDevices();
+  } catch (e) {
+    log('Помилка збереження: ' + e.message);
+  }
+}
+
+function cancelEdit() {
+  editingDevice = null;
+  document.getElementById('devKey').value = '';
+  document.getElementById('devKey').disabled = false;
+  document.getElementById('devName').value = '';
+  document.getElementById('devHoles').value = 0;
+  document.getElementById('devSteps').value = '';
+  document.getElementById('editorTitle').textContent = 'Редактор девайсу';
 }
 
 async function refreshStatus() {
