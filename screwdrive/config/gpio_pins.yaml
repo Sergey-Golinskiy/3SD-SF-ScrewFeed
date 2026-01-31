@@ -1,0 +1,170 @@
+# GPIO Pin Configuration for Raspberry Pi 5
+# All pins use BCM numbering
+
+# =========================
+# XY Table Stepper Motors
+# =========================
+xy_table:
+  x_axis:
+    step: 9
+    dir: 10
+    enable: 11
+    endstop: 2
+  y_axis:
+    step: 21
+    dir: 7
+    enable: 8
+    endstop: 3
+
+# =========================
+# Реле (підключені до Master Pi 5)
+# NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
+# Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
+# =========================
+relays:
+  # R01 - Живильник гвинтів (імпульс для подачі гвинта)
+  r01_pit:
+    gpio: 5
+    active_high: false
+    description: "Живильник гвинтів - імпульс для подачі"
+    description_en: "Screw feeder - pulse to release screw"
+    pulse_ms: 200
+
+  # R02 - Гальмо мотора X (ON=гальмо вимкнено, OFF=гальмо увімкнено)
+  r02_brake_x:
+    gpio: 6
+    active_high: false
+    description: "Гальмо мотора X"
+    description_en: "Motor X brake (ON=brake off, OFF=brake on)"
+
+  # R03 - Гальмо мотора Y (ON=гальмо вимкнено, OFF=гальмо увімкнено)
+  r03_brake_y:
+    gpio: 13
+    active_high: false
+    description: "Гальмо мотора Y"
+    description_en: "Motor Y brake (ON=brake off, OFF=brake on)"
+
+  # R04 - Циліндр відкрутки (ON=вниз, OFF=вгору автоматично)
+  r04_c2:
+    gpio: 16
+    active_high: false
+    description: "Циліндр відкрутки (ON=вниз, OFF=вгору)"
+    description_en: "Screwdriver cylinder (ON=down, OFF=up)"
+
+  # R05 - Вільний хід (утримувати ON = крутиться)
+  r05_di4_free:
+    gpio: 19
+    active_high: false
+    description: "Вільний хід - крутиться поки увімкнено"
+    description_en: "Free run mode - screwdriver spins while ON"
+
+  # R06 - Режим по моменту (утримувати ON до сигналу OK)
+  r06_di1_pot:
+    gpio: 20
+    active_high: false
+    description: "Режим по моменту - до сигналу OK"
+    description_en: "Torque mode - hold ON until DO2_OK"
+
+  # R07 - Вибір задачі 0 (імпульс 700мс)
+  r07_di5_tsk0:
+    gpio: 21
+    active_high: false
+    description: "Вибір задачі 0 для закручування"
+    description_en: "Select task 0 for tightening (700ms pulse)"
+    pulse_ms: 700
+
+  # R08 - Вибір задачі 1 (імпульс 700мс)
+  r08_di6_tsk1:
+    gpio: 26
+    active_high: false
+    description: "Вибір задачі 1 для закручування"
+    description_en: "Select task 1 for tightening (700ms pulse)"
+    pulse_ms: 700
+
+# =========================
+# Датчики (підключені до Master Pi 5)
+# =========================
+sensors:
+  # Світлова завіса безпеки - блокує вхід в робочу зону
+  # HIGH = вільно, немає перешкод
+  # LOW = заблоковано, зупинити роботу
+  area_sensor:
+    gpio: 17
+    active_low: true
+    description: "Світлова завіса безпеки"
+    description_en: "Safety light curtain (AREA_SENSOR)"
+    pull_up: true
+
+  # Педаль старту - запускає цикл
+  # HIGH = відпущена
+  # LOW = натиснута
+  ped_start:
+    gpio: 18
+    active_low: true
+    description: "Педаль старту циклу"
+    description_en: "Start pedal (PED_START)"
+    pull_up: true
+
+  # Датчик верхнього положення циліндра
+  # ACTIVE = циліндр у верхньому положенні
+  ger_c2_up:
+    gpio: 22
+    active_low: true
+    description: "Циліндр у верхньому положенні"
+    description_en: "Cylinder UP position (GER_C2_UP)"
+    pull_up: true
+
+  # Датчик нижнього положення циліндра - АВАРІЯ!
+  # Якщо спрацював - вимкнути R04_C2 (реле циліндра)
+  # ACTIVE = циліндр досяг низу (аварійний стан)
+  ger_c2_down:
+    gpio: 23
+    active_low: true
+    description: "Циліндр внизу - АВАРІЯ!"
+    description_en: "Cylinder DOWN position - EMERGENCY (GER_C2_DOWN)"
+    pull_up: true
+
+  # Індуктивний датчик гвинта - виявляє проходження гвинта
+  # HIGH = немає гвинта
+  # LOW = гвинт пройшов/присутній
+  ind_scrw:
+    gpio: 12
+    active_low: true
+    description: "Індуктивний датчик гвинта"
+    description_en: "Inductive screw sensor (IND_SCRW)"
+    pull_up: true
+
+  # Сигнал досягнення моменту від драйвера
+  # HIGH = момент ще не досягнуто
+  # LOW = момент досягнуто, гвинт закручено
+  do2_ok:
+    gpio: 25
+    active_low: true
+    description: "Момент досягнуто - OK"
+    description_en: "Torque reached signal (DO2_OK)"
+    pull_up: true
+
+  # Аварійна кнопка (грибок) - зупиняє всю систему
+  # N/C type: LOW = не натиснута, HIGH = натиснута (АВАРІЯ!)
+  emergency_stop:
+    gpio: 27
+    active_low: false
+    description: "Аварійна кнопка (грибок)"
+    description_en: "Emergency stop button (mushroom)"
+    pull_up: true
+
+# =========================
+# Communication
+# =========================
+serial:
+  xy_table_port: "/dev/ttyAMA0"
+  xy_table_baud: 115200
+
+# =========================
+# Logic settings
+# =========================
+logic:
+  endstop_active_low: true
+  relay_active_high: false  # Relays are active_low: GPIO LOW = ON
+  step_pulse_active_low: true
+  step_idle_level: 1

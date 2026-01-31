@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Панель керування відкруткою</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.13">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <h1>Панель керування відкруткою</h1>
+            <div class="header-right">
+                <span class="version">v1.0.13</span>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="dot"></span>
+                    <span class="text">Підключення...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="status">Статус</button>
+            <button class="tab-btn" data-tab="control">Керування</button>
+            <button class="tab-btn" data-tab="xy">XY Стіл</button>
+            <button class="tab-btn" data-tab="settings">Налаштування</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="tab-content">
+            <!-- Status Tab -->
+            <section id="status" class="tab-panel active">
+                <div class="grid-2">
+                    <!-- Cycle Status -->
+                    <div class="card">
+                        <h2>Cycle Status</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="label">State</span>
+                                <span class="value" id="cycleState">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Device</span>
+                                <span class="value" id="currentDevice">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Progress</span>
+                                <span class="value" id="cycleProgress">0 / 0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Cycles</span>
+                                <span class="value" id="cycleCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- XY Table Status -->
+                    <div class="card">
+                        <h2>XY Table</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="label">Status</span>
+                                <span class="value" id="xyState">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Position</span>
+                                <span class="value" id="xyPosition">X: 0.00 Y: 0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sensors -->
+                <div class="card">
+                    <h2>Sensors</h2>
+                    <div class="sensor-grid" id="sensorGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Relays -->
+                <div class="card">
+                    <h2>Relays</h2>
+                    <div class="relay-grid" id="relayGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Control Tab -->
+            <section id="control" class="tab-panel">
+                <div class="card">
+                    <h2>Cycle Control</h2>
+                    <div class="control-row">
+                        <select id="deviceSelect" class="input-select">
+                            <option value="">-- Select Device --</option>
+                        </select>
+                        <button class="btn btn-primary" id="btnCycleStart">START</button>
+                        <button class="btn btn-danger" id="btnCycleStop">STOP</button>
+                        <button class="btn btn-warning" id="btnCyclePause">PAUSE</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Emergency</h2>
+                    <div class="control-row">
+                        <button class="btn btn-danger btn-large" id="btnEstop">E-STOP</button>
+                        <button class="btn btn-secondary" id="btnClearEstop">Clear E-STOP</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Relay Manual Control</h2>
+                    <div class="relay-control-grid" id="relayControlGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- XY Table Tab -->
+            <section id="xy" class="tab-panel">
+                <!-- Raspberry Pi 2 Connection Status -->
+                <div class="card xy-connection-card">
+                    <h2>Raspberry Pi 2 (XY Table) - Статус підключення</h2>
+                    <div class="xy-connection-grid">
+                        <div class="xy-conn-item">
+                            <span class="label">Сервіс:</span>
+                            <span class="value" id="xyServiceStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Підключення:</span>
+                            <span class="value" id="xyConnStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Стан:</span>
+                            <span class="value" id="xyStateDisplay">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Пінг:</span>
+                            <span class="value" id="xyPingLatency">- ms</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop X:</span>
+                            <span class="value" id="xyEndstopX">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop Y:</span>
+                            <span class="value" id="xyEndstopY">-</span>
+                        </div>
+                        <div class="xy-conn-item xy-conn-warning" id="xyLimitWarningRow" style="display: none;">
+                            <span class="label">Ліміт:</span>
+                            <span class="value" id="xyLimitWarning">-</span>
+                        </div>
+                        <div class="xy-conn-item xy-conn-error">
+                            <span class="label">Помилка:</span>
+                            <span class="value" id="xyLastError">-</span>
+                        </div>
+                    </div>
+                    <div class="xy-conn-buttons">
+                        <button class="btn btn-primary" id="btnXYConnect">Підключити</button>
+                        <button class="btn btn-secondary" id="btnXYDisconnect">Відключити</button>
+                        <button class="btn btn-secondary" id="btnXYPing">Ping</button>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <h2>Позиція</h2>
+                        <div class="xy-position">
+                            <span class="xy-coord" id="xyPosDisplay">X: 0.00  Y: 0.00</span>
+                        </div>
+                        <div class="xy-homed-status">
+                            <span class="homed-indicator" id="xyHomedX">X: не захомлено</span>
+                            <span class="homed-indicator" id="xyHomedY">Y: не захомлено</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Jog Control</h2>
+                        <div class="jog-grid">
+                            <div></div>
+                            <button class="btn btn-jog" data-jog="y-">Y-</button>
+                            <div></div>
+                            <button class="btn btn-jog" data-jog="x-">X-</button>
+                            <button class="btn btn-jog btn-home" id="btnXYHome">HOME</button>
+                            <button class="btn btn-jog" data-jog="x+">X+</button>
+                            <div></div>
+                            <button class="btn btn-jog" data-jog="y+">Y+</button>
+                            <div></div>
+                        </div>
+                        <div class="jog-step">
+                            <label>Step:</label>
+                            <select id="jogStep" class="input-select">
+                                <option value="0.1">0.1 mm</option>
+                                <option value="0.5">0.5 mm</option>
+                                <option value="1">1 mm</option>
+                                <option value="5">5 mm</option>
+                                <option value="10" selected>10 mm</option>
+                                <option value="50">50 mm</option>
+                                <option value="100">100 mm</option>
+                            </select>
+                            <label>Feed:</label>
+                            <select id="jogFeed" class="input-select">
+                                <option value="1000">1000 mm/min</option>
+                                <option value="3000">3000 mm/min</option>
+                                <option value="5000" selected>5000 mm/min</option>
+                                <option value="10000">10000 mm/min</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Move To Position</h2>
+                    <div class="move-form">
+                        <div class="input-group">
+                            <label>X:</label>
+                            <input type="number" id="moveX" class="input-number" value="0" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Y:</label>
+                            <input type="number" id="moveY" class="input-number" value="0" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Feed:</label>
+                            <input type="number" id="moveFeed" class="input-number" value="10000">
+                        </div>
+                        <button class="btn btn-primary" id="btnMoveTo">GO</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Quick Actions</h2>
+                    <div class="control-row">
+                        <button class="btn btn-secondary" id="btnHomeX">Home X</button>
+                        <button class="btn btn-secondary" id="btnHomeY">Home Y</button>
+                        <button class="btn btn-secondary" id="btnZero">Go to Zero</button>
+                        <button class="btn btn-secondary" id="btnEnableMotors">Enable Motors</button>
+                        <button class="btn btn-secondary" id="btnDisableMotors">Disable Motors</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Tab -->
+            <section id="settings" class="tab-panel">
+                <div class="settings-layout-new">
+                    <!-- Left Column -->
+                    <div class="settings-left">
+                        <!-- Devices List -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>ДЕВАЙСИ</h2>
+                                <button class="btn btn-add" id="btnNewDevice">+</button>
+                            </div>
+                            <div class="device-list" id="deviceList">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
+                        <!-- XY Table Control -->
+                        <div class="card">
+                            <h2>XY TABLE CONTROL</h2>
+                            <div class="xy-control-compact">
+                                <div class="xy-pos-display" id="settingsXYPos">X: 0.00  Y: 0.00</div>
+                                <div class="jog-grid-compact">
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y-">Y-</button>
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x+">X+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y+">Y+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x-">X-</button>
+                                </div>
+                                <div class="jog-step-compact">
+                                    <label>Крок</label>
+                                    <select id="jogStepSettings" class="input-select-sm">
+                                        <option value="0.1">0.1</option>
+                                        <option value="0.5">0.5</option>
+                                        <option value="1">1</option>
+                                        <option value="5">5</option>
+                                        <option value="10" selected>10</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                </div>
+                                <div class="home-buttons">
+                                    <button class="btn btn-home-sm" id="btnHomeSettings">HOME</button>
+                                    <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">HOME Y</button>
+                                    <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">HOME X</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="settings-right">
+                        <!-- Movement Coordinates -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>КООРДИНАТИ ПЕРЕМІЩЕННЯ</h2>
+                                <button class="btn btn-add" id="btnAddCoord">+</button>
+                            </div>
+
+                            <div class="coords-table">
+                                <div class="coords-header-new">
+                                    <span class="col-num">#</span>
+                                    <span class="col-x">Координата X1</span>
+                                    <span class="col-y">Координата Y1</span>
+                                    <span class="col-type">Тип координати</span>
+                                    <span class="col-feed">Швидкість</span>
+                                    <span class="col-del"></span>
+                                </div>
+
+                                <div class="coords-list-new" id="coordsList">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Device Editor -->
+                        <div class="card">
+                            <h2>Редактор девайсу</h2>
+                            <input type="hidden" id="editDeviceKey">
+
+                            <div class="editor-form-new">
+                                <div class="form-row-new">
+                                    <div class="form-group-new">
+                                        <input type="text" id="editName" class="input-text" placeholder="Назва (3 літери)">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="text" id="editWhat" class="input-text" placeholder="Що крутим">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="number" id="editHoles" class="input-number" value="0" min="0" placeholder="Кількість гвінтів">
+                                    </div>
+                                    <div class="form-group-new">
+                                        <input type="text" id="editScrewSize" class="input-text" placeholder="Розмір гвінів">
+                                    </div>
+                                </div>
+                                <div class="form-row-new">
+                                    <div class="form-group-new">
+                                        <input type="text" id="editTask" class="input-text" placeholder="Номер таски">
+                                    </div>
+                                    <div class="form-group-new form-group-buttons">
+                                        <button class="btn btn-save-large" id="btnSaveDevice">Зберегти параметри</button>
+                                        <button class="btn btn-cancel-large" id="btnCancelEdit">Скасувати</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-danger btn-delete-device" id="btnDeleteDevice">Видалити девайс</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js?v=1.0.13"></script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+# General Settings for Screw Drive System
+
+# =========================
+# Motion Parameters
+# =========================
+motion:
+  steps_per_mm_x: 40.0
+  steps_per_mm_y: 40.0
+  x_min_mm: 0.0
+  x_max_mm: 220.0
+  y_min_mm: 0.0
+  y_max_mm: 500.0
+  max_feed_mm_s: 600.0
+  max_step_hz: 30000
+  pulse_us: 10
+
+  # Acceleration
+  accel_mm_s2: 1500.0
+  start_speed_mm_s: 5.0
+
+  # Homing
+  homing_timeout_s: 60.0
+  backoff_mm: 5.0
+  slow_speed_mm_s: 2.0
+
+# =========================
+# Work Position (default)
+# =========================
+work_position:
+  x_mm: 5.0
+  y_mm: 350.0
+  feed_mm_min: 10000.0
+
+# =========================
+# Timing Parameters
+# =========================
+timing:
+  # Screwdriver operation
+  screw_down_timeout_s: 10.0
+  screw_up_timeout_s: 5.0
+  torque_timeout_s: 15.0
+
+  # Cylinder operation
+  cylinder_down_timeout_s: 3.0
+  cylinder_up_timeout_s: 3.0
+
+  # Vacuum
+  vacuum_grab_delay_s: 0.5
+  vacuum_release_delay_s: 0.3
+
+  # Safety
+  area_sensor_debounce_s: 0.1
+  estop_debounce_s: 0.05
+
+# =========================
+# Cycle Parameters
+# =========================
+cycle:
+  # Movement speeds (mm/min)
+  free_move_speed: 60000
+  work_move_speed: 30000
+  approach_speed: 10000
+
+  # Retry logic
+  max_screw_retries: 3
+  retry_delay_s: 1.0
+
+# =========================
+# API Settings
+# =========================
+api:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+
+# =========================
+# Logging
+# =========================
+logging:
+  level: "INFO"
+  file: "/var/log/screwdrive/cycle.log"
+  max_size_mb: 10
+  backup_count: 5
+
+# =========================
+# XY Table Communication
+# =========================
+xy_table:
+  # Mode: "direct" (GPIO on same Pi) or "serial" (via UART to another Pi)
+  mode: "serial"
+  serial_port: "/dev/ttyAMA0"
+  serial_baud: 115200
+  command_timeout_s: 30.0
