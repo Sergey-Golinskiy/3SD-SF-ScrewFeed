@@ -30,14 +30,6 @@ relays:
     description_en: "Screw feeder - pulse to release screw"
     pulse_ms: 200
 
-  # R02 - Вибір задачі 2 (імпульс 700мс)
-  r02_di7_tsk2:
-    gpio: 6
-    active_high: false
-    description: "Вибір задачі 2 для закручування"
-    description_en: "Select task 2 for tightening (700ms pulse)"
-    pulse_ms: 700
-
   # R04 - Циліндр відкрутки (ON=вниз, OFF=вгору автоматично)
   r04_c2:
     gpio: 16
