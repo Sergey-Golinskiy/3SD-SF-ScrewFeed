@@ -1318,6 +1318,12 @@ class MainWindow(QMainWindow):
 
         self._service_tab_visible = True
         self._settings_tab_visible = True
+
+        # Force UI update to show new tabs immediately
+        self.tabs.tabBar().updateGeometry()
+        self.tabs.tabBar().update()
+        self.tabs.update()
+
         print("[UI] SERVICE and SETTINGS tabs unlocked (pedal held 4s)")
 
     def set_border(self, state: str):
