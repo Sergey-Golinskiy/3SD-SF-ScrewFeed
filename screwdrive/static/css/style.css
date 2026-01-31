@@ -450,6 +450,94 @@ body {
 }
 
 /* XY Control */
+
+/* XY Connection Status Card */
+.xy-connection-card {
+    margin-bottom: 16px;
+}
+
+.xy-connection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.xy-conn-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bg-input);
+    border-radius: var(--radius);
+    border-left: 3px solid var(--border-color);
+}
+
+.xy-conn-item .label {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.xy-conn-item .value {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.xy-conn-item .value.status-ok {
+    color: var(--accent-green);
+}
+
+.xy-conn-item .value.status-error {
+    color: var(--accent-red);
+}
+
+.xy-conn-item .value.status-warning {
+    color: var(--accent-yellow);
+}
+
+.xy-conn-error {
+    grid-column: span 2;
+}
+
+.xy-conn-error .value {
+    color: var(--accent-red);
+    font-size: 12px;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.xy-conn-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.xy-homed-status {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 8px;
+}
+
+.homed-indicator {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--bg-input);
+}
+
+.homed-indicator.homed {
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+}
+
+.homed-indicator.not-homed {
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
 .xy-position {
     text-align: center;
     padding: 20px;

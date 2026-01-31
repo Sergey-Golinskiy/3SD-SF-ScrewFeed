@@ -7,9 +7,10 @@ or through serial connection to another Raspberry Pi.
 
 import time
 import threading
-from typing import Optional, Tuple, Callable
-from dataclasses import dataclass
+from typing import Optional, Tuple, Callable, Dict, Any
+from dataclasses import dataclass, field
 from enum import Enum
+from datetime import datetime
 
 try:
     import serial
@@ -28,11 +29,13 @@ class XYTableMode(Enum):
 class XYTableState(Enum):
     """XY Table state enumeration."""
     DISCONNECTED = "disconnected"
+    CONNECTING = "connecting"
     READY = "ready"
     MOVING = "moving"
     HOMING = "homing"
     ERROR = "error"
     ESTOP = "estop"
+    TIMEOUT = "timeout"
 
 
 @dataclass
@@ -42,6 +45,29 @@ class XYPosition:
     y: float
     x_homed: bool = False
     y_homed: bool = False
+
+
+@dataclass
+class XYEndstops:
+    """Endstop states."""
+    x_min: bool = False  # True = triggered
+    y_min: bool = False  # True = triggered
+
+
+@dataclass
+class XYHealthStatus:
+    """Health and communication status."""
+    connected: bool = False
+    last_ping_ok: bool = False
+    last_ping_time: Optional[datetime] = None
+    last_ping_latency_ms: float = 0.0
+    last_command_time: Optional[datetime] = None
+    last_command_ok: bool = False
+    last_error: Optional[str] = None
+    consecutive_errors: int = 0
+    total_commands: int = 0
+    failed_commands: int = 0
+    service_status: str = "unknown"  # "running", "stopped", "error", "unknown"
 
 
 class XYTableController:
@@ -57,7 +83,7 @@ class XYTableController:
 
     def __init__(self, mode: XYTableMode = XYTableMode.SERIAL,
                  port: str = "/dev/ttyAMA0", baud: int = 115200,
-                 timeout: float = 30.0):
+                 timeout: float = 30.0, health_check_interval: float = 2.0):
         """
         Initialize XY table controller.
 
@@ -66,15 +92,19 @@ class XYTableController:
             port: Serial port path (for SERIAL mode)
             baud: Serial baud rate (for SERIAL mode)
             timeout: Command timeout in seconds
+            health_check_interval: Interval for health checks in seconds
         """
         self._mode = mode
         self._port = port
         self._baud = baud
         self._timeout = timeout
+        self._health_check_interval = health_check_interval
 
         self._serial: Optional[serial.Serial] = None
         self._state = XYTableState.DISCONNECTED
         self._position = XYPosition(x=0.0, y=0.0)
+        self._endstops = XYEndstops()
+        self._health = XYHealthStatus()
         self._lock = threading.Lock()
 
         # Callbacks
@@ -84,6 +114,10 @@ class XYTableController:
         # Configuration
         self._x_max = 220.0
         self._y_max = 500.0
+
+        # Health monitoring thread
+        self._health_thread: Optional[threading.Thread] = None
+        self._health_running = False
 
     def connect(self) -> bool:
         """
@@ -100,8 +134,13 @@ class XYTableController:
     def _connect_serial(self) -> bool:
         """Connect via serial port."""
         if not SERIAL_AVAILABLE:
+            self._health.last_error = "pyserial not available"
+            self._health.service_status = "error"
             print("ERROR: pyserial not available. Install with: pip install pyserial")
             return False
+
+        self._state = XYTableState.CONNECTING
+        self._notify_state_change()
 
         try:
             print(f"DEBUG: Opening serial port {self._port} at {self._baud} baud...")
@@ -131,21 +170,43 @@ class XYTableController:
 
             # Test connection with PING
             print("DEBUG: Testing connection with PING...")
+            ping_start = time.time()
             response = self._send_command("PING", timeout=5.0)
+            ping_latency = (time.time() - ping_start) * 1000
             print(f"DEBUG: PING response: {response!r}")
 
             if response == "PONG":
                 self._state = XYTableState.READY
+                self._health.connected = True
+                self._health.last_ping_ok = True
+                self._health.last_ping_time = datetime.now()
+                self._health.last_ping_latency_ms = ping_latency
+                self._health.service_status = "running"
+                self._health.last_error = None
+                self._health.consecutive_errors = 0
                 self._notify_state_change()
                 print("DEBUG: XY Table connected successfully")
+
+                # Start health monitoring
+                self._start_health_monitor()
                 return True
             else:
+                self._health.last_error = f"PING failed: got {response!r}"
+                self._health.service_status = "error"
+                self._health.consecutive_errors += 1
                 print(f"ERROR: XY table not responding to PING (got: {response!r})")
                 self._serial.close()
                 self._serial = None
+                self._state = XYTableState.ERROR
+                self._notify_state_change()
                 return False
 
         except Exception as e:
+            self._health.last_error = str(e)
+            self._health.service_status = "error"
+            self._health.consecutive_errors += 1
+            self._state = XYTableState.ERROR
+            self._notify_state_change()
             print(f"ERROR: Cannot connect to XY table on {self._port}: {e}")
             import traceback
             traceback.print_exc()
@@ -160,14 +221,95 @@ class XYTableController:
 
     def disconnect(self) -> None:
         """Disconnect from XY table."""
+        # Stop health monitor first
+        self._stop_health_monitor()
+
         if self._serial is not None:
             try:
                 self._serial.close()
             except Exception:
                 pass
             self._serial = None
+
         self._state = XYTableState.DISCONNECTED
+        self._health.connected = False
+        self._health.service_status = "disconnected"
         self._notify_state_change()
+
+    def _start_health_monitor(self) -> None:
+        """Start the health monitoring thread."""
+        if self._health_running:
+            return
+
+        self._health_running = True
+        self._health_thread = threading.Thread(target=self._health_monitor_loop, daemon=True)
+        self._health_thread.start()
+        print(f"XY Table health monitor started (interval: {self._health_check_interval}s)")
+
+    def _stop_health_monitor(self) -> None:
+        """Stop the health monitoring thread."""
+        self._health_running = False
+        if self._health_thread:
+            self._health_thread.join(timeout=2.0)
+            self._health_thread = None
+        print("XY Table health monitor stopped")
+
+    def _health_monitor_loop(self) -> None:
+        """Health monitoring loop - periodically ping and get status."""
+        while self._health_running:
+            try:
+                # Ping test
+                ping_start = time.time()
+                response = self._send_command("PING", timeout=3.0)
+                ping_latency = (time.time() - ping_start) * 1000
+
+                if response == "PONG":
+                    self._health.last_ping_ok = True
+                    self._health.last_ping_time = datetime.now()
+                    self._health.last_ping_latency_ms = ping_latency
+                    self._health.service_status = "running"
+                    self._health.consecutive_errors = 0
+
+                    # Also get endstop status
+                    endstops = self._send_command("M119", timeout=2.0)
+                    if endstops:
+                        self._parse_endstops(endstops)
+
+                    # If we were in error/timeout state, recover to ready
+                    if self._state in (XYTableState.ERROR, XYTableState.TIMEOUT):
+                        self._state = XYTableState.READY
+                        self._notify_state_change()
+                else:
+                    self._health.last_ping_ok = False
+                    self._health.consecutive_errors += 1
+                    self._health.last_error = f"PING timeout or invalid response"
+
+                    if self._health.consecutive_errors >= 3:
+                        self._state = XYTableState.TIMEOUT
+                        self._health.service_status = "timeout"
+                        self._notify_state_change()
+
+            except Exception as e:
+                self._health.last_ping_ok = False
+                self._health.consecutive_errors += 1
+                self._health.last_error = str(e)
+
+                if self._health.consecutive_errors >= 3:
+                    self._state = XYTableState.TIMEOUT
+                    self._health.service_status = "error"
+                    self._notify_state_change()
+
+            time.sleep(self._health_check_interval)
+
+    def _parse_endstops(self, response: str) -> None:
+        """Parse M119 endstop response."""
+        # Format: X_MIN:open Y_MIN:triggered or similar
+        try:
+            response_lower = response.lower()
+            self._endstops.x_min = "x_min:triggered" in response_lower or "x_min:closed" in response_lower
+            self._endstops.y_min = "y_min:triggered" in response_lower or "y_min:closed" in response_lower
+        except Exception:
+            pass
 
     def _send_command(self, cmd: str, timeout: Optional[float] = None) -> Optional[str]:
         """
@@ -502,6 +644,59 @@ class XYTableController:
     def is_connected(self) -> bool:
         """Check if connected."""
         return self._state != XYTableState.DISCONNECTED
+
+    @property
+    def endstops(self) -> XYEndstops:
+        """Get endstop states."""
+        return self._endstops
+
+    @property
+    def health(self) -> XYHealthStatus:
+        """Get health status."""
+        return self._health
+
+    def get_detailed_status(self) -> Dict[str, Any]:
+        """
+        Get comprehensive status information for API/UI.
+
+        Returns:
+            Dictionary with all status information.
+        """
+        return {
+            'connected': self.is_connected,
+            'state': self._state.value,
+            'state_name': self._state.name,
+            'position': {
+                'x': self._position.x,
+                'y': self._position.y,
+                'x_homed': self._position.x_homed,
+                'y_homed': self._position.y_homed
+            },
+            'endstops': {
+                'x_min': self._endstops.x_min,
+                'y_min': self._endstops.y_min
+            },
+            'health': {
+                'connected': self._health.connected,
+                'last_ping_ok': self._health.last_ping_ok,
+                'last_ping_time': self._health.last_ping_time.isoformat() if self._health.last_ping_time else None,
+                'last_ping_latency_ms': round(self._health.last_ping_latency_ms, 2),
+                'last_command_time': self._health.last_command_time.isoformat() if self._health.last_command_time else None,
+                'last_command_ok': self._health.last_command_ok,
+                'last_error': self._health.last_error,
+                'consecutive_errors': self._health.consecutive_errors,
+                'total_commands': self._health.total_commands,
+                'failed_commands': self._health.failed_commands,
+                'service_status': self._health.service_status
+            },
+            'config': {
+                'mode': self._mode.value,
+                'port': self._port,
+                'baud': self._baud,
+                'x_max': self._x_max,
+                'y_max': self._y_max
+            }
+        }
 
     # === Callbacks ===
 

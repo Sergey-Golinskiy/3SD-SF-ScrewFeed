@@ -181,15 +181,34 @@ def create_app(
     @app.route('/api/status', methods=['GET'])
     def status():
         """Get full system status."""
+        # Build XY table status with health info
+        xy_status = None
+        if app.xy_table:
+            health = app.xy_table.health
+            xy_status = {
+                'connected': app.xy_table.is_connected,
+                'state': app.xy_table.state.name,
+                'x': app.xy_table.x,
+                'y': app.xy_table.y,
+                'x_homed': app.xy_table.position.x_homed,
+                'y_homed': app.xy_table.position.y_homed,
+                'endstops': {
+                    'x_min': app.xy_table.endstops.x_min,
+                    'y_min': app.xy_table.endstops.y_min
+                },
+                'health': {
+                    'service_status': health.service_status,
+                    'last_ping_ok': health.last_ping_ok,
+                    'last_ping_latency_ms': round(health.last_ping_latency_ms, 1),
+                    'consecutive_errors': health.consecutive_errors,
+                    'last_error': health.last_error
+                }
+            }
+
         result = {
             'relays': app.relays.get_all_states() if app.relays else {},
             'sensors': app.sensors.get_all_states() if app.sensors else {},
-            'xy_table': {
-                'connected': app.xy_table.is_connected if app.xy_table else False,
-                'state': app.xy_table.state.name if app.xy_table else 'N/A',
-                'x': app.xy_table.x if app.xy_table else 0,
-                'y': app.xy_table.y if app.xy_table else 0
-            } if app.xy_table else None,
+            'xy_table': xy_status,
             'cycle': None
         }
 
@@ -379,18 +398,18 @@ def create_app(
 
     @app.route('/api/xy/status', methods=['GET'])
     def xy_status():
-        """Get XY table status."""
+        """Get detailed XY table status including health info."""
         if not app.xy_table:
-            return jsonify({'error': 'XY table not initialized'}), 503
-        return jsonify({
-            'connected': app.xy_table.is_connected,
-            'state': app.xy_table.state.name,
-            'ready': app.xy_table.is_ready,
-            'position': {
-                'x': app.xy_table.x,
-                'y': app.xy_table.y
-            }
-        })
+            return jsonify({
+                'error': 'XY table not initialized',
+                'connected': False,
+                'state': 'not_initialized',
+                'health': {
+                    'service_status': 'not_initialized',
+                    'last_error': 'XY table controller not created'
+                }
+            }), 503
+        return jsonify(app.xy_table.get_detailed_status())
 
     @app.route('/api/xy/connect', methods=['POST'])
     def xy_connect():

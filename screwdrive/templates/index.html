@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Панель керування відкруткою</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.0.11">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.12">
 </head>
 <body>
     <div class="app">
@@ -15,7 +15,7 @@
         <header class="header">
             <h1>Панель керування відкруткою</h1>
             <div class="header-right">
-                <span class="version">v1.0.11</span>
+                <span class="version">v1.0.12</span>
                 <div class="status-indicator" id="connectionStatus">
                     <span class="dot"></span>
                     <span class="text">Підключення...</span>
@@ -124,15 +124,55 @@
 
             <!-- XY Table Tab -->
             <section id="xy" class="tab-panel">
+                <!-- Raspberry Pi 2 Connection Status -->
+                <div class="card xy-connection-card">
+                    <h2>Raspberry Pi 2 (XY Table) - Статус підключення</h2>
+                    <div class="xy-connection-grid">
+                        <div class="xy-conn-item">
+                            <span class="label">Сервіс:</span>
+                            <span class="value" id="xyServiceStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Підключення:</span>
+                            <span class="value" id="xyConnStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Стан:</span>
+                            <span class="value" id="xyStateDisplay">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Пінг:</span>
+                            <span class="value" id="xyPingLatency">- ms</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop X:</span>
+                            <span class="value" id="xyEndstopX">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop Y:</span>
+                            <span class="value" id="xyEndstopY">-</span>
+                        </div>
+                        <div class="xy-conn-item xy-conn-error">
+                            <span class="label">Помилка:</span>
+                            <span class="value" id="xyLastError">-</span>
+                        </div>
+                    </div>
+                    <div class="xy-conn-buttons">
+                        <button class="btn btn-primary" id="btnXYConnect">Підключити</button>
+                        <button class="btn btn-secondary" id="btnXYDisconnect">Відключити</button>
+                        <button class="btn btn-secondary" id="btnXYPing">Ping</button>
+                    </div>
+                </div>
+
                 <div class="grid-2">
                     <div class="card">
-                        <h2>Position</h2>
+                        <h2>Позиція</h2>
                         <div class="xy-position">
                             <span class="xy-coord" id="xyPosDisplay">X: 0.00  Y: 0.00</span>
                         </div>
-                        <div class="xy-status">
-                            <span class="label">State:</span>
-                            <span class="value" id="xyStateDisplay">-</span>
+                        <div class="xy-homed-status">
+                            <span class="homed-indicator" id="xyHomedX">X: не захомлено</span>
+                            <span class="homed-indicator" id="xyHomedY">Y: не захомлено</span>
                         </div>
                     </div>
 
@@ -196,6 +236,8 @@
                         <button class="btn btn-secondary" id="btnHomeX">Home X</button>
                         <button class="btn btn-secondary" id="btnHomeY">Home Y</button>
                         <button class="btn btn-secondary" id="btnZero">Go to Zero</button>
+                        <button class="btn btn-secondary" id="btnEnableMotors">Enable Motors</button>
+                        <button class="btn btn-secondary" id="btnDisableMotors">Disable Motors</button>
                     </div>
                 </div>
             </section>
@@ -312,6 +354,6 @@
         </main>
     </div>
 
-    <script src="/static/js/app.js?v=1.0.11"></script>
+    <script src="/static/js/app.js?v=1.0.12"></script>
 </body>
 </html>

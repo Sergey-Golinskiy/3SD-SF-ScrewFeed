@@ -326,14 +326,143 @@ function initControlTab() {
 // XY Table Tab
 function updateXYTab(status) {
     const xy = status.xy_table || {};
+    const health = xy.health || {};
+    const endstops = xy.endstops || {};
+
+    // Position
     const x = (xy.x || 0).toFixed(2);
     const y = (xy.y || 0).toFixed(2);
-
     $('xyPosDisplay').textContent = `X: ${x}  Y: ${y}`;
-    $('xyStateDisplay').textContent = xy.state || '-';
+
+    // Connection status
+    const serviceStatus = health.service_status || 'unknown';
+    const serviceEl = $('xyServiceStatus');
+    serviceEl.textContent = getServiceStatusText(serviceStatus);
+    serviceEl.className = `value ${getStatusClass(serviceStatus)}`;
+
+    const connStatus = xy.connected ? 'connected' : 'disconnected';
+    const connEl = $('xyConnStatus');
+    connEl.textContent = xy.connected ? 'Підключено' : 'Відключено';
+    connEl.className = `value ${xy.connected ? 'status-ok' : 'status-error'}`;
+
+    // State
+    const stateEl = $('xyStateDisplay');
+    stateEl.textContent = getStateText(xy.state);
+    stateEl.className = `value ${getStateClass(xy.state)}`;
+
+    // Ping latency
+    const pingEl = $('xyPingLatency');
+    if (health.last_ping_ok) {
+        pingEl.textContent = `${health.last_ping_latency_ms || 0} ms`;
+        pingEl.className = 'value status-ok';
+    } else {
+        pingEl.textContent = 'timeout';
+        pingEl.className = 'value status-error';
+    }
+
+    // Endstops
+    const endstopXEl = $('xyEndstopX');
+    endstopXEl.textContent = endstops.x_min ? 'TRIGGERED' : 'open';
+    endstopXEl.className = `value ${endstops.x_min ? 'status-warning' : ''}`;
+
+    const endstopYEl = $('xyEndstopY');
+    endstopYEl.textContent = endstops.y_min ? 'TRIGGERED' : 'open';
+    endstopYEl.className = `value ${endstops.y_min ? 'status-warning' : ''}`;
+
+    // Error
+    const errorEl = $('xyLastError');
+    if (health.last_error) {
+        errorEl.textContent = health.last_error;
+        errorEl.className = 'value';
+    } else {
+        errorEl.textContent = '-';
+        errorEl.className = 'value';
+    }
+
+    // Homed status
+    const homedX = $('xyHomedX');
+    homedX.textContent = xy.x_homed ? 'X: захомлено' : 'X: не захомлено';
+    homedX.className = `homed-indicator ${xy.x_homed ? 'homed' : 'not-homed'}`;
+
+    const homedY = $('xyHomedY');
+    homedY.textContent = xy.y_homed ? 'Y: захомлено' : 'Y: не захомлено';
+    homedY.className = `homed-indicator ${xy.y_homed ? 'homed' : 'not-homed'}`;
+}
+
+function getServiceStatusText(status) {
+    const texts = {
+        'running': 'Працює',
+        'stopped': 'Зупинено',
+        'error': 'Помилка',
+        'timeout': 'Таймаут',
+        'disconnected': 'Відключено',
+        'unknown': 'Невідомо',
+        'not_initialized': 'Не ініціалізовано'
+    };
+    return texts[status] || status;
+}
+
+function getStatusClass(status) {
+    if (status === 'running') return 'status-ok';
+    if (status === 'error' || status === 'stopped' || status === 'not_initialized') return 'status-error';
+    if (status === 'timeout') return 'status-warning';
+    return '';
+}
+
+function getStateText(state) {
+    const texts = {
+        'READY': 'Готовий',
+        'MOVING': 'Рух',
+        'HOMING': 'Хомінг',
+        'ERROR': 'Помилка',
+        'ESTOP': 'E-STOP',
+        'TIMEOUT': 'Таймаут',
+        'DISCONNECTED': 'Відключено',
+        'CONNECTING': 'Підключення...'
+    };
+    return texts[state] || state || '-';
+}
+
+function getStateClass(state) {
+    if (state === 'READY') return 'status-ok';
+    if (state === 'MOVING' || state === 'HOMING' || state === 'CONNECTING') return 'status-warning';
+    if (state === 'ERROR' || state === 'ESTOP' || state === 'TIMEOUT' || state === 'DISCONNECTED') return 'status-error';
+    return '';
 }
 
 function initXYTab() {
+    // Connection buttons
+    $('btnXYConnect').addEventListener('click', async () => {
+        try {
+            await api.post('/xy/connect');
+            updateStatus();
+        } catch (error) {
+            alert('Помилка підключення: ' + error.message);
+        }
+    });
+
+    $('btnXYDisconnect').addEventListener('click', async () => {
+        try {
+            await api.post('/xy/disconnect');
+            updateStatus();
+        } catch (error) {
+            console.error('Disconnect failed:', error);
+        }
+    });
+
+    $('btnXYPing').addEventListener('click', async () => {
+        try {
+            const response = await api.get('/xy/status');
+            if (response.health && response.health.last_ping_ok) {
+                alert(`Ping OK! Latency: ${response.health.last_ping_latency_ms} ms`);
+            } else {
+                alert('Ping failed: ' + (response.health?.last_error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Ping failed: ' + error.message);
+        }
+    });
+
     // Jog buttons
     $$('[data-jog]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -356,6 +485,23 @@ function initXYTab() {
     $('btnHomeX').addEventListener('click', () => api.post('/xy/home/x'));
     $('btnHomeY').addEventListener('click', () => api.post('/xy/home/y'));
     $('btnZero').addEventListener('click', () => api.post('/xy/zero'));
+
+    // Motor control
+    $('btnEnableMotors').addEventListener('click', async () => {
+        try {
+            await api.post('/xy/command', { command: 'M17' });
+        } catch (error) {
+            console.error('Enable motors failed:', error);
+        }
+    });
+
+    $('btnDisableMotors').addEventListener('click', async () => {
+        try {
+            await api.post('/xy/command', { command: 'M18' });
+        } catch (error) {
+            console.error('Disable motors failed:', error);
+        }
+    });
 
     // Move to position
     $('btnMoveTo').addEventListener('click', () => {
