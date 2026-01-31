@@ -1203,11 +1203,22 @@ class MainWindow(QMainWindow):
         self.tabService = ServiceTab(self.api)
         self.tabSettings = SettingsTab(self.api)
 
-        # Add only START and WORK tabs initially (SERVICE and SETTINGS are hidden)
+        # Add ALL tabs at startup to keep geometry stable (prevents touch offset issues)
         tabs.addTab(self.tabStart, "START")
         tabs.addTab(self.tabWork, "WORK")
-        # SERVICE and SETTINGS tabs are NOT added initially - hidden by default
-        # They unlock after holding pedal for 4 seconds
+        tabs.addTab(self.tabService, "SERVICE")
+        tabs.addTab(self.tabSettings, "SETTINGS")
+
+        # Hide SERVICE and SETTINGS tabs initially
+        # Use setTabVisible if available (Qt 5.15+), otherwise use tab removal
+        self._use_tab_visible = hasattr(tabs.tabBar(), 'setTabVisible')
+        if self._use_tab_visible:
+            tabs.tabBar().setTabVisible(2, False)  # SERVICE
+            tabs.tabBar().setTabVisible(3, False)  # SETTINGS
+        else:
+            # Fallback: remove tabs but keep references (will add back on unlock)
+            tabs.removeTab(3)  # Remove SETTINGS first (higher index)
+            tabs.removeTab(2)  # Remove SERVICE
 
         self.tabs = tabs
         self._service_tab_visible = False
@@ -1289,11 +1300,19 @@ class MainWindow(QMainWindow):
             self._pedal_was_active = False
 
     def _unlock_service_tab(self):
-        """Add SERVICE and SETTINGS tabs (unlock them)."""
+        """Show SERVICE and SETTINGS tabs (unlock them)."""
         if self._service_tab_visible:
             return
-        self.tabs.addTab(self.tabService, "SERVICE")
-        self.tabs.addTab(self.tabSettings, "SETTINGS")
+
+        if self._use_tab_visible:
+            # Qt 5.15+: just show the hidden tabs
+            self.tabs.tabBar().setTabVisible(2, True)  # SERVICE
+            self.tabs.tabBar().setTabVisible(3, True)  # SETTINGS
+        else:
+            # Fallback: add tabs back
+            self.tabs.addTab(self.tabService, "SERVICE")
+            self.tabs.addTab(self.tabSettings, "SETTINGS")
+
         self._service_tab_visible = True
         self._settings_tab_visible = True
         print("[UI] SERVICE and SETTINGS tabs unlocked (pedal held 4s)")
