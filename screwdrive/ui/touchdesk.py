@@ -780,8 +780,11 @@ class MainWindow(QMainWindow):
 
     def refresh(self):
         try:
+            log_to_file("refresh: getting status...")
             st = self.api.status()
-        except Exception:
+            log_to_file(f"refresh: status OK, keys={list(st.keys()) if st else 'None'}")
+        except Exception as e:
+            log_to_file(f"refresh: status FAILED: {e}")
             self.set_border("alarm")
             return
 
@@ -795,10 +798,14 @@ class MainWindow(QMainWindow):
 
         # Render all tabs
         for tab in (self.tabWork, self.tabStart, self.tabService):
+            tab_name = tab.__class__.__name__
             try:
+                log_to_file(f"refresh: rendering {tab_name}...")
                 tab.render(st)
+                log_to_file(f"refresh: {tab_name} OK")
             except Exception as e:
-                print(f"[UI] render error: {e}")
+                import traceback
+                log_to_file(f"refresh: {tab_name} FAILED: {e}\n{traceback.format_exc()}")
 
         # Border state
         cycle = st.get("cycle", {})
