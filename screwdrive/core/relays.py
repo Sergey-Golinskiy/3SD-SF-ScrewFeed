@@ -42,7 +42,8 @@ class RelayController:
     # Default relay configuration
     # NOTE: Relay pins must NOT conflict with sensor pins (17, 18, 22, 23, 12, 25)
     # R01 - Screw feeder (pulse to release screw)
-    # R02 - Task 2 selection (700ms pulse)
+    # R02 - Motor X brake (ON=brake off, OFF=brake on)
+    # R03 - Motor Y brake (ON=brake off, OFF=brake on)
     # R04 - Cylinder control (ON=down, OFF=up)
     # R05 - Free run mode (hold ON = screwdriver spins)
     # R06 - Torque mode (hold ON until DO2_OK)
@@ -51,7 +52,8 @@ class RelayController:
     # Relays are active_low: GPIO LOW = relay ON, GPIO HIGH = relay OFF
     DEFAULT_RELAYS = {
         'r01_pit': RelayConfig(gpio=5, active_high=False, description="Живильник гвинтів"),
-        'r02_di7_tsk2': RelayConfig(gpio=6, active_high=False, description="Вибір задачі 2"),
+        'r02_brake_x': RelayConfig(gpio=6, active_high=False, description="Гальмо мотора X"),
+        'r03_brake_y': RelayConfig(gpio=13, active_high=False, description="Гальмо мотора Y"),
         'r04_c2': RelayConfig(gpio=16, active_high=False, description="Циліндр відкрутки"),
         'r05_di4_free': RelayConfig(gpio=19, active_high=False, description="Вільний хід"),
         'r06_di1_pot': RelayConfig(gpio=20, active_high=False, description="Режим по моменту"),
@@ -208,11 +210,11 @@ class RelayController:
 
     def select_task(self, task: int) -> bool:
         """
-        Select screwdriver task/program (0, 1, or 2).
+        Select screwdriver task/program (0 or 1).
         Sends 700ms pulse to corresponding relay.
 
         Args:
-            task: Task number (0, 1, or 2)
+            task: Task number (0 or 1)
 
         Returns:
             True if successful.
@@ -220,10 +222,9 @@ class RelayController:
         task_relays = {
             0: 'r07_di5_tsk0',
             1: 'r08_di6_tsk1',
-            2: 'r02_di7_tsk2',
         }
         if task not in task_relays:
-            print(f"ERROR: Invalid task number {task}. Must be 0, 1, or 2.")
+            print(f"ERROR: Invalid task number {task}. Must be 0 or 1.")
             return False
         return self.pulse(task_relays[task], self.TASK_PULSE_DURATION)
 
@@ -283,3 +284,39 @@ class RelayController:
     def is_screwdriver_running(self) -> bool:
         """Check if screwdriver is running in any mode."""
         return self.is_on('r05_di4_free') or self.is_on('r06_di1_pot')
+
+    def brake_x_release(self) -> bool:
+        """
+        Release motor X brake.
+        R02_BRAKE_X ON = brake released (motor can move).
+        """
+        return self.on('r02_brake_x')
+
+    def brake_x_engage(self) -> bool:
+        """
+        Engage motor X brake.
+        R02_BRAKE_X OFF = brake engaged (motor locked).
+        """
+        return self.off('r02_brake_x')
+
+    def brake_y_release(self) -> bool:
+        """
+        Release motor Y brake.
+        R03_BRAKE_Y ON = brake released (motor can move).
+        """
+        return self.on('r03_brake_y')
+
+    def brake_y_engage(self) -> bool:
+        """
+        Engage motor Y brake.
+        R03_BRAKE_Y OFF = brake engaged (motor locked).
+        """
+        return self.off('r03_brake_y')
+
+    def brakes_release(self) -> bool:
+        """Release both X and Y motor brakes."""
+        return self.brake_x_release() and self.brake_y_release()
+
+    def brakes_engage(self) -> bool:
+        """Engage both X and Y motor brakes."""
+        return self.brake_x_engage() and self.brake_y_engage()
