@@ -631,8 +631,20 @@ class SettingsTab(QWidget):
         devHeader.addWidget(lblDevices)
         devHeader.addStretch(1)
         self.btnAddDevice = QPushButton("+")
-        self.btnAddDevice.setFixedSize(36, 36)
-        self.btnAddDevice.setStyleSheet("font-size: 24px; font-weight: bold; color: #2a5; background: transparent; border: none;")
+        self.btnAddDevice.setFixedSize(44, 44)
+        self.btnAddDevice.setStyleSheet("""
+            QPushButton {
+                font-size: 28px;
+                font-weight: bold;
+                color: #2a5;
+                background: #1a3a1a;
+                border: 2px solid #2a5;
+                border-radius: 6px;
+            }
+            QPushButton:pressed {
+                background: #2a5a2a;
+            }
+        """)
         self.btnAddDevice.clicked.connect(self._new_device)
         devHeader.addWidget(self.btnAddDevice)
         left.addLayout(devHeader)
@@ -659,30 +671,45 @@ class SettingsTab(QWidget):
         self.lblPos.setStyleSheet("font-size: 22px; font-weight: bold; padding: 8px;")
         left.addWidget(self.lblPos)
 
-        # Jog buttons in cross pattern
-        jogGrid = QGridLayout()
-        jogGrid.setSpacing(8)
+        # Jog buttons in cross pattern - use container widget for better touch handling
+        jogContainer = QWidget()
+        jogGrid = QGridLayout(jogContainer)
+        jogGrid.setContentsMargins(0, 0, 0, 0)
+        jogGrid.setSpacing(6)
 
         self.btnYMinus = QPushButton("Y -")
         self.btnYPlus = QPushButton("Y +")
         self.btnXMinus = QPushButton("X -")
         self.btnXPlus = QPushButton("X +")
 
+        # Larger fixed size buttons for better touch response
         for btn in [self.btnYPlus, self.btnYMinus, self.btnXPlus, self.btnXMinus]:
-            btn.setMinimumSize(70, 60)
-            btn.setStyleSheet("font-size: 18px; font-weight: bold; background: #3a6fbf; border-radius: 8px;")
+            btn.setFixedSize(90, 70)
+            btn.setStyleSheet("""
+                QPushButton {
+                    font-size: 20px;
+                    font-weight: bold;
+                    background: #3a6fbf;
+                    border-radius: 8px;
+                    border: 2px solid #4a7fcf;
+                }
+                QPushButton:pressed {
+                    background: #2a5faf;
+                }
+            """)
 
-        jogGrid.addWidget(self.btnYMinus, 0, 1)
-        jogGrid.addWidget(self.btnXMinus, 1, 0)
-        jogGrid.addWidget(self.btnXPlus, 1, 2)
-        jogGrid.addWidget(self.btnYPlus, 2, 1)
+        # Add to grid with center alignment
+        jogGrid.addWidget(self.btnYMinus, 0, 1, Qt.AlignCenter)
+        jogGrid.addWidget(self.btnXMinus, 1, 0, Qt.AlignCenter)
+        jogGrid.addWidget(self.btnXPlus, 1, 2, Qt.AlignCenter)
+        jogGrid.addWidget(self.btnYPlus, 2, 1, Qt.AlignCenter)
 
         self.btnYMinus.clicked.connect(lambda: self._jog(0, -1))
         self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
         self.btnXMinus.clicked.connect(lambda: self._jog(-1, 0))
         self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
 
-        left.addLayout(jogGrid)
+        left.addWidget(jogContainer)
 
         # Step selector dropdown
         self.cbStep = QComboBox()
@@ -695,12 +722,25 @@ class SettingsTab(QWidget):
 
         # HOME buttons row
         homeRow = QHBoxLayout()
+        homeRow.setSpacing(8)
         self.btnHome = QPushButton("HOME")
         self.btnHomeY = QPushButton("HOME Y")
         self.btnHomeX = QPushButton("HOME X")
         for btn in [self.btnHome, self.btnHomeY, self.btnHomeX]:
-            btn.setMinimumHeight(44)
-            btn.setStyleSheet("font-size: 14px; background: #3a6fbf; border-radius: 6px;")
+            btn.setFixedHeight(50)
+            btn.setStyleSheet("""
+                QPushButton {
+                    font-size: 14px;
+                    font-weight: bold;
+                    background: #3a6fbf;
+                    border-radius: 6px;
+                    border: 2px solid #4a7fcf;
+                    padding: 8px 12px;
+                }
+                QPushButton:pressed {
+                    background: #2a5faf;
+                }
+            """)
         self.btnHome.clicked.connect(self._on_home)
         self.btnHomeY.clicked.connect(self._on_home_y)
         self.btnHomeX.clicked.connect(self._on_home_x)
@@ -722,8 +762,20 @@ class SettingsTab(QWidget):
         coordHeader.addWidget(lblCoords)
         coordHeader.addStretch(1)
         self.btnAddCoord = QPushButton("+")
-        self.btnAddCoord.setFixedSize(36, 36)
-        self.btnAddCoord.setStyleSheet("font-size: 24px; font-weight: bold; color: #2a5; background: transparent; border: none;")
+        self.btnAddCoord.setFixedSize(44, 44)
+        self.btnAddCoord.setStyleSheet("""
+            QPushButton {
+                font-size: 28px;
+                font-weight: bold;
+                color: #2a5;
+                background: #1a3a1a;
+                border: 2px solid #2a5;
+                border-radius: 6px;
+            }
+            QPushButton:pressed {
+                background: #2a5a2a;
+            }
+        """)
         self.btnAddCoord.clicked.connect(self._add_coord_row)
         coordHeader.addWidget(self.btnAddCoord)
         right.addLayout(coordHeader)
@@ -795,14 +847,36 @@ class SettingsTab(QWidget):
         btnRow.setSpacing(16)
 
         self.btnSave = QPushButton("Зберегти параметри")
-        self.btnSave.setMinimumHeight(50)
-        self.btnSave.setStyleSheet("font-size: 16px; background: #3a6fbf; border-radius: 8px;")
+        self.btnSave.setFixedHeight(56)
+        self.btnSave.setStyleSheet("""
+            QPushButton {
+                font-size: 16px;
+                font-weight: bold;
+                background: #3a6fbf;
+                border-radius: 8px;
+                border: 2px solid #4a7fcf;
+            }
+            QPushButton:pressed {
+                background: #2a5faf;
+            }
+        """)
         self.btnSave.clicked.connect(self._save_device)
         btnRow.addWidget(self.btnSave, 1)
 
         self.btnCancel = QPushButton("Скасувати")
-        self.btnCancel.setMinimumHeight(50)
-        self.btnCancel.setStyleSheet("font-size: 16px; background: #555; border-radius: 8px;")
+        self.btnCancel.setFixedHeight(56)
+        self.btnCancel.setStyleSheet("""
+            QPushButton {
+                font-size: 16px;
+                font-weight: bold;
+                background: #555;
+                border-radius: 8px;
+                border: 2px solid #666;
+            }
+            QPushButton:pressed {
+                background: #444;
+            }
+        """)
         self.btnCancel.clicked.connect(self._cancel_edit)
         btnRow.addWidget(self.btnCancel, 1)
 
@@ -889,8 +963,19 @@ class SettingsTab(QWidget):
 
         # Delete button
         btnDel = QPushButton("−")
-        btnDel.setFixedSize(36, 36)
-        btnDel.setStyleSheet("font-size: 20px; color: #c55; background: transparent; border: none;")
+        btnDel.setFixedSize(40, 40)
+        btnDel.setStyleSheet("""
+            QPushButton {
+                font-size: 24px;
+                color: #c55;
+                background: #3a1a1a;
+                border: 2px solid #c55;
+                border-radius: 6px;
+            }
+            QPushButton:pressed {
+                background: #5a2a2a;
+            }
+        """)
         btnDel.clicked.connect(lambda _, w=rowWidget: self._remove_coord_row(w))
         rowLay.addWidget(btnDel)
 
