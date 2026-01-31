@@ -165,36 +165,97 @@ function updateControlTab(status) {
     const relays = status.relays || {};
 
     if (grid.children.length === 0) {
-        // Initial render
+        // Initial render with ON/OFF/PULSE buttons
         for (const [name, value] of Object.entries(relays)) {
             const isOn = value === 'ON' || value === true;
             grid.innerHTML += `
-                <div class="relay-control">
-                    <span class="name">${formatName(name)}</span>
-                    <button class="toggle-btn ${isOn ? 'on' : 'off'}"
-                            data-relay="${name}"
-                            onclick="toggleRelay('${name}')">
-                        ${isOn ? 'ON' : 'OFF'}
-                    </button>
+                <div class="relay-control-new" data-relay-name="${name}">
+                    <span class="relay-name">${formatName(name)}</span>
+                    <span class="relay-status ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
+                    <div class="relay-buttons">
+                        <button class="btn-relay btn-on" onclick="relayOn('${name}')">ON</button>
+                        <button class="btn-relay btn-off" onclick="relayOff('${name}')">OFF</button>
+                        <button class="btn-relay btn-pulse" onclick="relayPulse('${name}')">PULSE</button>
+                        <input type="number" class="pulse-duration" value="500" min="50" max="5000" step="50" placeholder="мс">
+                    </div>
                 </div>
             `;
         }
     } else {
-        // Update existing
+        // Update existing status indicators only
         for (const [name, value] of Object.entries(relays)) {
             const isOn = value === 'ON' || value === true;
-            const btn = grid.querySelector(`[data-relay="${name}"]`);
-            if (btn) {
-                btn.className = `toggle-btn ${isOn ? 'on' : 'off'}`;
-                btn.textContent = isOn ? 'ON' : 'OFF';
+            const control = grid.querySelector(`[data-relay-name="${name}"]`);
+            if (control) {
+                const statusEl = control.querySelector('.relay-status');
+                if (statusEl) {
+                    statusEl.className = `relay-status ${isOn ? 'on' : 'off'}`;
+                    statusEl.textContent = isOn ? 'ON' : 'OFF';
+                }
             }
         }
+    }
+}
+
+async function relayOn(name) {
+    // Optimistic UI update
+    const control = $('relayControlGrid').querySelector(`[data-relay-name="${name}"]`);
+    if (control) {
+        const statusEl = control.querySelector('.relay-status');
+        statusEl.className = 'relay-status on';
+        statusEl.textContent = 'ON';
+    }
+    try {
+        await api.post(`/relays/${name}`, { state: 'on' });
+    } catch (error) {
+        console.error('Relay ON failed:', error);
+        updateStatus(); // Refresh on error
+    }
+}
+
+async function relayOff(name) {
+    // Optimistic UI update
+    const control = $('relayControlGrid').querySelector(`[data-relay-name="${name}"]`);
+    if (control) {
+        const statusEl = control.querySelector('.relay-status');
+        statusEl.className = 'relay-status off';
+        statusEl.textContent = 'OFF';
+    }
+    try {
+        await api.post(`/relays/${name}`, { state: 'off' });
+    } catch (error) {
+        console.error('Relay OFF failed:', error);
+        updateStatus(); // Refresh on error
+    }
+}
+
+async function relayPulse(name) {
+    const control = $('relayControlGrid').querySelector(`[data-relay-name="${name}"]`);
+    const durationInput = control.querySelector('.pulse-duration');
+    const duration = parseInt(durationInput.value) || 500;
+
+    // Visual feedback - show ON briefly
+    const statusEl = control.querySelector('.relay-status');
+    statusEl.className = 'relay-status on';
+    statusEl.textContent = 'PULSE';
+
+    try {
+        await api.post(`/relays/${name}`, { state: 'pulse', duration: duration });
+        // Show OFF after pulse duration
+        setTimeout(() => {
+            statusEl.className = 'relay-status off';
+            statusEl.textContent = 'OFF';
+        }, duration);
+    } catch (error) {
+        console.error('Relay PULSE failed:', error);
+        updateStatus();
     }
 }
 
 async function toggleRelay(name) {
     try {
         await api.post(`/relays/${name}`, { state: 'toggle' });
+        updateStatus(); // Immediate refresh
     } catch (error) {
         console.error('Toggle relay failed:', error);
     }
@@ -555,6 +616,9 @@ document.addEventListener('DOMContentLoaded', init);
 // Export for inline handlers
 window.selectDevice = selectDevice;
 window.toggleRelay = toggleRelay;
+window.relayOn = relayOn;
+window.relayOff = relayOff;
+window.relayPulse = relayPulse;
 window.goToCoord = goToCoord;
 window.removeCoordRow = removeCoordRow;
 window.updateTypeStyle = updateTypeStyle;
