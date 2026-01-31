@@ -78,7 +78,7 @@ class SensorController:
         ),
         # Аварійна кнопка (грибок) - HIGH=не натиснута, LOW=АВАРІЯ
         'emergency_stop': SensorConfig(
-            gpio=27, active_low=True, pull_up=True,
+            gpio=27, active_low=False, pull_up=True,
             description="Аварійна кнопка (грибок)", debounce_ms=50
         ),
     }

@@ -139,11 +139,10 @@ sensors:
     pull_up: true
 
   # Аварійна кнопка (грибок) - зупиняє всю систему
-  # HIGH = не натиснута
-  # LOW = натиснута (АВАРІЯ!)
+  # N/C type: LOW = не натиснута, HIGH = натиснута (АВАРІЯ!)
   emergency_stop:
     gpio: 27
-    active_low: true
+    active_low: false
     description: "Аварійна кнопка (грибок)"
     description_en: "Emergency stop button (mushroom)"
     pull_up: true
