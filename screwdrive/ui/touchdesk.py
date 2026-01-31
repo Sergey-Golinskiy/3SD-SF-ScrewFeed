@@ -1196,6 +1196,9 @@ class MainWindow(QMainWindow):
         # Tabs
         tabs = QTabWidget()
         tabs.setObjectName("tabs")
+        # Make tabs expand to fill full width and disable scroll arrows
+        tabs.tabBar().setExpanding(True)
+        tabs.tabBar().setUsesScrollButtons(False)
         root.addWidget(tabs)
 
         self.tabStart = StartTab(self.api)
