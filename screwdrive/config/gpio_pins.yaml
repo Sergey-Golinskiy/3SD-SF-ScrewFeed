@@ -30,6 +30,20 @@ relays:
     description_en: "Screw feeder - pulse to release screw"
     pulse_ms: 200
 
+  # R02 - Гальмо мотора X (ON=гальмо вимкнено, OFF=гальмо увімкнено)
+  r02_brake_x:
+    gpio: 6
+    active_high: false
+    description: "Гальмо мотора X"
+    description_en: "Motor X brake (ON=brake off, OFF=brake on)"
+
+  # R03 - Гальмо мотора Y (ON=гальмо вимкнено, OFF=гальмо увімкнено)
+  r03_brake_y:
+    gpio: 13
+    active_high: false
+    description: "Гальмо мотора Y"
+    description_en: "Motor Y brake (ON=brake off, OFF=brake on)"
+
   # R04 - Циліндр відкрутки (ON=вниз, OFF=вгору автоматично)
   r04_c2:
     gpio: 16
