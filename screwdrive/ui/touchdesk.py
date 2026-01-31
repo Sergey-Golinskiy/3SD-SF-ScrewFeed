@@ -607,6 +607,139 @@ class ServiceTab(QWidget):
 class SettingsTab(QWidget):
     """Settings tab with device management and XY table controls."""
 
+    # Style constants
+    CARD_STYLE = """
+        QFrame {
+            background: #1e1e1e;
+            border: 1px solid #3a3a3a;
+            border-radius: 12px;
+        }
+    """
+    HEADER_STYLE = "color: #e0e0e0; font-size: 16px; font-weight: bold;"
+    LABEL_STYLE = "color: #b0b0b0; font-size: 13px;"
+    INPUT_STYLE = """
+        QLineEdit, QSpinBox, QComboBox {
+            background: #2a2a2a;
+            border: 1px solid #4a4a4a;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: #e0e0e0;
+            font-size: 14px;
+        }
+        QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+            border: 1px solid #5a9fd4;
+        }
+        QComboBox::drop-down {
+            border: none;
+            padding-right: 8px;
+        }
+    """
+    BTN_PRIMARY = """
+        QPushButton {
+            background: #5a9fd4;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            padding: 12px 20px;
+        }
+        QPushButton:pressed {
+            background: #4a8fc4;
+        }
+    """
+    BTN_SECONDARY = """
+        QPushButton {
+            background: #3a3a3a;
+            border: 1px solid #5a5a5a;
+            border-radius: 8px;
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: bold;
+            padding: 12px 20px;
+        }
+        QPushButton:pressed {
+            background: #4a4a4a;
+        }
+    """
+    BTN_JOG = """
+        QPushButton {
+            background: #5a9fd4;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        QPushButton:pressed {
+            background: #4a8fc4;
+        }
+    """
+    BTN_ADD = """
+        QPushButton {
+            background: #2d5a3d;
+            border: none;
+            border-radius: 6px;
+            color: #6fcf97;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        QPushButton:pressed {
+            background: #3d6a4d;
+        }
+    """
+    BTN_DEL = """
+        QPushButton {
+            background: #5a2d2d;
+            border: none;
+            border-radius: 6px;
+            color: #eb5757;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        QPushButton:pressed {
+            background: #6a3d3d;
+        }
+    """
+    DEVICE_BTN = """
+        QPushButton {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            color: #d0d0d0;
+            font-size: 14px;
+            text-align: left;
+            padding: 10px 14px;
+        }
+        QPushButton:checked {
+            background: #3a5a7a;
+            border: 1px solid #5a9fd4;
+            color: white;
+        }
+        QPushButton:pressed {
+            background: #3a4a5a;
+        }
+    """
+    SCROLL_STYLE = """
+        QScrollArea {
+            background: transparent;
+            border: none;
+        }
+        QScrollBar:vertical {
+            background: #2a2a2a;
+            width: 8px;
+            border-radius: 4px;
+        }
+        QScrollBar::handle:vertical {
+            background: #5a5a5a;
+            border-radius: 4px;
+            min-height: 30px;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0;
+        }
+    """
+
     def __init__(self, api: ApiClient, parent=None):
         super().__init__(parent)
         self.api = api
@@ -614,91 +747,80 @@ class SettingsTab(QWidget):
         self._editing_device = None
         self._selected_device_key = None
         self._device_buttons = {}
-        self._coord_rows = []  # List of coordinate row widgets
+        self._coord_rows = []
+
+        # Apply global input style
+        self.setStyleSheet(self.INPUT_STYLE + self.SCROLL_STYLE)
 
         root = QHBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(16)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(12)
 
         # ========== LEFT COLUMN ==========
-        left = QVBoxLayout()
-        left.setSpacing(12)
+        leftFrame = QFrame()
+        leftFrame.setStyleSheet(self.CARD_STYLE)
+        left = QVBoxLayout(leftFrame)
+        left.setContentsMargins(16, 16, 16, 16)
+        left.setSpacing(14)
 
         # --- ДЕВАЙСИ section ---
         devHeader = QHBoxLayout()
         lblDevices = QLabel("ДЕВАЙСИ")
-        lblDevices.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lblDevices.setStyleSheet(self.HEADER_STYLE)
         devHeader.addWidget(lblDevices)
         devHeader.addStretch(1)
         self.btnAddDevice = QPushButton("+")
-        self.btnAddDevice.setFixedSize(44, 44)
-        self.btnAddDevice.setStyleSheet("""
-            QPushButton {
-                font-size: 28px;
-                font-weight: bold;
-                color: #2a5;
-                background: #1a3a1a;
-                border: 2px solid #2a5;
-                border-radius: 6px;
-            }
-            QPushButton:pressed {
-                background: #2a5a2a;
-            }
-        """)
+        self.btnAddDevice.setFixedSize(36, 36)
+        self.btnAddDevice.setStyleSheet(self.BTN_ADD)
         self.btnAddDevice.clicked.connect(self._new_device)
         devHeader.addWidget(self.btnAddDevice)
         left.addLayout(devHeader)
 
-        # Device list (max 3 visible, scrollable)
+        # Device list
         self.devScroll = QScrollArea()
         self.devScroll.setWidgetResizable(True)
-        self.devScroll.setFixedHeight(130)  # ~3 items
+        self.devScroll.setFixedHeight(120)
         self.devScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.devListWidget = QWidget()
+        self.devListWidget.setStyleSheet("background: transparent;")
         self.devListLay = QVBoxLayout(self.devListWidget)
         self.devListLay.setContentsMargins(0, 0, 0, 0)
-        self.devListLay.setSpacing(4)
+        self.devListLay.setSpacing(6)
         self.devScroll.setWidget(self.devListWidget)
         left.addWidget(self.devScroll)
 
-        # --- XY TABLE CONTROL section ---
+        # Separator
+        sep1 = QFrame()
+        sep1.setFixedHeight(1)
+        sep1.setStyleSheet("background: #3a3a3a;")
+        left.addWidget(sep1)
+
+        # --- XY TABLE CONTROL ---
         xyHeader = QLabel("XY TABLE CONTROL")
-        xyHeader.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 12px;")
+        xyHeader.setStyleSheet(self.HEADER_STYLE)
         left.addWidget(xyHeader)
 
         # Position display
-        self.lblPos = QLabel("X: 0.00  Y: 0.00")
-        self.lblPos.setStyleSheet("font-size: 22px; font-weight: bold; padding: 8px;")
+        self.lblPos = QLabel("X: 0.00   Y: 0.00")
+        self.lblPos.setStyleSheet("color: #5a9fd4; font-size: 20px; font-weight: bold; padding: 6px 0;")
+        self.lblPos.setAlignment(Qt.AlignCenter)
         left.addWidget(self.lblPos)
 
-        # Jog buttons in cross pattern - use container widget for better touch handling
+        # Jog buttons
         jogContainer = QWidget()
         jogGrid = QGridLayout(jogContainer)
-        jogGrid.setContentsMargins(0, 0, 0, 0)
-        jogGrid.setSpacing(6)
+        jogGrid.setContentsMargins(10, 0, 10, 0)
+        jogGrid.setSpacing(8)
 
-        self.btnYMinus = QPushButton("Y -")
+        self.btnYMinus = QPushButton("Y −")
         self.btnYPlus = QPushButton("Y +")
-        self.btnXMinus = QPushButton("X -")
+        self.btnXMinus = QPushButton("X −")
         self.btnXPlus = QPushButton("X +")
 
-        # Larger fixed size buttons for better touch response
         for btn in [self.btnYPlus, self.btnYMinus, self.btnXPlus, self.btnXMinus]:
-            btn.setFixedSize(90, 70)
-            btn.setStyleSheet("""
-                QPushButton {
-                    font-size: 20px;
-                    font-weight: bold;
-                    background: #3a6fbf;
-                    border-radius: 8px;
-                    border: 2px solid #4a7fcf;
-                }
-                QPushButton:pressed {
-                    background: #2a5faf;
-                }
-            """)
+            btn.setFixedSize(80, 60)
+            btn.setStyleSheet(self.BTN_JOG)
 
-        # Add to grid with center alignment
         jogGrid.addWidget(self.btnYMinus, 0, 1, Qt.AlignCenter)
         jogGrid.addWidget(self.btnXMinus, 1, 0, Qt.AlignCenter)
         jogGrid.addWidget(self.btnXPlus, 1, 2, Qt.AlignCenter)
@@ -711,40 +833,38 @@ class SettingsTab(QWidget):
 
         left.addWidget(jogContainer)
 
-        # Step selector dropdown
+        # Step selector
+        stepLbl = QLabel("Крок переміщення:")
+        stepLbl.setStyleSheet(self.LABEL_STYLE)
+        left.addWidget(stepLbl)
+
         self.cbStep = QComboBox()
-        self.cbStep.addItem("Вільне переміщення", 0)
+        self.cbStep.addItem("Вільне", 0)
         for step in ["0.1", "0.5", "1", "5", "10", "50", "100"]:
             self.cbStep.addItem(f"{step} mm", float(step))
-        self.cbStep.setCurrentIndex(5)  # Default 10mm
-        self.cbStep.setMinimumHeight(40)
+        self.cbStep.setCurrentIndex(5)
+        self.cbStep.setFixedHeight(44)
         left.addWidget(self.cbStep)
 
-        # HOME buttons row
+        # HOME buttons
         homeRow = QHBoxLayout()
         homeRow.setSpacing(8)
         self.btnHome = QPushButton("HOME")
-        self.btnHomeY = QPushButton("HOME Y")
-        self.btnHomeX = QPushButton("HOME X")
-        for btn in [self.btnHome, self.btnHomeY, self.btnHomeX]:
-            btn.setFixedHeight(50)
-            btn.setStyleSheet("""
-                QPushButton {
-                    font-size: 14px;
-                    font-weight: bold;
-                    background: #3a6fbf;
-                    border-radius: 6px;
-                    border: 2px solid #4a7fcf;
-                    padding: 8px 12px;
-                }
-                QPushButton:pressed {
-                    background: #2a5faf;
-                }
-            """)
+        self.btnHomeY = QPushButton("Y")
+        self.btnHomeX = QPushButton("X")
+
+        self.btnHome.setFixedHeight(48)
+        self.btnHome.setStyleSheet(self.BTN_PRIMARY)
+        self.btnHomeY.setFixedSize(50, 48)
+        self.btnHomeY.setStyleSheet(self.BTN_SECONDARY)
+        self.btnHomeX.setFixedSize(50, 48)
+        self.btnHomeX.setStyleSheet(self.BTN_SECONDARY)
+
         self.btnHome.clicked.connect(self._on_home)
         self.btnHomeY.clicked.connect(self._on_home_y)
         self.btnHomeX.clicked.connect(self._on_home_x)
-        homeRow.addWidget(self.btnHome)
+
+        homeRow.addWidget(self.btnHome, 1)
         homeRow.addWidget(self.btnHomeY)
         homeRow.addWidget(self.btnHomeX)
         left.addLayout(homeRow)
@@ -752,139 +872,156 @@ class SettingsTab(QWidget):
         left.addStretch(1)
 
         # ========== RIGHT COLUMN ==========
-        right = QVBoxLayout()
+        rightFrame = QFrame()
+        rightFrame.setStyleSheet(self.CARD_STYLE)
+        right = QVBoxLayout(rightFrame)
+        right.setContentsMargins(16, 16, 16, 16)
         right.setSpacing(12)
 
-        # --- КООРДИНАТИ ПЕРЕМІЩЕННЯ section ---
+        # --- КООРДИНАТИ ПЕРЕМІЩЕННЯ ---
         coordHeader = QHBoxLayout()
         lblCoords = QLabel("КООРДИНАТИ ПЕРЕМІЩЕННЯ")
-        lblCoords.setStyleSheet("font-size: 18px; font-weight: bold;")
+        lblCoords.setStyleSheet(self.HEADER_STYLE)
         coordHeader.addWidget(lblCoords)
         coordHeader.addStretch(1)
         self.btnAddCoord = QPushButton("+")
-        self.btnAddCoord.setFixedSize(44, 44)
-        self.btnAddCoord.setStyleSheet("""
-            QPushButton {
-                font-size: 28px;
-                font-weight: bold;
-                color: #2a5;
-                background: #1a3a1a;
-                border: 2px solid #2a5;
-                border-radius: 6px;
-            }
-            QPushButton:pressed {
-                background: #2a5a2a;
-            }
-        """)
+        self.btnAddCoord.setFixedSize(36, 36)
+        self.btnAddCoord.setStyleSheet(self.BTN_ADD)
         self.btnAddCoord.clicked.connect(self._add_coord_row)
         coordHeader.addWidget(self.btnAddCoord)
         right.addLayout(coordHeader)
 
-        # Coordinate list (max 7 visible, scrollable)
+        # Column headers
+        colHeaders = QHBoxLayout()
+        colHeaders.setSpacing(6)
+        colHeaders.addWidget(QLabel(""), 0)  # Number placeholder
+        for txt, w in [("X", 70), ("Y", 70), ("Тип", 90), ("F", 70)]:
+            lbl = QLabel(txt)
+            lbl.setStyleSheet(self.LABEL_STYLE)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setFixedWidth(w)
+            colHeaders.addWidget(lbl)
+        colHeaders.addWidget(QLabel(""), 0)  # Delete btn placeholder
+        colHeaders.addStretch(1)
+        right.addLayout(colHeaders)
+
+        # Coordinate list
         self.coordScroll = QScrollArea()
         self.coordScroll.setWidgetResizable(True)
-        self.coordScroll.setFixedHeight(280)  # ~7 rows
+        self.coordScroll.setMinimumHeight(200)
         self.coordScroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.coordListWidget = QWidget()
+        self.coordListWidget.setStyleSheet("background: transparent;")
         self.coordListLay = QVBoxLayout(self.coordListWidget)
-        self.coordListLay.setContentsMargins(4, 4, 4, 4)
-        self.coordListLay.setSpacing(4)
+        self.coordListLay.setContentsMargins(0, 0, 0, 0)
+        self.coordListLay.setSpacing(6)
         self.coordScroll.setWidget(self.coordListWidget)
-        right.addWidget(self.coordScroll)
+        right.addWidget(self.coordScroll, 1)
 
-        # --- Редактор девайсу section ---
-        editorHeader = QLabel("Редактор девайсу")
-        editorHeader.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 8px;")
+        # Separator
+        sep2 = QFrame()
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet("background: #3a3a3a;")
+        right.addWidget(sep2)
+
+        # --- РЕДАКТОР ДЕВАЙСУ ---
+        editorHeader = QLabel("РЕДАКТОР ДЕВАЙСУ")
+        editorHeader.setStyleSheet(self.HEADER_STYLE)
         editorHeader.setAlignment(Qt.AlignCenter)
         right.addWidget(editorHeader)
 
-        # Device parameters row 1: Name, What, Holes, Size
+        # Row 1: Name, What
         paramRow1 = QHBoxLayout()
-        paramRow1.setSpacing(8)
+        paramRow1.setSpacing(10)
 
+        col1 = QVBoxLayout()
+        col1.setSpacing(4)
+        lbl1 = QLabel("Назва (код)")
+        lbl1.setStyleSheet(self.LABEL_STYLE)
+        col1.addWidget(lbl1)
         self.edName = QLineEdit()
-        self.edName.setPlaceholderText("Назва (3 літери)")
-        self.edName.setMinimumHeight(40)
-        paramRow1.addWidget(self.edName, 1)
+        self.edName.setPlaceholderText("MCO_BACK")
+        self.edName.setFixedHeight(42)
+        col1.addWidget(self.edName)
+        paramRow1.addLayout(col1, 1)
 
+        col2 = QVBoxLayout()
+        col2.setSpacing(4)
+        lbl2 = QLabel("Опис")
+        lbl2.setStyleSheet(self.LABEL_STYLE)
+        col2.addWidget(lbl2)
         self.edWhat = QLineEdit()
         self.edWhat.setPlaceholderText("Що крутим")
-        self.edWhat.setMinimumHeight(40)
-        paramRow1.addWidget(self.edWhat, 1)
-
-        self.spHoles = QSpinBox()
-        self.spHoles.setRange(0, 100)
-        self.spHoles.setMinimumHeight(40)
-        self.spHoles.setPrefix("Гвинтів: ")
-        paramRow1.addWidget(self.spHoles)
-
-        self.edSize = QLineEdit()
-        self.edSize.setPlaceholderText("Розмір гвинтів")
-        self.edSize.setMinimumHeight(40)
-        self.edSize.setMaximumWidth(120)
-        paramRow1.addWidget(self.edSize)
+        self.edWhat.setFixedHeight(42)
+        col2.addWidget(self.edWhat)
+        paramRow1.addLayout(col2, 1)
 
         right.addLayout(paramRow1)
 
-        # Device parameters row 2: Task number (hidden field for key)
+        # Row 2: Holes, Size, Task
         paramRow2 = QHBoxLayout()
-        paramRow2.setSpacing(8)
+        paramRow2.setSpacing(10)
 
+        col3 = QVBoxLayout()
+        col3.setSpacing(4)
+        lbl3 = QLabel("Кількість гвинтів")
+        lbl3.setStyleSheet(self.LABEL_STYLE)
+        col3.addWidget(lbl3)
+        self.spHoles = QSpinBox()
+        self.spHoles.setRange(0, 100)
+        self.spHoles.setFixedHeight(42)
+        col3.addWidget(self.spHoles)
+        paramRow2.addLayout(col3, 1)
+
+        col4 = QVBoxLayout()
+        col4.setSpacing(4)
+        lbl4 = QLabel("Розмір гвинтів")
+        lbl4.setStyleSheet(self.LABEL_STYLE)
+        col4.addWidget(lbl4)
+        self.edSize = QLineEdit()
+        self.edSize.setPlaceholderText("M3x10")
+        self.edSize.setFixedHeight(42)
+        col4.addWidget(self.edSize)
+        paramRow2.addLayout(col4, 1)
+
+        col5 = QVBoxLayout()
+        col5.setSpacing(4)
+        lbl5 = QLabel("Номер таски")
+        lbl5.setStyleSheet(self.LABEL_STYLE)
+        col5.addWidget(lbl5)
         self.edTask = QLineEdit()
-        self.edTask.setPlaceholderText("Номер таски")
-        self.edTask.setMinimumHeight(40)
-        paramRow2.addWidget(self.edTask, 1)
+        self.edTask.setPlaceholderText("TASK-123")
+        self.edTask.setFixedHeight(42)
+        col5.addWidget(self.edTask)
+        paramRow2.addLayout(col5, 1)
 
-        # Hidden key field (used internally)
+        # Hidden key field
         self.edKey = QLineEdit()
         self.edKey.setVisible(False)
 
-        paramRow2.addStretch(1)
         right.addLayout(paramRow2)
 
         # Save/Cancel buttons
         btnRow = QHBoxLayout()
-        btnRow.setSpacing(16)
+        btnRow.setSpacing(12)
 
-        self.btnSave = QPushButton("Зберегти параметри")
-        self.btnSave.setFixedHeight(56)
-        self.btnSave.setStyleSheet("""
-            QPushButton {
-                font-size: 16px;
-                font-weight: bold;
-                background: #3a6fbf;
-                border-radius: 8px;
-                border: 2px solid #4a7fcf;
-            }
-            QPushButton:pressed {
-                background: #2a5faf;
-            }
-        """)
+        self.btnSave = QPushButton("Зберегти")
+        self.btnSave.setFixedHeight(52)
+        self.btnSave.setStyleSheet(self.BTN_PRIMARY)
         self.btnSave.clicked.connect(self._save_device)
         btnRow.addWidget(self.btnSave, 1)
 
         self.btnCancel = QPushButton("Скасувати")
-        self.btnCancel.setFixedHeight(56)
-        self.btnCancel.setStyleSheet("""
-            QPushButton {
-                font-size: 16px;
-                font-weight: bold;
-                background: #555;
-                border-radius: 8px;
-                border: 2px solid #666;
-            }
-            QPushButton:pressed {
-                background: #444;
-            }
-        """)
+        self.btnCancel.setFixedHeight(52)
+        self.btnCancel.setStyleSheet(self.BTN_SECONDARY)
         self.btnCancel.clicked.connect(self._cancel_edit)
         btnRow.addWidget(self.btnCancel, 1)
 
         right.addLayout(btnRow)
 
         # Add columns to root
-        root.addLayout(left, 4)
-        root.addLayout(right, 6)
+        root.addWidget(leftFrame, 4)
+        root.addWidget(rightFrame, 6)
 
     def _jog(self, dx: int, dy: int):
         """Jog XY table by selected step."""
@@ -923,67 +1060,60 @@ class SettingsTab(QWidget):
         row_num = len(self._coord_rows) + 1
 
         rowWidget = QWidget()
+        rowWidget.setStyleSheet("background: #252525; border-radius: 6px;")
         rowLay = QHBoxLayout(rowWidget)
-        rowLay.setContentsMargins(0, 0, 0, 0)
+        rowLay.setContentsMargins(8, 6, 8, 6)
         rowLay.setSpacing(6)
 
         # Row number
         lblNum = QLabel(f"{row_num}.")
         lblNum.setFixedWidth(24)
+        lblNum.setStyleSheet("color: #808080; font-size: 13px; font-weight: bold; background: transparent;")
         rowLay.addWidget(lblNum)
 
         # X coordinate
         edX = QLineEdit(str(x))
-        edX.setPlaceholderText("X")
-        edX.setMinimumHeight(36)
-        edX.setMaximumWidth(70)
+        edX.setPlaceholderText("0")
+        edX.setFixedSize(70, 38)
+        edX.setAlignment(Qt.AlignCenter)
         rowLay.addWidget(edX)
 
         # Y coordinate
         edY = QLineEdit(str(y))
-        edY.setPlaceholderText("Y")
-        edY.setMinimumHeight(36)
-        edY.setMaximumWidth(70)
+        edY.setPlaceholderText("0")
+        edY.setFixedSize(70, 38)
+        edY.setAlignment(Qt.AlignCenter)
         rowLay.addWidget(edY)
 
         # Type dropdown (FREE/WORK)
         cbType = QComboBox()
         cbType.addItems(["FREE", "WORK"])
         cbType.setCurrentText(coord_type.upper())
-        cbType.setMinimumHeight(36)
-        cbType.setMinimumWidth(80)
+        cbType.setFixedSize(90, 38)
         rowLay.addWidget(cbType)
 
         # Feed rate
         edFeed = QLineEdit(str(feed))
-        edFeed.setPlaceholderText("F")
-        edFeed.setMinimumHeight(36)
-        edFeed.setMaximumWidth(70)
+        edFeed.setPlaceholderText("5000")
+        edFeed.setFixedSize(70, 38)
+        edFeed.setAlignment(Qt.AlignCenter)
         rowLay.addWidget(edFeed)
 
         # Delete button
         btnDel = QPushButton("−")
-        btnDel.setFixedSize(40, 40)
-        btnDel.setStyleSheet("""
-            QPushButton {
-                font-size: 24px;
-                color: #c55;
-                background: #3a1a1a;
-                border: 2px solid #c55;
-                border-radius: 6px;
-            }
-            QPushButton:pressed {
-                background: #5a2a2a;
-            }
-        """)
+        btnDel.setFixedSize(36, 36)
+        btnDel.setStyleSheet(self.BTN_DEL)
         btnDel.clicked.connect(lambda _, w=rowWidget: self._remove_coord_row(w))
         rowLay.addWidget(btnDel)
+
+        rowLay.addStretch(1)
 
         # Store references
         rowWidget.edX = edX
         rowWidget.edY = edY
         rowWidget.cbType = cbType
         rowWidget.edFeed = edFeed
+        rowWidget.lblNum = lblNum
 
         self._coord_rows.append(rowWidget)
         self.coordListLay.addWidget(rowWidget)
@@ -999,9 +1129,8 @@ class SettingsTab(QWidget):
     def _renumber_coord_rows(self):
         """Renumber coordinate rows after deletion."""
         for i, row in enumerate(self._coord_rows):
-            lbl = row.findChild(QLabel)
-            if lbl:
-                lbl.setText(f"{i + 1}.")
+            if hasattr(row, 'lblNum'):
+                row.lblNum.setText(f"{i + 1}.")
 
     def _clear_coord_rows(self):
         """Clear all coordinate rows."""
@@ -1026,9 +1155,9 @@ class SettingsTab(QWidget):
             holes = d.get("holes", 0)
 
             btn = QPushButton(f"{name} ({holes} holes)")
-            btn.setMinimumHeight(38)
+            btn.setFixedHeight(40)
             btn.setCheckable(True)
-            btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px;")
+            btn.setStyleSheet(self.DEVICE_BTN)
             btn.clicked.connect(lambda _, k=key: self._select_device(k))
             self.devListLay.addWidget(btn)
             self._device_buttons[key] = btn
@@ -1040,10 +1169,6 @@ class SettingsTab(QWidget):
         for key, btn in self._device_buttons.items():
             is_selected = (key == self._selected_device_key)
             btn.setChecked(is_selected)
-            if is_selected:
-                btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px; background: #3a6fbf;")
-            else:
-                btn.setStyleSheet("text-align: left; padding-left: 12px; border-radius: 6px;")
 
     def _select_device(self, key: str):
         """Select device and load its data for editing."""
