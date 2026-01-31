@@ -314,6 +314,7 @@ class StartTab(QWidget):
         self._devices = []
         self._selected_key = None
         self._device_buttons = {}
+        self._devices_refresh_ts = 0.0  # throttle device refresh
         self.on_started = None
 
         root = QHBoxLayout(self)
@@ -414,14 +415,17 @@ class StartTab(QWidget):
             self.lblStatus.setText(f"Start failed: {e}")
 
     def render(self, st: dict):
-        # Refresh devices periodically
-        try:
-            devices = self.api.devices()
-            if devices and devices != self._devices:
-                self._devices = devices
-                self._rebuild_devices(devices)
-        except Exception as e:
-            print(f"[StartTab] devices error: {e}")
+        # Refresh devices every 2 seconds (throttled like old code)
+        now = time.time()
+        if (now - self._devices_refresh_ts) > 2.0 or not self._devices:
+            self._devices_refresh_ts = now
+            try:
+                devices = self.api.devices()
+                if devices and isinstance(devices, list) and devices != self._devices:
+                    self._devices = devices
+                    self._rebuild_devices(devices)
+            except Exception as e:
+                print(f"[StartTab] devices error: {e}")
 
         try:
             cycle = st.get("cycle") or {}
