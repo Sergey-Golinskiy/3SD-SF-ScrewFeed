@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from dataclasses import asdict
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, render_template, send_from_directory
 from flask_cors import CORS
 
 from core import (
@@ -49,7 +49,15 @@ def create_app(
     Returns:
         Configured Flask application.
     """
-    app = Flask(__name__)
+    # Setup paths for templates and static files
+    base_dir = Path(__file__).parent.parent
+    template_dir = base_dir / 'templates'
+    static_dir = base_dir / 'static'
+
+    app = Flask(__name__,
+                template_folder=str(template_dir),
+                static_folder=str(static_dir),
+                static_url_path='/static')
     CORS(app)
 
     # Store instances in app context
@@ -63,6 +71,18 @@ def create_app(
 
     # Load devices configuration
     _load_devices(app)
+
+    # === Web UI Routes ===
+
+    @app.route('/')
+    def index():
+        """Serve main Web UI page."""
+        return render_template('index.html')
+
+    @app.route('/static/<path:filename>')
+    def serve_static(filename):
+        """Serve static files."""
+        return send_from_directory(app.static_folder, filename)
 
     # === Health and Status ===
 
