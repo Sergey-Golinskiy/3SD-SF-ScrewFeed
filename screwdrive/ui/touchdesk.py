@@ -627,16 +627,30 @@ class MainWindow(QMainWindow):
         tabs.setObjectName("tabs")
         root.addWidget(tabs)
 
-        self.tabWork = WorkTab(self.api)
         self.tabStart = StartTab(self.api)
+        self.tabWork = WorkTab(self.api)
         self.tabService = ServiceTab(self.api)
 
-        tabs.addTab(self.tabWork, "WORK")
+        # Add only START and WORK tabs initially (SERVICE is hidden)
         tabs.addTab(self.tabStart, "START")
-        tabs.addTab(self.tabService, "SERVICE")
+        tabs.addTab(self.tabWork, "WORK")
+        # SERVICE tab is NOT added initially - hidden by default
 
         self.tabs = tabs
-        self.tabStart.on_started = lambda: self.tabs.setCurrentIndex(0)
+        self._service_tab_visible = False
+        self._device_selected = False
+
+        # Block tab changes until device is selected
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+        self._last_valid_tab = 0  # START tab
+
+        # Callback when cycle started - go to WORK tab
+        self.tabStart.on_started = self._on_cycle_started
+
+        # Pedal hold tracking for SERVICE tab unlock
+        self._pedal_hold_start = None
+        self._pedal_was_active = False
+        self.PEDAL_HOLD_SECONDS = 4.0
 
         # Poll timer
         self.timer = QTimer(self)
@@ -644,8 +658,69 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.refresh)
         self.timer.start()
 
+        # Start on START tab
+        self.tabs.setCurrentIndex(0)
+
         # Fullscreen
         self.showFullScreen()
+
+    def _on_tab_changed(self, index: int):
+        """Handle tab change - block if device not selected."""
+        # Always allow START tab (index 0)
+        if index == 0:
+            self._last_valid_tab = 0
+            return
+
+        # WORK tab (index 1) - only if device selected
+        if index == 1:
+            if not self._device_selected:
+                # Block navigation, return to START
+                self.tabs.blockSignals(True)
+                self.tabs.setCurrentIndex(0)
+                self.tabs.blockSignals(False)
+                self.tabStart.lblStatus.setText("Спочатку виберіть девайс!")
+                return
+            self._last_valid_tab = 1
+
+        # SERVICE tab (index 2) - only if visible
+        if index == 2 and self._service_tab_visible:
+            self._last_valid_tab = 2
+
+    def _on_cycle_started(self):
+        """Called when cycle starts - switch to WORK tab."""
+        self._device_selected = True
+        self.tabs.setCurrentIndex(1)  # WORK tab
+
+    def _check_pedal_hold(self, sensors: dict):
+        """Check if pedal is held for 4 seconds to unlock SERVICE tab."""
+        if self._service_tab_visible:
+            return  # Already visible
+
+        pedal_active = sensors.get("ped_start") == "ACTIVE"
+
+        if pedal_active:
+            if not self._pedal_was_active:
+                # Pedal just pressed - start timer
+                self._pedal_hold_start = time.time()
+                self._pedal_was_active = True
+            else:
+                # Pedal still held - check duration
+                if self._pedal_hold_start:
+                    elapsed = time.time() - self._pedal_hold_start
+                    if elapsed >= self.PEDAL_HOLD_SECONDS:
+                        self._unlock_service_tab()
+        else:
+            # Pedal released - reset
+            self._pedal_hold_start = None
+            self._pedal_was_active = False
+
+    def _unlock_service_tab(self):
+        """Add SERVICE tab (unlock it)."""
+        if self._service_tab_visible:
+            return
+        self.tabs.addTab(self.tabService, "SERVICE")
+        self._service_tab_visible = True
+        print("[UI] SERVICE tab unlocked (pedal held 4s)")
 
     def set_border(self, state: str):
         self.frame.setProperty("state", state)
@@ -658,6 +733,14 @@ class MainWindow(QMainWindow):
         except Exception:
             self.set_border("alarm")
             return
+
+        # Check pedal hold for SERVICE unlock
+        sensors = st.get("sensors", {})
+        self._check_pedal_hold(sensors)
+
+        # Track device selection from StartTab
+        if self.tabStart._selected_key:
+            self._device_selected = True
 
         # Render all tabs
         for tab in (self.tabWork, self.tabStart, self.tabService):
