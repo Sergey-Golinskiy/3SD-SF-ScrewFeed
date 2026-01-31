@@ -165,7 +165,7 @@ function updateControlTab(status) {
     const relays = status.relays || {};
 
     if (grid.children.length === 0) {
-        // Initial render with card-style layout
+        // Initial render with compact card layout
         for (const [name, value] of Object.entries(relays)) {
             const isOn = value === 'ON' || value === true;
             grid.innerHTML += `
@@ -179,11 +179,10 @@ function updateControlTab(status) {
                         <button class="btn-relay btn-off" onclick="relayOff('${name}')">OFF</button>
                     </div>
                     <div class="pulse-row">
-                        <span class="pulse-label">Імпульс:</span>
                         <input type="number" class="pulse-duration" value="500" min="50" max="5000" step="50">
                         <span class="pulse-unit">мс</span>
-                        <button class="btn-relay btn-pulse" onclick="relayPulse('${name}')">PULSE</button>
                     </div>
+                    <button class="btn-relay btn-pulse btn-pulse-full" onclick="relayPulse('${name}')">PULSE</button>
                 </div>
             `;
         }
@@ -238,7 +237,8 @@ async function relayOff(name) {
 async function relayPulse(name) {
     const control = $('relayControlGrid').querySelector(`[data-relay-name="${name}"]`);
     const durationInput = control.querySelector('.pulse-duration');
-    const duration = parseInt(durationInput.value) || 500;
+    const durationMs = parseInt(durationInput.value) || 500;
+    const durationSec = durationMs / 1000; // API expects seconds
 
     // Visual feedback - show ON briefly
     const statusEl = control.querySelector('.relay-status');
@@ -246,12 +246,12 @@ async function relayPulse(name) {
     statusEl.textContent = 'PULSE';
 
     try {
-        await api.post(`/relays/${name}`, { state: 'pulse', duration: duration });
+        await api.post(`/relays/${name}`, { state: 'pulse', duration: durationSec });
         // Show OFF after pulse duration
         setTimeout(() => {
             statusEl.className = 'relay-status off';
             statusEl.textContent = 'OFF';
-        }, duration);
+        }, durationMs);
     } catch (error) {
         console.error('Relay PULSE failed:', error);
         updateStatus();

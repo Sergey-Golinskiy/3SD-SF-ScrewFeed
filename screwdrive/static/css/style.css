@@ -1070,40 +1070,50 @@ body {
 
 .relay-control-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+@media (max-width: 900px) {
+    .relay-control-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .relay-control-new {
     background: var(--bg-secondary);
     border-radius: var(--radius);
-    padding: 14px;
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .relay-control-new .relay-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border-color);
 }
 
 .relay-control-new .relay-name {
     font-weight: 600;
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .relay-control-new .relay-status {
-    padding: 3px 10px;
-    border-radius: 10px;
-    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
 }
 
 .relay-control-new .relay-status.on {
@@ -1118,15 +1128,15 @@ body {
 
 .relay-control-new .relay-buttons {
     display: flex;
-    gap: 6px;
+    gap: 4px;
 }
 
 .btn-relay {
     flex: 1;
-    padding: 8px 4px;
+    padding: 6px 2px;
     border: none;
-    border-radius: 6px;
-    font-size: 11px;
+    border-radius: 4px;
+    font-size: 10px;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
@@ -1159,27 +1169,27 @@ body {
     background: #e0a800;
 }
 
-.relay-control-new .pulse-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
+.btn-relay.btn-pulse-full {
+    width: 100%;
+    padding: 6px;
 }
 
-.relay-control-new .pulse-label {
-    font-size: 11px;
-    color: var(--text-muted);
-    white-space: nowrap;
+.relay-control-new .pulse-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
 }
 
 .pulse-duration {
     flex: 1;
-    padding: 6px 8px;
+    padding: 4px 6px;
     border: 1px solid var(--border-light);
     border-radius: 4px;
     background: var(--bg-input);
     color: var(--text-primary);
-    font-size: 12px;
+    font-size: 11px;
     text-align: center;
+    max-width: 70px;
 }
 
 .pulse-duration::placeholder {
@@ -1187,6 +1197,6 @@ body {
 }
 
 .pulse-unit {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-muted);
 }
