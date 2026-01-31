@@ -14,15 +14,24 @@ Usage:
     python3 xy_cli.py --serial /dev/ttyAMA0 --baud 115200
 """
 import sys
+import os
 import time
 import argparse
 from typing import Optional
+
+# Change to /tmp before importing lgpio to avoid pipe file creation issues
+# lgpio creates .lgd-nfy* files in current directory on import
+_original_cwd = os.getcwd()
+os.chdir('/tmp')
 
 try:
     import lgpio
 except ImportError:
     print("ERROR: lgpio library not found. Install with: pip install lgpio")
     sys.exit(1)
+
+# Restore original working directory
+os.chdir(_original_cwd)
 
 # =========================
 # GPIO mapping (BCM) - Raspberry Pi 5
