@@ -178,6 +178,93 @@ def create_app(
         app.relays.all_off()
         return jsonify({'status': 'ok'})
 
+    # === Legacy API Compatibility (for old touchdesk.py) ===
+
+    # Store selected device key
+    app.selected_device = None
+
+    @app.route('/api/config', methods=['GET'])
+    def get_config():
+        """Legacy: Get devices config with selected device."""
+        devices = [
+            {'key': key, 'name': prog.name, 'holes': prog.holes}
+            for key, prog in app.devices.items()
+        ]
+        return jsonify({
+            'devices': devices,
+            'selected': app.selected_device
+        })
+
+    @app.route('/api/select', methods=['POST'])
+    def select_device():
+        """Legacy: Select a device."""
+        data = request.get_json() or {}
+        key = data.get('key')
+        if key and key in app.devices:
+            app.selected_device = key
+            return jsonify({'ok': True, 'selected': key})
+        return jsonify({'ok': False, 'error': 'Invalid device key'}), 400
+
+    @app.route('/api/ext/start', methods=['POST'])
+    def ext_start():
+        """Legacy: Start cycle with selected device."""
+        if not app.selected_device:
+            return jsonify({'ok': False, 'error': 'No device selected'}), 400
+        if app.cycle:
+            try:
+                program = app.devices.get(app.selected_device)
+                if program:
+                    app.cycle.start(program)
+                    return jsonify({'ok': True, 'started': app.selected_device})
+            except Exception as e:
+                return jsonify({'ok': False, 'error': str(e)}), 500
+        return jsonify({'ok': True, 'external_running': True})
+
+    @app.route('/api/ext/stop', methods=['POST'])
+    def ext_stop():
+        """Legacy: Stop cycle."""
+        if app.cycle:
+            app.cycle.stop()
+        return jsonify({'ok': True, 'external_running': False})
+
+    @app.route('/api/relay', methods=['POST'])
+    def legacy_relay():
+        """Legacy: Relay control with old format."""
+        if not app.relays:
+            return jsonify({'error': 'Relays not initialized'}), 503
+
+        data = request.get_json() or {}
+        name = data.get('name')
+        action = data.get('action', 'toggle')
+        ms = data.get('ms', 500)
+
+        if not name:
+            return jsonify({'error': 'Relay name required'}), 400
+
+        if action == 'on':
+            app.relays.on(name)
+        elif action == 'off':
+            app.relays.off(name)
+        elif action == 'pulse':
+            app.relays.pulse(name, ms / 1000.0)
+        elif action == 'toggle':
+            app.relays.toggle(name)
+
+        return jsonify({'ok': True, 'relay': name, 'action': action})
+
+    @app.route('/api/pedal', methods=['POST'])
+    def pedal_pulse():
+        """Legacy: Pedal pulse."""
+        data = request.get_json() or {}
+        ms = data.get('ms', 120)
+        # Try to pulse PEDAL relay if exists
+        if app.relays:
+            try:
+                app.relays.pulse('PEDAL', ms / 1000.0)
+            except Exception:
+                pass
+        return jsonify({'ok': True})
+
     # === Sensor Reading ===
 
     @app.route('/api/sensors', methods=['GET'])
