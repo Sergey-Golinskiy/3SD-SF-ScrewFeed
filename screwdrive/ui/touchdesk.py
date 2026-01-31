@@ -1214,8 +1214,7 @@ class MainWindow(QMainWindow):
         self._settings_tab_visible = False
         self._device_selected = False
 
-        # Update tab widths to fill screen
-        self._update_tab_widths()
+        # Tab widths will be updated in showEvent when window geometry is known
 
         # Block tab changes until device is selected
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -1309,7 +1308,11 @@ class MainWindow(QMainWindow):
             return
         # Calculate width per tab (screen width minus margins)
         screen_width = self.width() - 2 * BORDER_W
+        if screen_width <= 0:
+            return  # Window not shown yet
         tab_width = screen_width // tab_count
+        if tab_width <= 0:
+            return
         # Apply stylesheet with calculated width
         self.tabs.tabBar().setStyleSheet(f"""
             QTabBar::tab {{
