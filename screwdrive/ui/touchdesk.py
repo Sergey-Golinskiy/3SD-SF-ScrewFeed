@@ -884,38 +884,52 @@ QTextEdit {{
 """
 
 
+CRASH_LOG = "/tmp/touchdesk_crash.log"
+
+
+def log_to_file(msg):
+    """Write to crash log file."""
+    import datetime
+    with open(CRASH_LOG, "a") as f:
+        f.write(f"{datetime.datetime.now()} - {msg}\n")
+    print(msg)
+
+
 def exception_hook(exctype, value, tb):
     """Global exception handler to log crashes."""
     import traceback
-    print("=" * 50)
-    print("UNCAUGHT EXCEPTION:")
-    print("".join(traceback.format_exception(exctype, value, tb)))
-    print("=" * 50)
+    msg = "UNCAUGHT EXCEPTION:\n" + "".join(traceback.format_exception(exctype, value, tb))
+    log_to_file(msg)
     sys.__excepthook__(exctype, value, tb)
 
 
 def main():
+    # Clear old log
+    open(CRASH_LOG, "w").close()
+
     # Install global exception hook
     sys.excepthook = exception_hook
 
     try:
+        log_to_file("Starting TouchDesk...")
         app = QApplication(sys.argv)
+        log_to_file("QApplication OK")
         app.setOverrideCursor(QCursor(Qt.BlankCursor))
         app.setStyleSheet(APP_QSS)
         f = QFont()
         f.setPixelSize(16)
         app.setFont(f)
 
+        log_to_file("Creating MainWindow...")
         w = MainWindow()
+        log_to_file("MainWindow OK, showing...")
         w.show()
 
+        log_to_file("Entering event loop")
         sys.exit(app.exec_())
     except Exception as e:
         import traceback
-        print("=" * 50)
-        print(f"FATAL ERROR: {e}")
-        print(traceback.format_exc())
-        print("=" * 50)
+        log_to_file(f"FATAL ERROR: {e}\n{traceback.format_exc()}")
         sys.exit(1)
 
 
