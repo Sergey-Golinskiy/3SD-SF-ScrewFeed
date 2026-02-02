@@ -363,23 +363,36 @@ function initControlTab() {
     // Initialization button
     $('btnInit').addEventListener('click', runInitialization);
 
-    // Device select
-    $('btnCycleStart').addEventListener('click', async () => {
-        const device = $('deviceSelect').value;
-        if (!device) {
-            alert('Please select a device');
-            return;
-        }
+    // START button - run screwing cycle
+    $('btnCycleStart').addEventListener('click', runCycle);
+
+    // STOP button - abort cycle and safety shutdown
+    $('btnCycleStop').addEventListener('click', async () => {
+        cycleAborted = true;
+        areaMonitoringActive = false;
+        await safetyShutdown();
         try {
-            await api.post('/cycle/start', { device });
-        } catch (error) {
-            alert('Failed to start cycle: ' + error.message);
-        }
+            await api.post('/xy/estop');
+        } catch (e) {}
+        updateCycleStatus('Цикл зупинено оператором', 'error');
+        $('btnCycleStart').disabled = false;
+        $('btnInit').disabled = false;
+        cycleInProgress = false;
     });
 
-    $('btnCycleStop').addEventListener('click', () => api.post('/cycle/stop'));
-    $('btnCyclePause').addEventListener('click', () => api.post('/cycle/pause'));
-    $('btnEstop').addEventListener('click', () => api.post('/cycle/estop'));
+    // E-STOP button
+    $('btnEstop').addEventListener('click', async () => {
+        cycleAborted = true;
+        areaMonitoringActive = false;
+        await safetyShutdown();
+        try {
+            await api.post('/xy/estop');
+        } catch (e) {}
+        try {
+            await api.post('/cycle/estop');
+        } catch (e) {}
+    });
+
     $('btnClearEstop').addEventListener('click', () => api.post('/cycle/clear_estop'));
 }
 
@@ -572,6 +585,263 @@ async function runInitialization() {
         } catch (e) {}
     } finally {
         initializationInProgress = false;
+        $('btnInit').disabled = false;
+    }
+}
+
+// ========== CYCLE (SCREWING) ==========
+
+let cycleInProgress = false;
+let cycleAborted = false;
+let areaMonitoringActive = false;
+
+function updateCycleStatus(text, statusClass = '') {
+    const statusText = $('initStatusText');
+    const card = $('initStatusCard');
+
+    card.style.display = 'block';
+    card.className = 'card' + (statusClass ? ' ' + statusClass : '');
+    statusText.textContent = text;
+    statusText.className = 'init-status-text' + (statusClass ? ' ' + statusClass : '');
+}
+
+async function checkAreaSensor() {
+    if (!areaMonitoringActive) return true;
+
+    try {
+        const response = await api.get('/sensors/area_sensor');
+        if (response.state === 'ACTIVE') {
+            // Light barrier triggered - someone in work area
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('Area sensor check failed:', e);
+        return false;
+    }
+}
+
+async function waitForSensorWithAreaCheck(sensorName, expectedState, timeout = 10000, pollInterval = 100) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+        // Check area sensor first
+        if (!await checkAreaSensor()) {
+            throw new Error('AREA_BLOCKED');
+        }
+
+        const response = await api.get(`/sensors/${sensorName}`);
+        if (response.state === expectedState) {
+            return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    return false;
+}
+
+async function waitForMove(timeout = 30000) {
+    // Wait for XY table to finish moving
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+        // Check area sensor
+        if (!await checkAreaSensor()) {
+            throw new Error('AREA_BLOCKED');
+        }
+
+        const status = await api.get('/xy/status');
+        if (status.state === 'READY' || status.state === 'IDLE') {
+            return true;
+        }
+        if (status.state === 'ERROR' || status.state === 'ESTOP') {
+            throw new Error('XY table error: ' + status.state);
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return false;
+}
+
+async function performScrewing() {
+    // 1. Turn ON R06 (torque mode)
+    await api.post('/relays/r06_di1_pot', { state: 'on' });
+
+    // 2. Lower cylinder (R04 ON)
+    await api.post('/relays/r04_c2', { state: 'on' });
+
+    // 3. Wait for DO2_OK (torque reached) with 15 second timeout
+    const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 15000, 50);
+
+    // 4. Raise cylinder (R04 OFF) - do this regardless of torque result
+    await api.post('/relays/r04_c2', { state: 'off' });
+
+    // 5. Turn OFF R06
+    await api.post('/relays/r06_di1_pot', { state: 'off' });
+
+    // 6. Wait for cylinder to go up (GER_C2_UP)
+    const cylinderUp = await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
+
+    if (!torqueReached) {
+        throw new Error('Момент не досягнуто за 15 секунд');
+    }
+
+    if (!cylinderUp) {
+        throw new Error('Циліндр не піднявся за 5 секунд');
+    }
+
+    return true;
+}
+
+async function returnToOperator() {
+    const deviceKey = $('deviceSelect').value;
+    const device = state.devices.find(d => d.key === deviceKey);
+
+    if (device && device.work_x !== null && device.work_y !== null) {
+        await api.post('/xy/move', {
+            x: device.work_x,
+            y: device.work_y,
+            feed: device.work_feed || 5000
+        });
+    }
+}
+
+async function safetyShutdown() {
+    // Turn off all potentially dangerous relays
+    try { await api.post('/relays/r04_c2', { state: 'off' }); } catch (e) {}
+    try { await api.post('/relays/r06_di1_pot', { state: 'off' }); } catch (e) {}
+}
+
+async function runCycle() {
+    if (cycleInProgress) {
+        alert('Цикл вже виконується');
+        return;
+    }
+
+    const deviceKey = $('deviceSelect').value;
+    if (!deviceKey) {
+        alert('Виберіть девайс');
+        return;
+    }
+
+    // Get device with full steps data
+    let device;
+    try {
+        device = await api.get(`/devices/${deviceKey}`);
+    } catch (e) {
+        alert('Не вдалося завантажити дані девайсу');
+        return;
+    }
+
+    if (!device.steps || device.steps.length === 0) {
+        alert('Девайс не має координат для закручування');
+        return;
+    }
+
+    cycleInProgress = true;
+    cycleAborted = false;
+    areaMonitoringActive = false;
+
+    $('btnCycleStart').disabled = true;
+    $('btnInit').disabled = true;
+
+    let holesCompleted = 0;
+    const totalHoles = device.steps.filter(s => s.type === 'work').length;
+
+    try {
+        // Check E-STOP before starting
+        const safety = await api.get('/sensors/safety');
+        if (safety.estop_pressed) {
+            throw new Error('Аварійна кнопка натиснута!');
+        }
+
+        updateCycleStatus(`Цикл запущено. Винтів: 0 / ${totalHoles}`);
+
+        // Process each step
+        for (let i = 0; i < device.steps.length; i++) {
+            if (cycleAborted) {
+                throw new Error('Цикл перервано');
+            }
+
+            const step = device.steps[i];
+            const stepNum = i + 1;
+
+            if (step.type === 'free') {
+                // Free movement - just move
+                updateCycleStatus(`Крок ${stepNum}: Переміщення (free) X:${step.x} Y:${step.y}`);
+
+                const moveResp = await api.post('/xy/move', { x: step.x, y: step.y, feed: step.feed || 10000 });
+                if (moveResp.status !== 'ok') {
+                    throw new Error('Помилка переміщення');
+                }
+
+                await waitForMove();
+
+            } else if (step.type === 'work') {
+                // Work position - move and screw
+
+                // Enable area monitoring on first work step
+                if (!areaMonitoringActive) {
+                    areaMonitoringActive = true;
+                    updateCycleStatus(`Контроль світлової завіси увімкнено`);
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+
+                // Check area sensor before moving
+                if (!await checkAreaSensor()) {
+                    throw new Error('AREA_BLOCKED');
+                }
+
+                updateCycleStatus(`Крок ${stepNum}: Закручування X:${step.x} Y:${step.y} (${holesCompleted + 1}/${totalHoles})`);
+
+                // Move to position
+                const moveResp = await api.post('/xy/move', { x: step.x, y: step.y, feed: step.feed || 5000 });
+                if (moveResp.status !== 'ok') {
+                    throw new Error('Помилка переміщення');
+                }
+
+                await waitForMove();
+
+                // Perform screwing operation
+                await performScrewing();
+
+                holesCompleted++;
+                updateCycleStatus(`Закручено: ${holesCompleted} / ${totalHoles}`);
+            }
+        }
+
+        // Disable area monitoring after last screw
+        areaMonitoringActive = false;
+
+        // Cycle complete - return to operator
+        updateCycleStatus('Цикл завершено. Повернення до оператора...', 'success');
+
+        await returnToOperator();
+        await waitForMove();
+
+        updateCycleStatus(`Цикл завершено! Закручено ${holesCompleted} винтів. Натисніть START для наступного.`, 'success');
+
+        // Re-enable START for next cycle
+        $('btnCycleStart').disabled = false;
+
+    } catch (error) {
+        console.error('Cycle error:', error);
+
+        // Safety shutdown
+        await safetyShutdown();
+        areaMonitoringActive = false;
+
+        if (error.message === 'AREA_BLOCKED') {
+            updateCycleStatus('УВАГА: Світлова завіса! Повернення до оператора...', 'error');
+
+            // Return to operator position
+            try {
+                await returnToOperator();
+            } catch (e) {}
+
+            updateCycleStatus('Світлова завіса спрацювала. Натисніть START для повторного циклу.', 'error');
+            $('btnCycleStart').disabled = false;
+        } else {
+            updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
+        }
+    } finally {
+        cycleInProgress = false;
         $('btnInit').disabled = false;
     }
 }
