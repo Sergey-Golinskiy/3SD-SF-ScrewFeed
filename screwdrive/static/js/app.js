@@ -627,8 +627,52 @@ async function toggleBrakeY() {
     }
 }
 
+// Check if axes are homed (required after E-STOP)
+function checkHomedForMove() {
+    const xy = state.status?.xy_table || {};
+    const xHomed = xy.x_homed;
+    const yHomed = xy.y_homed;
+
+    if (!xHomed && !yHomed) {
+        alert('УВАГА! Після аварійної зупинки потрібно виконати калібрування!\n\nНатисніть "Home" для калібрування обох осей.');
+        return false;
+    }
+    if (!xHomed) {
+        alert('УВАГА! Вісь X не відкалібрована!\n\nНатисніть "Home X" для калібрування.');
+        return false;
+    }
+    if (!yHomed) {
+        alert('УВАГА! Вісь Y не відкалібрована!\n\nНатисніть "Home Y" для калібрування.');
+        return false;
+    }
+    return true;
+}
+
+function checkHomedX() {
+    const xHomed = state.status?.xy_table?.x_homed;
+    if (!xHomed) {
+        alert('УВАГА! Вісь X не відкалібрована!\n\nНатисніть "Home X" для калібрування.');
+        return false;
+    }
+    return true;
+}
+
+function checkHomedY() {
+    const yHomed = state.status?.xy_table?.y_homed;
+    if (!yHomed) {
+        alert('УВАГА! Вісь Y не відкалібрована!\n\nНатисніть "Home Y" для калібрування.');
+        return false;
+    }
+    return true;
+}
+
 // Check brakes before movement
 function checkBrakesForMove(targetX, targetY) {
+    // First check if homed
+    if (!checkHomedForMove()) {
+        return false;
+    }
+
     const currentX = state.status?.xy_table?.x || 0;
     const currentY = state.status?.xy_table?.y || 0;
 
@@ -649,6 +693,10 @@ function checkBrakesForMove(targetX, targetY) {
 }
 
 function checkBrakeX() {
+    // First check if X is homed
+    if (!checkHomedX()) {
+        return false;
+    }
     if (!state.brakeX) {
         alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
         return false;
@@ -657,6 +705,10 @@ function checkBrakeX() {
 }
 
 function checkBrakeY() {
+    // First check if Y is homed
+    if (!checkHomedY()) {
+        return false;
+    }
     if (!state.brakeY) {
         alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
         return false;
@@ -665,6 +717,10 @@ function checkBrakeY() {
 }
 
 function checkBothBrakes() {
+    // First check if both axes are homed
+    if (!checkHomedForMove()) {
+        return false;
+    }
     if (!state.brakeX) {
         alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
         return false;

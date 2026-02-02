@@ -101,6 +101,8 @@ cur_y_mm = 0.0
 cur_feed_mm_min = 1000.0  # Current/default feed rate (mm/min)
 estop = False  # Emergency stop flag
 cancel_requested = False  # Flag to cancel current motion (checked in step loops)
+x_homed = False  # True after successful X axis homing
+y_homed = False  # True after successful Y axis homing
 
 # Lazy GPIO initialization
 io: Optional["GPIO"] = None
@@ -909,7 +911,7 @@ def home_axis(axis: str) -> bool:
     Home specified axis to MIN endstop.
     Returns True if homing successful, False if timeout or failure.
     """
-    global cur_x_mm, cur_y_mm
+    global cur_x_mm, cur_y_mm, x_homed, y_homed
 
     if estop:
         return False
@@ -955,6 +957,8 @@ def home_axis(axis: str) -> bool:
             step_pulses(X_STEP_GPIO, int(STEPS_PER_MM_X * 0.5), slow_hz, stop_on_endstop_gpio=X_MIN_GPIO)
 
         cur_x_mm = 0.0
+        x_homed = True
+        print("X axis homed successfully")
         return True
 
     if axis == "Y":
@@ -990,6 +994,8 @@ def home_axis(axis: str) -> bool:
             step_pulses(Y_STEP_GPIO, int(STEPS_PER_MM_Y * 0.5), slow_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
 
         cur_y_mm = 0.0
+        y_homed = True
+        print("Y axis homed successfully")
         return True
 
     raise ValueError("Axis must be X or Y")
@@ -1009,7 +1015,7 @@ def get_status_str() -> str:
     """Get status string in format compatible with Arduino version."""
     x_end = "TRIG" if endstop_active(X_MIN_GPIO) else "open"
     y_end = "TRIG" if endstop_active(Y_MIN_GPIO) else "open"
-    return f"STATUS X:{cur_x_mm:.3f} Y:{cur_y_mm:.3f} X_MIN:{x_end} Y_MIN:{y_end} ESTOP:{'1' if estop else '0'}"
+    return f"STATUS X:{cur_x_mm:.3f} Y:{cur_y_mm:.3f} X_MIN:{x_end} Y_MIN:{y_end} X_HOMED:{'1' if x_homed else '0'} Y_HOMED:{'1' if y_homed else '0'} ESTOP:{'1' if estop else '0'}"
 
 
 def get_endstop_str() -> str:
@@ -1058,7 +1064,7 @@ def handle_command(line: str) -> str:
     Handle a single command line and return response.
     Compatible with Arduino version command set.
     """
-    global cur_x_mm, cur_y_mm, cur_feed_mm_min, estop
+    global cur_x_mm, cur_y_mm, cur_feed_mm_min, estop, x_homed, y_homed
     global STEPS_PER_MM_X, STEPS_PER_MM_Y
     global X_MIN_MM, X_MAX_MM, Y_MIN_MM, Y_MAX_MM
     global WORK_X_MM, WORK_Y_MM, WORK_F_MM_MIN
@@ -1084,7 +1090,10 @@ def handle_command(line: str) -> str:
         # === E-STOP commands ===
         if up == "M112":
             estop = True
+            x_homed = False  # Invalidate homing - position may be lost
+            y_homed = False
             enable_all(False)
+            print("E-STOP: Homing invalidated - rehoming required before movement")
             return "ok ESTOP"
 
         if up == "M999":
@@ -1574,7 +1583,7 @@ def run_serial_mode(port: str, baud: int) -> None:
 
     def serial_reader():
         """Background thread to read serial commands."""
-        global cancel_requested, estop
+        global cancel_requested, estop, x_homed, y_homed
         nonlocal reader_running
 
         buffer = ""
@@ -1604,7 +1613,10 @@ def run_serial_mode(port: str, baud: int) -> None:
                                 print(f"EMERGENCY: {line} received - stopping immediately")
                                 cancel_requested = True
                                 estop = True
+                                x_homed = False  # Invalidate homing
+                                y_homed = False
                                 enable_all(False)
+                                print("E-STOP: Homing invalidated - rehoming required")
                                 # Send response immediately
                                 with _serial_lock:
                                     ser.write(b"ok ESTOP\n")

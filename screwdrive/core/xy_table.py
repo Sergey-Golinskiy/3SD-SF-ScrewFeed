@@ -436,16 +436,20 @@ class XYTableController:
 
     def _parse_status(self, response: str) -> None:
         """Parse status response and update internal state."""
-        # Format: STATUS X:123.456 Y:789.012 X_MIN:open Y_MIN:open ESTOP:0
+        # Format: STATUS X:123.456 Y:789.012 X_MIN:open Y_MIN:open X_HOMED:1 Y_HOMED:1 ESTOP:0
         if "STATUS" not in response:
             return
 
         try:
             for part in response.split():
-                if part.startswith("X:") and not part.startswith("X_MIN"):
+                if part.startswith("X:") and not part.startswith("X_MIN") and not part.startswith("X_HOMED"):
                     self._position.x = float(part[2:])
-                elif part.startswith("Y:") and not part.startswith("Y_MIN"):
+                elif part.startswith("Y:") and not part.startswith("Y_MIN") and not part.startswith("Y_HOMED"):
                     self._position.y = float(part[2:])
+                elif part.startswith("X_HOMED:"):
+                    self._position.x_homed = (part[8:] == "1")
+                elif part.startswith("Y_HOMED:"):
+                    self._position.y_homed = (part[8:] == "1")
                 elif part.startswith("ESTOP:"):
                     if part[6:] == "1":
                         self._state = XYTableState.ESTOP
