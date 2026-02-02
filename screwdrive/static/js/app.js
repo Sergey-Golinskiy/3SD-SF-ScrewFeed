@@ -14,6 +14,7 @@ const state = {
     editingDevice: null,
     coordRows: [],
     lastEstopState: null,  // Track emergency stop button state
+    estopActive: false,    // Current E-STOP sensor state (for immediate UI update)
     brakeX: false,  // true = brake released (relay ON), false = brake engaged (relay OFF)
     brakeY: false   // true = brake released (relay ON), false = brake engaged (relay OFF)
 };
@@ -107,6 +108,9 @@ async function checkEmergencyStopButton(status) {
     const sensors = status.sensors || {};
     const estopActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
 
+    // Update global E-STOP state for immediate UI updates
+    state.estopActive = estopActive;
+
     // Check if state changed
     if (state.lastEstopState !== null && state.lastEstopState !== estopActive) {
         if (estopActive) {
@@ -150,10 +154,13 @@ function updateStatusTab(status) {
 
     // XY Table
     const xy = status.xy_table || {};
+    const sensors = status.sensors || {};
     $('xyState').textContent = xy.state || '-';
-    // Show position as invalid when not homed (after E-STOP)
-    const xPos = xy.x_homed ? (xy.x || 0).toFixed(2) : '?.??';
-    const yPos = xy.y_homed ? (xy.y || 0).toFixed(2) : '?.??';
+    // Check E-STOP sensor directly for immediate response
+    const estopSensorActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
+    // Show position as invalid when E-STOP active or not homed
+    const xPos = (xy.x_homed && !estopSensorActive) ? (xy.x || 0).toFixed(2) : '?.??';
+    const yPos = (xy.y_homed && !estopSensorActive) ? (xy.y || 0).toFixed(2) : '?.??';
     $('xyPosition').textContent = `X: ${xPos}  Y: ${yPos}`;
 
     // Sensors
@@ -332,17 +339,22 @@ function updateXYTab(status) {
     const xy = status.xy_table || {};
     const health = xy.health || {};
     const endstops = xy.endstops || {};
+    const sensors = status.sensors || {};
 
-    // Position - show as invalid when not homed (after E-STOP)
-    const xHomed = xy.x_homed;
-    const yHomed = xy.y_homed;
+    // Check E-STOP sensor directly for immediate response
+    const estopSensorActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
+
+    // Position - show as invalid when E-STOP active OR not homed
+    // E-STOP sensor check provides immediate visual feedback
+    const xHomed = xy.x_homed && !estopSensorActive;
+    const yHomed = xy.y_homed && !estopSensorActive;
     const xPos = xHomed ? (xy.x || 0).toFixed(2) : '?.??';
     const yPos = yHomed ? (xy.y || 0).toFixed(2) : '?.??';
     $('xyPosDisplay').textContent = `X: ${xPos}  Y: ${yPos}`;
 
-    // Add warning class when not homed
+    // Add warning class when not homed or E-STOP active
     const posDisplay = $('xyPosDisplay');
-    if (!xHomed || !yHomed) {
+    if (!xHomed || !yHomed || estopSensorActive) {
         posDisplay.classList.add('position-invalid');
     } else {
         posDisplay.classList.remove('position-invalid');
@@ -403,19 +415,21 @@ function updateXYTab(status) {
         errorEl.className = 'value';
     }
 
-    // Homed status
+    // Homed status - show as not homed when E-STOP sensor active
     const homedX = $('xyHomedX');
-    homedX.textContent = xy.x_homed ? 'X: захомлено' : 'X: не захомлено';
-    homedX.className = `homed-indicator ${xy.x_homed ? 'homed' : 'not-homed'}`;
+    const xHomedDisplay = xy.x_homed && !estopSensorActive;
+    homedX.textContent = xHomedDisplay ? 'X: захомлено' : 'X: не захомлено';
+    homedX.className = `homed-indicator ${xHomedDisplay ? 'homed' : 'not-homed'}`;
 
     const homedY = $('xyHomedY');
-    homedY.textContent = xy.y_homed ? 'Y: захомлено' : 'Y: не захомлено';
-    homedY.className = `homed-indicator ${xy.y_homed ? 'homed' : 'not-homed'}`;
+    const yHomedDisplay = xy.y_homed && !estopSensorActive;
+    homedY.textContent = yHomedDisplay ? 'Y: захомлено' : 'Y: не захомлено';
+    homedY.className = `homed-indicator ${yHomedDisplay ? 'homed' : 'not-homed'}`;
 
-    // E-STOP indicator - show when not homed (after emergency stop)
+    // E-STOP indicator - show when E-STOP active OR not homed
     const estopIndicator = $('xyEstopIndicator');
     if (estopIndicator) {
-        const needsHoming = !xy.x_homed || !xy.y_homed;
+        const needsHoming = !xy.x_homed || !xy.y_homed || estopSensorActive;
         estopIndicator.style.display = needsHoming ? 'block' : 'none';
     }
 
@@ -557,6 +571,7 @@ function initXYTab() {
     });
     $('btnZero').addEventListener('click', () => {
         if (!checkBothBrakes()) return;
+        if (!checkEndstopsForZero()) return;  // Only allow ZERO at home position
         api.post('/xy/zero');
     });
 
@@ -775,6 +790,18 @@ function checkBothBrakesOnly() {
     }
     if (!state.brakeY) {
         alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+// Check if table is at home position (both endstops triggered)
+function checkEndstopsForZero() {
+    const xy = state.status?.xy_table || {};
+    const endstops = xy.endstops || {};
+
+    if (!endstops.x_min || !endstops.y_min) {
+        alert('УВАГА! Обнулення координат дозволено тільки в позиції HOME!\n\nСтіл повинен бути на концевиках X та Y.\nСпочатку виконайте команду HOME.');
         return false;
     }
     return true;
@@ -1060,14 +1087,17 @@ function initSettingsTab() {
 // Update XY position on settings tab
 function updateSettingsXYPos(status) {
     const xy = status.xy_table || {};
-    // Show position as invalid when not homed (after E-STOP)
-    const xPos = xy.x_homed ? (xy.x || 0).toFixed(2) : '?.??';
-    const yPos = xy.y_homed ? (xy.y || 0).toFixed(2) : '?.??';
+    const sensors = status.sensors || {};
+    // Check E-STOP sensor directly for immediate response
+    const estopSensorActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
+    // Show position as invalid when E-STOP active or not homed
+    const xPos = (xy.x_homed && !estopSensorActive) ? (xy.x || 0).toFixed(2) : '?.??';
+    const yPos = (xy.y_homed && !estopSensorActive) ? (xy.y || 0).toFixed(2) : '?.??';
     const posDisplay = $('settingsXYPos');
     if (posDisplay) {
         posDisplay.textContent = `X: ${xPos}  Y: ${yPos}`;
-        // Add warning class when not homed
-        if (!xy.x_homed || !xy.y_homed) {
+        // Add warning class when E-STOP active or not homed
+        if (!xy.x_homed || !xy.y_homed || estopSensorActive) {
             posDisplay.classList.add('position-invalid');
         } else {
             posDisplay.classList.remove('position-invalid');
