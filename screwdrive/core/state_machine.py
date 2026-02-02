@@ -68,6 +68,9 @@ class DeviceProgram:
     what: str = ""  # What we're screwing (description)
     screw_size: str = ""  # Screw size (e.g., "M3x10")
     task: str = ""  # Task number
+    work_x: float = None  # Work position X coordinate
+    work_y: float = None  # Work position Y coordinate
+    work_feed: float = 5000  # Work position feed rate
 
 
 @dataclass

@@ -774,6 +774,9 @@ def create_app(
             'what': prog.what,
             'screw_size': prog.screw_size,
             'task': prog.task,
+            'work_x': prog.work_x,
+            'work_y': prog.work_y,
+            'work_feed': prog.work_feed,
             'steps': [
                 {'type': s.step_type, 'x': s.x, 'y': s.y, 'feed': s.feed}
                 for s in prog.steps
@@ -798,7 +801,18 @@ def create_app(
         what = data.get('what', '')
         screw_size = data.get('screw_size', '')
         task = data.get('task', '')
+        work_x = data.get('work_x')
+        work_y = data.get('work_y')
+        work_feed = data.get('work_feed', 5000)
         steps_data = data.get('steps', [])
+
+        # Convert work position values to float or None
+        if work_x is not None:
+            work_x = float(work_x)
+        if work_y is not None:
+            work_y = float(work_y)
+        if work_feed is not None:
+            work_feed = float(work_feed)
 
         steps = []
         for s in steps_data:
@@ -816,7 +830,10 @@ def create_app(
             steps=steps,
             what=what,
             screw_size=screw_size,
-            task=task
+            task=task,
+            work_x=work_x,
+            work_y=work_y,
+            work_feed=work_feed
         )
 
         _save_devices(app)
@@ -845,6 +862,19 @@ def create_app(
         task = data.get('task', old_dev.task)
         steps_data = data.get('steps', None)
 
+        # Handle work position fields
+        work_x = data.get('work_x', old_dev.work_x)
+        work_y = data.get('work_y', old_dev.work_y)
+        work_feed = data.get('work_feed', old_dev.work_feed)
+
+        # Convert work position values to float or None
+        if work_x is not None:
+            work_x = float(work_x)
+        if work_y is not None:
+            work_y = float(work_y)
+        if work_feed is not None:
+            work_feed = float(work_feed)
+
         if steps_data is not None:
             steps = []
             for s in steps_data:
@@ -868,7 +898,10 @@ def create_app(
             steps=steps,
             what=what,
             screw_size=screw_size,
-            task=task
+            task=task,
+            work_x=work_x,
+            work_y=work_y,
+            work_feed=work_feed
         )
 
         _save_devices(app)
@@ -900,6 +933,9 @@ def _save_devices(app: Flask) -> None:
             'what': prog.what,
             'screw_size': prog.screw_size,
             'task': prog.task,
+            'work_x': prog.work_x,
+            'work_y': prog.work_y,
+            'work_feed': prog.work_feed,
             'program': [
                 {'type': s.step_type, 'x': s.x, 'y': s.y, 'f': s.feed}
                 for s in prog.steps
@@ -943,6 +979,17 @@ def _load_devices(app: Flask) -> None:
                             feed=float(step.get('f', 60000))
                         ))
 
+                    # Load work position fields
+                    work_x = dev.get('work_x')
+                    work_y = dev.get('work_y')
+                    work_feed = dev.get('work_feed', 5000)
+                    if work_x is not None:
+                        work_x = float(work_x)
+                    if work_y is not None:
+                        work_y = float(work_y)
+                    if work_feed is not None:
+                        work_feed = float(work_feed)
+
                     app.devices[key] = DeviceProgram(
                         key=key,
                         name=dev.get('name', key),
@@ -950,7 +997,10 @@ def _load_devices(app: Flask) -> None:
                         steps=steps,
                         what=dev.get('what', ''),
                         screw_size=dev.get('screw_size', ''),
-                        task=dev.get('task', '')
+                        task=dev.get('task', ''),
+                        work_x=work_x,
+                        work_y=work_y,
+                        work_feed=work_feed
                     )
 
                 print(f"Loaded {len(app.devices)} devices from {path}")
