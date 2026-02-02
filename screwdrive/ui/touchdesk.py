@@ -367,6 +367,212 @@ class InitWorker(QThread):
             self.finished_error.emit(str(e))
 
 
+# ================== Cycle Worker ==================
+class CycleWorker(QThread):
+    """Worker thread for screwing cycle execution."""
+    progress = pyqtSignal(str, int, int, int)  # message, holes_completed, total_holes, progress_percent
+    finished_ok = pyqtSignal(int)  # holes_completed
+    finished_error = pyqtSignal(str)
+
+    def __init__(self, api: ApiClient, device: dict):
+        super().__init__()
+        self.api = api
+        self.device = device
+        self._abort = False
+
+    def abort(self):
+        self._abort = True
+
+    def _sync_progress(self, message: str, holes: int, total: int):
+        """Sync progress to server."""
+        pct = int((holes / total) * 100) if total > 0 else 0
+        try:
+            self.api.set_ui_state({
+                "cycle_state": "RUNNING",
+                "message": message,
+                "holes_completed": holes,
+                "total_holes": total,
+                "progress_percent": pct,
+                "current_step": message
+            })
+        except Exception:
+            pass
+
+    def _wait_for_move(self, timeout: float = 30.0) -> bool:
+        """Wait for XY table to finish moving."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self._abort:
+                return False
+            try:
+                status = self.api.xy_status()
+                state = (status.get("state") or "").lower()
+                if state == "ready":
+                    return True
+                if state in ("error", "estop"):
+                    raise Exception(f"XY error: {state}")
+            except Exception as e:
+                if "error" in str(e).lower() or "estop" in str(e).lower():
+                    raise
+            time.sleep(0.1)
+        return False
+
+    def _wait_for_sensor(self, sensor: str, expected: str, timeout: float = 10.0) -> bool:
+        """Wait for sensor to reach expected state."""
+        start = time.time()
+        while time.time() - start < timeout:
+            if self._abort:
+                return False
+            try:
+                resp = self.api.sensor(sensor)
+                if resp.get("state") == expected:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.1)
+        return False
+
+    def _perform_screwing(self) -> bool:
+        """Perform single screw operation."""
+        # 1. Feed screw with retry logic (max 3 attempts)
+        screw_detected = False
+        for attempt in range(3):
+            if self._abort:
+                return False
+            # Pulse R01 (200ms) to feed screw
+            self.api.relay_set("r01_pit", "pulse", 0.2)
+            # Wait for screw sensor
+            screw_detected = self._wait_for_sensor("ind_scrw", "ACTIVE", 1.0)
+            if screw_detected:
+                break
+
+        if not screw_detected:
+            raise Exception("Гвинт не виявлено після 3 спроб")
+
+        # 2. Turn ON R06 (torque mode)
+        self.api.relay_set("r06_di1_pot", "on")
+
+        # 3. Lower cylinder (R04 ON)
+        self.api.relay_set("r04_c2", "on")
+
+        # 4. Wait for DO2_OK (torque reached) with 2 second timeout
+        torque_reached = self._wait_for_sensor("do2_ok", "ACTIVE", 2.0)
+
+        if not torque_reached:
+            # Safe shutdown and return to operator
+            self.api.relay_set("r04_c2", "off")
+            self.api.relay_set("r06_di1_pot", "off")
+            self._wait_for_sensor("ger_c2_up", "ACTIVE", 5.0)
+            self.api.relay_set("r05_di4_free", "pulse", 0.2)
+            raise Exception("TORQUE_NOT_REACHED")
+
+        # SUCCESS PATH:
+        # 5. Turn OFF R06 (torque mode)
+        self.api.relay_set("r06_di1_pot", "off")
+
+        # 6. Raise cylinder (R04 OFF)
+        self.api.relay_set("r04_c2", "off")
+
+        # 7. Free run pulse - R05 (200ms)
+        self.api.relay_set("r05_di4_free", "pulse", 0.2)
+
+        # 8. Wait for cylinder to go up
+        if not self._wait_for_sensor("ger_c2_up", "ACTIVE", 5.0):
+            raise Exception("Циліндр не піднявся за 5 секунд")
+
+        return True
+
+    def _safety_shutdown(self):
+        """Turn off dangerous relays."""
+        try:
+            self.api.relay_set("r04_c2", "off")
+        except:
+            pass
+        try:
+            self.api.relay_set("r06_di1_pot", "off")
+        except:
+            pass
+
+    def run(self):
+        try:
+            steps = self.device.get("steps", [])
+            if not steps:
+                raise Exception("Девайс не має координат")
+
+            work_steps = [s for s in steps if (s.get("type") or "").lower() == "work"]
+            total_holes = len(work_steps)
+            holes_completed = 0
+
+            # Check E-STOP before starting
+            safety = self.api.sensors_safety()
+            if safety.get("estop_pressed"):
+                raise Exception("Аварійна кнопка натиснута!")
+
+            self.progress.emit(f"Цикл запущено. Винтів: 0 / {total_holes}", 0, total_holes, 0)
+            self._sync_progress(f"Цикл запущено. Винтів: 0 / {total_holes}", 0, total_holes)
+
+            # Process each step
+            for i, step in enumerate(steps):
+                if self._abort:
+                    raise Exception("Цикл перервано")
+
+                step_type = (step.get("type") or "free").lower()
+                step_x = float(step.get("x", 0))
+                step_y = float(step.get("y", 0))
+                step_feed = float(step.get("feed", 5000))
+
+                if step_type == "free":
+                    # Free movement - just move
+                    self.progress.emit(f"Переміщення X:{step_x:.1f} Y:{step_y:.1f}", holes_completed, total_holes,
+                                      int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
+
+                    resp = self.api.xy_move(step_x, step_y, step_feed)
+                    if resp.get("status") != "ok":
+                        raise Exception("Помилка переміщення")
+
+                    self._wait_for_move()
+
+                elif step_type == "work":
+                    # Work position - move and screw
+                    msg = f"Закручування ({holes_completed + 1}/{total_holes}) X:{step_x:.1f} Y:{step_y:.1f}"
+                    self.progress.emit(msg, holes_completed, total_holes,
+                                      int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
+                    self._sync_progress(msg, holes_completed, total_holes)
+
+                    # Move to position
+                    resp = self.api.xy_move(step_x, step_y, step_feed)
+                    if resp.get("status") != "ok":
+                        raise Exception("Помилка переміщення")
+
+                    self._wait_for_move()
+
+                    # Perform screwing
+                    self._perform_screwing()
+
+                    holes_completed += 1
+                    msg = f"Закручено: {holes_completed} / {total_holes}"
+                    self.progress.emit(msg, holes_completed, total_holes,
+                                      int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
+                    self._sync_progress(msg, holes_completed, total_holes)
+
+            # Cycle complete - return to operator
+            self.progress.emit("Повернення до оператора...", holes_completed, total_holes, 100)
+
+            work_x = self.device.get("work_x")
+            work_y = self.device.get("work_y")
+            work_feed = self.device.get("work_feed", 5000)
+
+            if work_x is not None and work_y is not None:
+                self.api.xy_move(work_x, work_y, work_feed)
+                self._wait_for_move()
+
+            self.finished_ok.emit(holes_completed)
+
+        except Exception as e:
+            self._safety_shutdown()
+            self.finished_error.emit(str(e))
+
+
 # ================== Control Tab ==================
 class ControlTab(QWidget):
     """Main control tab - device selection, init, start, stop."""
@@ -381,6 +587,7 @@ class ControlTab(QWidget):
         self._last_server_state_time = 0
         self._total_cycles = 0
         self._init_worker = None
+        self._cycle_worker = None
 
         self._setup_ui()
 
@@ -652,14 +859,82 @@ class ControlTab(QWidget):
             self.lblMessage.setText("Спочатку виконайте ініціалізацію!")
             return
 
+        # Check if web is already operating
+        try:
+            server_state = self.api.get_ui_state()
+            if server_state.get("operator") == "web":
+                self.lblMessage.setText("Web UI виконує операцію. Зачекайте...")
+                return
+        except Exception:
+            pass
+
+        # Get device data with steps
+        device = None
+        try:
+            device = self.api.device(self._selected_device)
+        except Exception as e:
+            self.lblMessage.setText(f"Не вдалося завантажити девайс: {e}")
+            return
+
+        if not device or not device.get("steps"):
+            self.lblMessage.setText("Девайс не має координат для закручування!")
+            return
+
         self._cycle_state = "RUNNING"
         self.lblState.setText("RUNNING")
         self.lblMessage.setText("Цикл виконується...")
+        self.progressBar.setValue(0)
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(False)
 
         # Sync state to server
-        self._sync_state_to_server("RUNNING", "Цикл виконується")
+        self._sync_state_to_server("RUNNING", "Цикл виконується", 0, "Запуск циклу")
+
+        # Start cycle worker
+        self._cycle_worker = CycleWorker(self.api, device)
+        self._cycle_worker.progress.connect(self._on_cycle_progress)
+        self._cycle_worker.finished_ok.connect(self._on_cycle_success)
+        self._cycle_worker.finished_error.connect(self._on_cycle_error)
+        self._cycle_worker.start()
+
+    def _on_cycle_progress(self, message: str, holes: int, total: int, pct: int):
+        """Handle cycle progress updates."""
+        self.lblMessage.setText(message)
+        self.lblProgress.setText(f"{holes} / {total}")
+        self.progressBar.setValue(pct)
+
+    def _on_cycle_success(self, holes_completed: int):
+        """Called when cycle completes successfully."""
+        self._total_cycles += 1
+        self._cycle_state = "COMPLETED"
+        self.lblState.setText("COMPLETED")
+        self.lblMessage.setText(f"Цикл завершено! Закручено {holes_completed} гвинтів. Натисніть START для наступного.")
+        self.progressBar.setValue(100)
+        self.btnStart.setEnabled(True)
+        self.btnInit.setEnabled(True)
+        self._cycle_worker = None
+
+        # Sync state to server
+        self._sync_state_to_server("COMPLETED", f"Цикл завершено! Закручено {holes_completed} гвинтів.", 100, "Цикл завершено")
+
+    def _on_cycle_error(self, error_msg: str):
+        """Called when cycle fails."""
+        self._cycle_state = "ERROR"
+        self.lblState.setText("ERROR")
+        self.lblMessage.setText(f"ПОМИЛКА: {error_msg}")
+        self.progressBar.setValue(0)
+        self.btnStart.setEnabled(True)
+        self.btnInit.setEnabled(True)
+        self._cycle_worker = None
+
+        # Special handling for torque error
+        if error_msg == "TORQUE_NOT_REACHED":
+            self._cycle_state = "PAUSED"
+            self.lblState.setText("PAUSED")
+            self.lblMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть START.")
+            self._sync_state_to_server("PAUSED", "Момент не досягнуто", 0, "Помилка моменту")
+        else:
+            self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
 
     def on_stop(self):
         """Handle STOP button."""
@@ -668,14 +943,23 @@ class ControlTab(QWidget):
             self._init_worker.abort()
             self._init_worker = None
 
+        # Abort cycle worker if running
+        if self._cycle_worker and self._cycle_worker.isRunning():
+            self._cycle_worker.abort()
+            self._cycle_worker = None
+
         try:
             self.api.xy_stop()
         except Exception:
             pass
 
-        # Safety: turn off cylinder relay
+        # Safety: turn off dangerous relays
         try:
             self.api.relay_set("r04_c2", "off")
+        except Exception:
+            pass
+        try:
+            self.api.relay_set("r06_di1_pot", "off")
         except Exception:
             pass
 
@@ -697,9 +981,18 @@ class ControlTab(QWidget):
             self._init_worker.abort()
             self._init_worker = None
 
-        # Safety: turn off cylinder relay first
+        # Abort cycle worker if running
+        if self._cycle_worker and self._cycle_worker.isRunning():
+            self._cycle_worker.abort()
+            self._cycle_worker = None
+
+        # Safety: turn off dangerous relays first
         try:
             self.api.relay_set("r04_c2", "off")
+        except Exception:
+            pass
+        try:
+            self.api.relay_set("r06_di1_pot", "off")
         except Exception:
             pass
 
