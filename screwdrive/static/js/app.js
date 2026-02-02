@@ -713,11 +713,23 @@ async function performScrewing() {
     // 4. Lower cylinder (R04 ON)
     await api.post('/relays/r04_c2', { state: 'on' });
 
-    // 5. Wait for DO2_OK (torque reached) with 15 second timeout
-    const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 15000, 50);
+    // 5. Wait for DO2_OK (torque reached) with 2 second timeout
+    const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 2000, 50);
 
     // 6. Raise cylinder (R04 OFF) - do this regardless of torque result
     await api.post('/relays/r04_c2', { state: 'off' });
+
+    // If torque not reached - safe shutdown and return to operator
+    if (!torqueReached) {
+        // Turn OFF R06
+        await api.post('/relays/r06_di1_pot', { state: 'off' });
+
+        // Wait for cylinder to go up
+        await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
+
+        // Throw special error to trigger return to operator
+        throw new Error('TORQUE_NOT_REACHED');
+    }
 
     // 7. Free run pulse - R05 (200ms)
     await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
@@ -727,10 +739,6 @@ async function performScrewing() {
 
     // 9. Wait for cylinder to go up (GER_C2_UP)
     const cylinderUp = await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
-
-    if (!torqueReached) {
-        throw new Error('Момент не досягнуто за 15 секунд');
-    }
 
     if (!cylinderUp) {
         throw new Error('Циліндр не піднявся за 5 секунд');
@@ -905,6 +913,17 @@ async function runCycle() {
             } catch (e) {}
 
             updateCycleStatus('Світлова завіса спрацювала. Натисніть START для повторного циклу.', 'error');
+            $('btnCycleStart').disabled = false;
+        } else if (error.message === 'TORQUE_NOT_REACHED') {
+            updateCycleStatus('УВАГА: Момент не досягнуто! Повернення до оператора...', 'error');
+
+            // Return to operator position
+            try {
+                await returnToOperator();
+                await waitForMove();
+            } catch (e) {}
+
+            updateCycleStatus('Момент не досягнуто за 2 сек. Перевірте гвинт та повторіть.', 'error');
             $('btnCycleStart').disabled = false;
         } else {
             updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
