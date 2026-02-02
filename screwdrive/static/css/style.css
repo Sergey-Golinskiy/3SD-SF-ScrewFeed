@@ -1396,6 +1396,70 @@ body {
     box-shadow: 0 4px 12px rgba(40, 167, 69, 0.5);
 }
 
+/* Brake controls in Settings tab */
+.brake-controls-settings {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.brake-control-sm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.brake-label-sm {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.btn-brake-sm {
+    min-width: 100px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
+}
+
+.btn-brake-sm.brake-engaged {
+    background: linear-gradient(145deg, #dc3545, #c82333);
+    color: white;
+    border-color: #a71d2a;
+}
+
+.btn-brake-sm.brake-released {
+    background: linear-gradient(145deg, #28a745, #218838);
+    color: white;
+    border-color: #1e7e34;
+}
+
+/* Uppercase input for device name */
+.input-uppercase {
+    text-transform: uppercase;
+}
+
+.input-uppercase::placeholder {
+    text-transform: uppercase;
+}
+
+/* Form labels */
+.form-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* Cancel Button */
 .btn-cancel {
     display: flex;

@@ -308,6 +308,20 @@
                                     <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">HOME Y</button>
                                     <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">HOME X</button>
                                 </div>
+                                <div class="brake-controls-settings">
+                                    <div class="brake-control-sm">
+                                        <span class="brake-label-sm">Гальмо X:</span>
+                                        <button class="btn btn-brake-sm" id="btnBrakeXSettings">
+                                            <span class="brake-status" id="brakeXStatusSettings">--</span>
+                                        </button>
+                                    </div>
+                                    <div class="brake-control-sm">
+                                        <span class="brake-label-sm">Гальмо Y:</span>
+                                        <button class="btn btn-brake-sm" id="btnBrakeYSettings">
+                                            <span class="brake-status" id="brakeYStatusSettings">--</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -345,21 +359,46 @@
                             <div class="editor-form-new">
                                 <div class="form-row-new">
                                     <div class="form-group-new">
-                                        <input type="text" id="editName" class="input-text" placeholder="Назва (3 літери)">
+                                        <label class="form-label">Назва</label>
+                                        <input type="text" id="editName" class="input-text input-uppercase" maxlength="4" placeholder="НАЗВ">
                                     </div>
                                     <div class="form-group-new">
-                                        <input type="text" id="editWhat" class="input-text" placeholder="Що крутим">
+                                        <label class="form-label">Що крутим</label>
+                                        <input type="text" id="editWhat" class="input-text" maxlength="4" placeholder="Крут">
                                     </div>
                                     <div class="form-group-new">
-                                        <input type="number" id="editHoles" class="input-number" value="0" min="0" placeholder="Кількість гвінтів">
+                                        <label class="form-label">Кількість</label>
+                                        <select id="editHoles" class="input-select">
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3">3</option>
+                                            <option value="4">4</option>
+                                            <option value="5">5</option>
+                                            <option value="6">6</option>
+                                            <option value="7">7</option>
+                                            <option value="8">8</option>
+                                            <option value="9">9</option>
+                                            <option value="10">10</option>
+                                            <option value="11">11</option>
+                                            <option value="12">12</option>
+                                        </select>
                                     </div>
                                     <div class="form-group-new">
-                                        <input type="text" id="editScrewSize" class="input-text" placeholder="Розмір гвінів">
+                                        <label class="form-label">Розмір</label>
+                                        <select id="editScrewSize" class="input-select">
+                                            <option value="M3x6">M3x6</option>
+                                            <option value="M3x8">M3x8</option>
+                                            <option value="M3x10">M3x10</option>
+                                        </select>
                                     </div>
                                 </div>
                                 <div class="form-row-new">
                                     <div class="form-group-new">
-                                        <input type="text" id="editTask" class="input-text" placeholder="Номер таски">
+                                        <label class="form-label">Таска</label>
+                                        <select id="editTask" class="input-select">
+                                            <option value="0">0</option>
+                                            <option value="1">1</option>
+                                        </select>
                                     </div>
                                     <div class="form-group-new form-group-buttons">
                                         <button class="btn btn-save-large" id="btnSaveDevice">Зберегти параметри</button>

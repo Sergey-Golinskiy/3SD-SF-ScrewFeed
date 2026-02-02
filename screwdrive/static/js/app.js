@@ -444,7 +444,7 @@ function updateBrakeStatus(relays) {
     state.brakeX = relays.r02_brake_x === 'ON';
     state.brakeY = relays.r03_brake_y === 'ON';
 
-    // Update brake X button
+    // Update brake X button (XY Tab)
     const brakeXBtn = $('btnBrakeX');
     const brakeXStatus = $('brakeXStatus');
     if (brakeXBtn && brakeXStatus) {
@@ -452,12 +452,28 @@ function updateBrakeStatus(relays) {
         brakeXBtn.className = `btn btn-brake ${state.brakeX ? 'brake-released' : 'brake-engaged'}`;
     }
 
-    // Update brake Y button
+    // Update brake Y button (XY Tab)
     const brakeYBtn = $('btnBrakeY');
     const brakeYStatus = $('brakeYStatus');
     if (brakeYBtn && brakeYStatus) {
         brakeYStatus.textContent = state.brakeY ? 'ВІДПУЩЕНО' : 'ЗАТИСНУТО';
         brakeYBtn.className = `btn btn-brake ${state.brakeY ? 'brake-released' : 'brake-engaged'}`;
+    }
+
+    // Update brake X button (Settings Tab)
+    const brakeXBtnSettings = $('btnBrakeXSettings');
+    const brakeXStatusSettings = $('brakeXStatusSettings');
+    if (brakeXBtnSettings && brakeXStatusSettings) {
+        brakeXStatusSettings.textContent = state.brakeX ? 'ВІДПУЩ' : 'ЗАТИСН';
+        brakeXBtnSettings.className = `btn btn-brake-sm ${state.brakeX ? 'brake-released' : 'brake-engaged'}`;
+    }
+
+    // Update brake Y button (Settings Tab)
+    const brakeYBtnSettings = $('btnBrakeYSettings');
+    const brakeYStatusSettings = $('brakeYStatusSettings');
+    if (brakeYBtnSettings && brakeYStatusSettings) {
+        brakeYStatusSettings.textContent = state.brakeY ? 'ВІДПУЩ' : 'ЗАТИСН';
+        brakeYBtnSettings.className = `btn btn-brake-sm ${state.brakeY ? 'brake-released' : 'brake-engaged'}`;
     }
 }
 
@@ -836,11 +852,11 @@ function loadDeviceToEditor(device) {
     state.editingDevice = device.key;
 
     $('editDeviceKey').value = device.key || '';
-    $('editName').value = device.name || '';
+    $('editName').value = (device.name || '').toUpperCase();  // Force uppercase
     $('editWhat').value = device.what || '';
-    $('editHoles').value = device.holes || 0;
-    $('editScrewSize').value = device.screw_size || '';
-    $('editTask').value = device.task || '';
+    $('editHoles').value = device.holes || '1';
+    $('editScrewSize').value = device.screw_size || 'M3x8';
+    $('editTask').value = device.task !== undefined ? device.task : '0';
 
     // Load coordinates
     clearCoordRows();
@@ -857,9 +873,9 @@ function newDevice() {
     $('editDeviceKey').value = '';
     $('editName').value = '';
     $('editWhat').value = '';
-    $('editHoles').value = 0;
-    $('editScrewSize').value = '';
-    $('editTask').value = '';
+    $('editHoles').value = '1';       // Default: 1 hole
+    $('editScrewSize').value = 'M3x8'; // Default: M3x8
+    $('editTask').value = '0';        // Default: task 0
 
     clearCoordRows();
     addCoordRow();
@@ -867,15 +883,26 @@ function newDevice() {
 
 async function saveDevice() {
     const key = $('editDeviceKey').value.trim();
-    const name = $('editName').value.trim();
+    const name = $('editName').value.trim().toUpperCase();  // Force uppercase
 
     if (!name) {
         alert('Назва девайсу обов\'язкова');
         return;
     }
 
+    if (name.length > 4) {
+        alert('Назва девайсу максимум 4 символи');
+        return;
+    }
+
+    const what = $('editWhat').value.trim();
+    if (what.length > 4) {
+        alert('Що крутим максимум 4 символи');
+        return;
+    }
+
     // Generate key from name if new device
-    const deviceKey = key || name.toUpperCase().replace(/\s+/g, '_');
+    const deviceKey = key || name.replace(/\s+/g, '_');
 
     // Collect coordinates
     const steps = [];
@@ -893,10 +920,10 @@ async function saveDevice() {
     const data = {
         key: deviceKey,
         name: name,
-        what: $('editWhat').value.trim(),
-        holes: parseInt($('editHoles').value) || 0,
-        screw_size: $('editScrewSize').value.trim(),
-        task: $('editTask').value.trim(),
+        what: what,
+        holes: parseInt($('editHoles').value) || 1,
+        screw_size: $('editScrewSize').value,
+        task: $('editTask').value,
         steps: steps
     };
 
@@ -1053,6 +1080,15 @@ function initSettingsTab() {
     $('btnHomeYSettings').addEventListener('click', () => {
         if (!checkBrakeYOnly()) return;
         api.post('/xy/home/y');
+    });
+
+    // Brake control buttons in Settings
+    $('btnBrakeXSettings').addEventListener('click', toggleBrakeX);
+    $('btnBrakeYSettings').addEventListener('click', toggleBrakeY);
+
+    // Enforce uppercase for device name
+    $('editName').addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
     });
 }
 
