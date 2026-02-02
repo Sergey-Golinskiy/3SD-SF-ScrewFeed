@@ -420,7 +420,8 @@ async function waitForHoming(timeout = 10000) {
     const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
         const status = await api.get('/xy/status');
-        if (status.x_homed && status.y_homed) {
+        const pos = status.position || {};
+        if (pos.x_homed && pos.y_homed) {
             return true;
         }
         if (status.state === 'ERROR' || status.state === 'ESTOP') {
