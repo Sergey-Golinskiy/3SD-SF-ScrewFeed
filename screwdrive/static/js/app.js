@@ -465,7 +465,7 @@ function updateBrakeStatus(relays) {
     const brakeXStatusSettings = $('brakeXStatusSettings');
     if (brakeXBtnSettings && brakeXStatusSettings) {
         brakeXStatusSettings.textContent = state.brakeX ? 'ВІДПУЩ' : 'ЗАТИСН';
-        brakeXBtnSettings.className = `btn btn-brake-sm ${state.brakeX ? 'brake-released' : 'brake-engaged'}`;
+        brakeXBtnSettings.className = `btn btn-brake-grid ${state.brakeX ? 'brake-released' : 'brake-engaged'}`;
     }
 
     // Update brake Y button (Settings Tab)
@@ -473,7 +473,7 @@ function updateBrakeStatus(relays) {
     const brakeYStatusSettings = $('brakeYStatusSettings');
     if (brakeYBtnSettings && brakeYStatusSettings) {
         brakeYStatusSettings.textContent = state.brakeY ? 'ВІДПУЩ' : 'ЗАТИСН';
-        brakeYBtnSettings.className = `btn btn-brake-sm ${state.brakeY ? 'brake-released' : 'brake-engaged'}`;
+        brakeYBtnSettings.className = `btn btn-brake-grid ${state.brakeY ? 'brake-released' : 'brake-engaged'}`;
     }
 }
 
@@ -858,6 +858,11 @@ function loadDeviceToEditor(device) {
     $('editScrewSize').value = device.screw_size || 'M3x8';
     $('editTask').value = device.task !== undefined ? device.task : '0';
 
+    // Work position fields
+    $('editWorkX').value = device.work_x !== undefined ? device.work_x : '';
+    $('editWorkY').value = device.work_y !== undefined ? device.work_y : '';
+    $('editWorkFeed').value = device.work_feed || '5000';
+
     // Load coordinates
     clearCoordRows();
     for (const step of device.steps || []) {
@@ -876,6 +881,11 @@ function newDevice() {
     $('editHoles').value = '1';       // Default: 1 hole
     $('editScrewSize').value = 'M3x8'; // Default: M3x8
     $('editTask').value = '0';        // Default: task 0
+
+    // Work position defaults
+    $('editWorkX').value = '';
+    $('editWorkY').value = '';
+    $('editWorkFeed').value = '5000';
 
     clearCoordRows();
     addCoordRow();
@@ -904,6 +914,20 @@ async function saveDevice() {
     // Generate key from name if new device
     const deviceKey = key || name.replace(/\s+/g, '_');
 
+    // Validate and get work position
+    const workX = parseFloat($('editWorkX').value);
+    const workY = parseFloat($('editWorkY').value);
+    const workFeed = parseFloat($('editWorkFeed').value) || 5000;
+
+    if (!isNaN(workX) && (workX < 0 || workX > 220)) {
+        alert('Робоча позиція X повинна бути від 0 до 220 мм');
+        return;
+    }
+    if (!isNaN(workY) && (workY < 0 || workY > 500)) {
+        alert('Робоча позиція Y повинна бути від 0 до 500 мм');
+        return;
+    }
+
     // Collect coordinates
     const steps = [];
     const rows = $('coordsList').querySelectorAll('.coord-row-new');
@@ -924,6 +948,9 @@ async function saveDevice() {
         holes: parseInt($('editHoles').value) || 1,
         screw_size: $('editScrewSize').value,
         task: $('editTask').value,
+        work_x: isNaN(workX) ? null : workX,
+        work_y: isNaN(workY) ? null : workY,
+        work_feed: workFeed,
         steps: steps
     };
 
