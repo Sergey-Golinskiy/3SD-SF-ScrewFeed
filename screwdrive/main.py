@@ -148,8 +148,16 @@ def init_system(config: dict) -> tuple:
     mode = XYTableMode.SERIAL if xy_config.get('mode') == 'serial' else XYTableMode.DIRECT
     port = xy_config.get('serial_port', '/dev/ttyAMA0')
     baud = xy_config.get('serial_baud', 115200)
+    slave_ssh_host = xy_config.get('slave_ssh_host', '192.168.1.101')
+    slave_ssh_user = xy_config.get('slave_ssh_user', 'root')
 
-    xy_table = XYTableController(mode=mode, port=port, baud=baud)
+    xy_table = XYTableController(
+        mode=mode,
+        port=port,
+        baud=baud,
+        slave_ssh_host=slave_ssh_host,
+        slave_ssh_user=slave_ssh_user
+    )
 
     if xy_table.connect():
         print(f"  XY Table connected on {port}")

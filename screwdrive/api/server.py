@@ -470,6 +470,15 @@ def create_app(
         app.xy_table.disconnect()
         return jsonify({'status': 'disconnected'})
 
+    @app.route('/api/xy/restart-service', methods=['POST'])
+    def xy_restart_service():
+        """Restart xy_table.service on slave Raspberry Pi via SSH."""
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+        if app.xy_table.restart_slave_service():
+            return jsonify({'status': 'service restarted'})
+        return jsonify({'error': 'Failed to restart service'}), 500
+
     @app.route('/api/xy/home', methods=['POST'])
     def xy_home():
         """Home XY table (all axes: Y first, then X)."""

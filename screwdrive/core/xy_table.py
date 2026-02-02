@@ -84,7 +84,9 @@ class XYTableController:
 
     def __init__(self, mode: XYTableMode = XYTableMode.SERIAL,
                  port: str = "/dev/ttyAMA0", baud: int = 115200,
-                 timeout: float = 30.0, health_check_interval: float = 2.0):
+                 timeout: float = 30.0, health_check_interval: float = 2.0,
+                 slave_ssh_host: str = "192.168.1.101",
+                 slave_ssh_user: str = "root"):
         """
         Initialize XY table controller.
 
@@ -94,12 +96,16 @@ class XYTableController:
             baud: Serial baud rate (for SERIAL mode)
             timeout: Command timeout in seconds
             health_check_interval: Interval for health checks in seconds
+            slave_ssh_host: SSH hostname/IP of slave Raspberry Pi
+            slave_ssh_user: SSH username for slave (default: root)
         """
         self._mode = mode
         self._port = port
         self._baud = baud
         self._timeout = timeout
         self._health_check_interval = health_check_interval
+        self._slave_ssh_host = slave_ssh_host
+        self._slave_ssh_user = slave_ssh_user
 
         self._serial: Optional[serial.Serial] = None
         self._state = XYTableState.DISCONNECTED
@@ -124,6 +130,8 @@ class XYTableController:
         self._reconnect_thread: Optional[threading.Thread] = None
         self._reconnect_running = False
         self._reconnect_interval = 2.0  # Retry every 2 seconds
+        self._reconnect_attempts = 0
+        self._restart_service_after_attempts = 5  # Restart service after 5 failed attempts
 
     def connect(self) -> bool:
         """
@@ -281,15 +289,71 @@ class XYTableController:
         if self._reconnect_thread:
             self._reconnect_thread.join(timeout=3.0)
             self._reconnect_thread = None
+        self._reconnect_attempts = 0
         print("XY Table auto-reconnect stopped")
+
+    def restart_slave_service(self) -> bool:
+        """
+        Restart xy_table.service on the slave Raspberry Pi via SSH.
+
+        Returns:
+            True if restart command was sent successfully.
+        """
+        import subprocess
+
+        ssh_target = f"{self._slave_ssh_user}@{self._slave_ssh_host}"
+        cmd = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=5",
+            "-o", "BatchMode=yes",
+            ssh_target,
+            "systemctl restart xy_table.service"
+        ]
+
+        print(f"Restarting xy_table.service on slave ({self._slave_ssh_host})...")
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+
+            if result.returncode == 0:
+                print("Slave service restart command sent successfully")
+                # Wait for service to start
+                time.sleep(3)
+                return True
+            else:
+                print(f"Failed to restart slave service: {result.stderr}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            print("SSH command timed out")
+            return False
+        except Exception as e:
+            print(f"Error restarting slave service: {e}")
+            return False
 
     def _reconnect_loop(self) -> None:
         """Auto-reconnect loop - tries to connect every 2 seconds until successful."""
+        self._reconnect_attempts = 0
+
         while self._reconnect_running:
             try:
                 # Only try to reconnect if not already connected
                 if self._state in (XYTableState.DISCONNECTED, XYTableState.ERROR, XYTableState.TIMEOUT):
-                    print(f"Auto-reconnect: Attempting to connect to XY table...")
+                    self._reconnect_attempts += 1
+                    print(f"Auto-reconnect: Attempt {self._reconnect_attempts} to connect to XY table...")
+
+                    # Check if we should restart the slave service
+                    if self._reconnect_attempts > 0 and self._reconnect_attempts % self._restart_service_after_attempts == 0:
+                        print(f"Auto-reconnect: {self._reconnect_attempts} failed attempts, restarting slave service...")
+                        self.restart_slave_service()
+                        # Wait a bit more after restart
+                        time.sleep(2)
 
                     # Close existing serial if any
                     if self._serial is not None:
@@ -301,13 +365,15 @@ class XYTableController:
 
                     # Try to connect
                     if self._try_connect_serial():
-                        print("Auto-reconnect: Connection successful!")
+                        print(f"Auto-reconnect: Connection successful after {self._reconnect_attempts} attempts!")
+                        self._reconnect_attempts = 0
                         self._reconnect_running = False  # Stop reconnect loop
                         return
                     else:
                         print(f"Auto-reconnect: Connection failed, retrying in {self._reconnect_interval}s...")
                 else:
                     # Already connected, stop reconnect loop
+                    self._reconnect_attempts = 0
                     self._reconnect_running = False
                     return
 

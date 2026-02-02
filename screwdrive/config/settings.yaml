@@ -91,3 +91,7 @@ xy_table:
   serial_port: "/dev/ttyAMA0"
   serial_baud: 115200
   command_timeout_s: 30.0
+
+  # Slave Pi SSH settings (for remote service restart)
+  slave_ssh_host: "192.168.1.101"
+  slave_ssh_user: "root"
