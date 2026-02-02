@@ -660,22 +660,34 @@ async function waitForMove(timeout = 30000) {
 }
 
 async function performScrewing() {
-    // 1. Turn ON R06 (torque mode)
+    // 1. Feed screw - pulse R01 (200ms)
+    await api.post('/relays/r01_pit', { state: 'pulse', duration: 0.2 });
+
+    // 2. Wait for screw to pass sensor (ind_scrw) - 3 second timeout
+    const screwDetected = await waitForSensorWithAreaCheck('ind_scrw', 'ACTIVE', 3000, 50);
+    if (!screwDetected) {
+        throw new Error('Гвинт не виявлено датчиком (ind_scrw)');
+    }
+
+    // 3. Turn ON R06 (torque mode)
     await api.post('/relays/r06_di1_pot', { state: 'on' });
 
-    // 2. Lower cylinder (R04 ON)
+    // 4. Lower cylinder (R04 ON)
     await api.post('/relays/r04_c2', { state: 'on' });
 
-    // 3. Wait for DO2_OK (torque reached) with 15 second timeout
+    // 5. Wait for DO2_OK (torque reached) with 15 second timeout
     const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 15000, 50);
 
-    // 4. Raise cylinder (R04 OFF) - do this regardless of torque result
+    // 6. Raise cylinder (R04 OFF) - do this regardless of torque result
     await api.post('/relays/r04_c2', { state: 'off' });
 
-    // 5. Turn OFF R06
+    // 7. Free run pulse - R05 (200ms)
+    await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
+
+    // 8. Turn OFF R06
     await api.post('/relays/r06_di1_pot', { state: 'off' });
 
-    // 6. Wait for cylinder to go up (GER_C2_UP)
+    // 9. Wait for cylinder to go up (GER_C2_UP)
     const cylinderUp = await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
 
     if (!torqueReached) {
