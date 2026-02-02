@@ -1707,14 +1707,15 @@ def run_serial_mode(port: str, baud: int) -> None:
                     with _serial_lock:
                         ser.write(b"!! HARDWARE_ESTOP\n")
 
-                # Auto-clear E-STOP when button is released (but homing still required)
+                # Auto-clear E-STOP when button is released (but motors stay DISABLED)
                 if estop and not estop_gpio_active():
                     estop = False
                     cancel_requested = False
-                    enable_all(True)
-                    print("E-STOP CLEARED: Button released. Homing required before movement.")
+                    # Motors stay DISABLED - require explicit M17 to enable
+                    # This prevents unexpected movement after E-STOP
+                    print("E-STOP CLEARED: Button released. Motors DISABLED - send M17 to enable, then HOME.")
                     with _serial_lock:
-                        ser.write(b"!! ESTOP_CLEARED (homing required)\n")
+                        ser.write(b"!! ESTOP_CLEARED (motors disabled, M17 then HOME required)\n")
 
                 with _serial_lock:
                     if ser.in_waiting > 0:
@@ -1780,13 +1781,14 @@ def run_serial_mode(port: str, baud: int) -> None:
                 line = cmd_queue.get(timeout=0.01)
 
                 # Check if E-STOP button is released - auto-clear before processing
+                # Motors stay DISABLED - user must send M17 explicitly
                 if estop and not estop_gpio_active():
                     estop = False
                     cancel_requested = False
-                    enable_all(True)
-                    print("E-STOP CLEARED: Button released. Homing required before movement.")
+                    # DO NOT enable motors here - they stay disabled for safety
+                    print("E-STOP CLEARED: Button released. Motors DISABLED - send M17 to enable, then HOME.")
                     with _serial_lock:
-                        ser.write(b"!! ESTOP_CLEARED (homing required)\n")
+                        ser.write(b"!! ESTOP_CLEARED (motors disabled, M17 then HOME required)\n")
 
                 # Skip if we're in cancel/estop state (button still pressed)
                 if cancel_requested or estop:
