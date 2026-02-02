@@ -878,9 +878,9 @@ function newDevice() {
     $('editDeviceKey').value = '';
     $('editName').value = '';
     $('editWhat').value = '';
-    $('editHoles').value = '1';       // Default: 1 hole
-    $('editScrewSize').value = 'M3x8'; // Default: M3x8
-    $('editTask').value = '0';        // Default: task 0
+    $('editHoles').value = '';        // Placeholder: Виберіть...
+    $('editScrewSize').value = '';    // Placeholder: Виберіть...
+    $('editTask').value = '';         // Placeholder: Виберіть...
 
     // Work position defaults
     $('editWorkX').value = '';
@@ -911,8 +911,34 @@ async function saveDevice() {
         return;
     }
 
-    // Generate key from name if new device
-    const deviceKey = key || name.replace(/\s+/g, '_');
+    const holes = $('editHoles').value;
+    const screwSize = $('editScrewSize').value;
+    const task = $('editTask').value;
+
+    // Validate dropdowns
+    if (!holes) {
+        alert('Виберіть кількість винтів');
+        return;
+    }
+    if (!screwSize) {
+        alert('Виберіть розмір винтів');
+        return;
+    }
+    if (!task) {
+        alert('Виберіть номер таски');
+        return;
+    }
+
+    // Generate key from fields: Назва_Щокрутим_Розмір(Кількість)
+    // Example: ABCD_КРУТ_M3x8(4)
+    let deviceKey = key;
+    if (!deviceKey) {
+        deviceKey = name;
+        if (what) {
+            deviceKey += '_' + what.toUpperCase();
+        }
+        deviceKey += '_' + screwSize + '(' + holes + ')';
+    }
 
     // Validate and get work position
     const workX = parseFloat($('editWorkX').value);
@@ -945,9 +971,9 @@ async function saveDevice() {
         key: deviceKey,
         name: name,
         what: what,
-        holes: parseInt($('editHoles').value) || 1,
-        screw_size: $('editScrewSize').value,
-        task: $('editTask').value,
+        holes: parseInt(holes),
+        screw_size: screwSize,
+        task: task,
         work_x: isNaN(workX) ? null : workX,
         work_y: isNaN(workY) ? null : workY,
         work_feed: workFeed,
