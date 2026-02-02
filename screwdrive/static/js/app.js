@@ -769,7 +769,7 @@ async function runCycle() {
     $('btnInit').disabled = true;
 
     let holesCompleted = 0;
-    const totalHoles = device.steps.filter(s => s.type === 'work').length;
+    const totalHoles = device.steps.filter(s => (s.type || '').toLowerCase() === 'work').length;
 
     try {
         // Check E-STOP before starting
@@ -788,8 +788,9 @@ async function runCycle() {
 
             const step = device.steps[i];
             const stepNum = i + 1;
+            const stepType = (step.type || 'free').toLowerCase();  // Normalize to lowercase
 
-            if (step.type === 'free') {
+            if (stepType === 'free') {
                 // Free movement - just move
                 updateCycleStatus(`Крок ${stepNum}: Переміщення (free) X:${step.x} Y:${step.y}`);
 
@@ -800,7 +801,7 @@ async function runCycle() {
 
                 await waitForMove();
 
-            } else if (step.type === 'work') {
+            } else if (stepType === 'work') {
                 // Work position - move and screw
 
                 // Enable area monitoring on first work step
