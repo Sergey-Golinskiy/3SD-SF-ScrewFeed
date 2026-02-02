@@ -432,8 +432,11 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         if ok:
             cur_x_mm = target_mm
-        else:
+        elif stop_gpio is not None and endstop_active(stop_gpio):
+            # Only set to 0 if we hit the MIN endstop
             cur_x_mm = 0.0
+        # For other failures (E-STOP, cancel), keep current position
+        # Position will be re-established after homing
         return ok
 
     if axis == "Y":
@@ -459,8 +462,11 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         if ok:
             cur_y_mm = target_mm
-        else:
+        elif stop_gpio is not None and endstop_active(stop_gpio):
+            # Only set to 0 if we hit the MIN endstop
             cur_y_mm = 0.0
+        # For other failures (E-STOP, cancel), keep current position
+        # Position will be re-established after homing
         return ok
 
     raise ValueError("Axis must be X or Y")
