@@ -18,7 +18,7 @@ if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
     os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
-from PyQt5.QtCore import Qt, QTimer, QCoreApplication
+from PyQt5.QtCore import Qt, QTimer, QCoreApplication, QThread, pyqtSignal
 QCoreApplication.setAttribute(Qt.AA_DisableHighDpiScaling, True)
 from PyQt5.QtGui import QFont, QCursor
 from PyQt5.QtWidgets import (
@@ -101,6 +101,12 @@ class ApiClient:
     def sensors(self):
         return self._get("sensors")
 
+    def sensor(self, name: str):
+        return self._get(f"sensors/{name}")
+
+    def sensors_safety(self):
+        return self._get("sensors/safety")
+
     # XY Table
     def xy_status(self):
         return self._get("xy/status")
@@ -161,6 +167,185 @@ def big_button(text: str, style: str = "primary") -> QPushButton:
     return btn
 
 
+# ================== Initialization Worker ==================
+class InitWorker(QThread):
+    """Worker thread for initialization sequence."""
+    progress = pyqtSignal(str, int)  # message, progress percent
+    finished_ok = pyqtSignal()
+    finished_error = pyqtSignal(str)
+
+    def __init__(self, api: ApiClient, device: dict):
+        super().__init__()
+        self.api = api
+        self.device = device
+        self._abort = False
+
+    def abort(self):
+        self._abort = True
+
+    def run(self):
+        try:
+            # Step 0: Check E-STOP
+            self.progress.emit("Перевірка аварійної кнопки...", 5)
+            safety = self.api.sensors_safety()
+            if safety.get("estop_pressed"):
+                raise Exception("Аварійна кнопка натиснута! Відпустіть її.")
+
+            if self._abort:
+                return
+
+            # Step 0.1: Check XY connection
+            self.progress.emit("Перевірка підключення XY столу...", 10)
+            xy_status = self.api.xy_status()
+            if not xy_status.get("connected"):
+                raise Exception("XY стіл не підключено!")
+
+            if self._abort:
+                return
+
+            # Step 1: Release brakes
+            self.progress.emit("Відпускання гальм...", 15)
+            relays = self.api.relays()
+
+            if relays.get("r02_brake_x") != "ON":
+                self.api.relay_set("r02_brake_x", "on")
+                time.sleep(0.3)
+
+            if relays.get("r03_brake_y") != "ON":
+                self.api.relay_set("r03_brake_y", "on")
+                time.sleep(0.3)
+
+            if self._abort:
+                return
+
+            # Step 2: Homing
+            self.progress.emit("Виконується хомінг XY столу...", 25)
+            home_resp = self.api.xy_home()
+            if home_resp.get("status") != "homed":
+                raise Exception("Не вдалося запустити хомінг")
+
+            # Wait for homing to complete (15 seconds timeout)
+            start_time = time.time()
+            while time.time() - start_time < 15:
+                if self._abort:
+                    return
+                xy = self.api.xy_status()
+                pos = xy.get("position", xy)  # Handle both formats
+                if pos.get("x_homed") and pos.get("y_homed"):
+                    break
+                state = (xy.get("state") or "").lower()
+                if state in ("error", "estop"):
+                    raise Exception(f"Помилка хомінгу: {xy.get('last_error', state)}")
+                time.sleep(0.2)
+            else:
+                raise Exception("Хомінг не завершено за 15 секунд")
+
+            if self._abort:
+                return
+
+            # Step 3: Check cylinder sensors
+            self.progress.emit("Перевірка датчиків циліндра...", 40)
+            ger_up = self.api.sensor("ger_c2_up")
+            ger_down = self.api.sensor("ger_c2_down")
+
+            if ger_up.get("state") != "ACTIVE":
+                raise Exception("Датчик GER_C2_UP не активний")
+            if ger_down.get("state") == "ACTIVE":
+                raise Exception("Датчик GER_C2_DOWN активний")
+
+            if self._abort:
+                return
+
+            # Step 4: Lower cylinder test
+            self.progress.emit("Опускання циліндра...", 50)
+            self.api.relay_set("r04_c2", "on")
+
+            # Wait for cylinder down (5 seconds)
+            start_time = time.time()
+            while time.time() - start_time < 5:
+                if self._abort:
+                    self.api.relay_set("r04_c2", "off")
+                    return
+                sensor = self.api.sensor("ger_c2_down")
+                if sensor.get("state") == "ACTIVE":
+                    break
+                time.sleep(0.1)
+            else:
+                self.api.relay_set("r04_c2", "off")
+                raise Exception("Циліндр не опустився за 5 секунд")
+
+            if self._abort:
+                self.api.relay_set("r04_c2", "off")
+                return
+
+            # Step 5: Raise cylinder
+            self.progress.emit("Піднімання циліндра...", 60)
+            self.api.relay_set("r04_c2", "off")
+
+            # Wait for cylinder up (5 seconds)
+            start_time = time.time()
+            while time.time() - start_time < 5:
+                if self._abort:
+                    return
+                sensor = self.api.sensor("ger_c2_up")
+                if sensor.get("state") == "ACTIVE":
+                    break
+                time.sleep(0.1)
+            else:
+                raise Exception("Циліндр не піднявся за 5 секунд")
+
+            if self._abort:
+                return
+
+            # Step 6: Set task relays
+            self.progress.emit("Вибір задачі для закручування...", 75)
+            task = self.device.get("task", "0")
+
+            if task == "0":
+                self.api.relay_set("r07_di5_tsk0", "off")
+                self.api.relay_set("r08_di6_tsk1", "off")
+            elif task == "1":
+                self.api.relay_set("r08_di6_tsk1", "off")
+                self.api.relay_set("r07_di5_tsk0", "on")
+            elif task == "2":
+                self.api.relay_set("r07_di5_tsk0", "off")
+                self.api.relay_set("r08_di6_tsk1", "on")
+            elif task == "3":
+                self.api.relay_set("r07_di5_tsk0", "on")
+                self.api.relay_set("r08_di6_tsk1", "on")
+            time.sleep(0.3)
+
+            if self._abort:
+                return
+
+            # Step 7: Move to work position
+            self.progress.emit("Виїзд до оператора...", 85)
+            work_x = self.device.get("work_x")
+            work_y = self.device.get("work_y")
+            work_feed = self.device.get("work_feed", 5000)
+
+            if work_x is None or work_y is None:
+                raise Exception("Робоча позиція не задана для цього девайсу")
+
+            move_resp = self.api.xy_move(work_x, work_y, work_feed)
+            if move_resp.get("status") != "ok":
+                raise Exception("Не вдалося виїхати до робочої позиції")
+
+            # Wait for move to complete
+            time.sleep(0.5)
+
+            self.progress.emit("Ініціалізація завершена!", 100)
+            self.finished_ok.emit()
+
+        except Exception as e:
+            # Safety: turn off cylinder relay
+            try:
+                self.api.relay_set("r04_c2", "off")
+            except:
+                pass
+            self.finished_error.emit(str(e))
+
+
 # ================== Control Tab ==================
 class ControlTab(QWidget):
     """Main control tab - device selection, init, start, stop."""
@@ -174,6 +359,7 @@ class ControlTab(QWidget):
         self._initialized = False
         self._last_server_state_time = 0
         self._total_cycles = 0
+        self._init_worker = None
 
         self._setup_ui()
 
@@ -361,30 +547,72 @@ class ControlTab(QWidget):
             self.lblMessage.setText("Спочатку виберіть девайс!")
             return
 
+        # Get device data
+        device = None
+        for dev in self._devices:
+            if dev.get("key") == self._selected_device:
+                device = dev
+                break
+
+        if not device:
+            self.lblMessage.setText("Девайс не знайдено!")
+            return
+
+        # Try to get full device data from API
+        try:
+            device = self.api.device(self._selected_device)
+        except Exception as e:
+            print(f"Failed to load device details: {e}")
+
         self._cycle_state = "INITIALIZING"
         self.lblState.setText("INITIALIZING")
-        self.lblMessage.setText("Ініціалізація... Виконується хомінг...")
+        self.lblMessage.setText("Ініціалізація...")
+        self.progressBar.setValue(0)
         self.btnInit.setEnabled(False)
         self.btnStart.setEnabled(False)
 
         # Sync state to server
         self._sync_state_to_server("INITIALIZING", "Ініціалізація...")
 
-        # In a real app, this would call the API and wait for completion
-        # For now, we just enable the START button
-        QTimer.singleShot(500, self._init_complete)
+        # Start initialization worker
+        self._init_worker = InitWorker(self.api, device)
+        self._init_worker.progress.connect(self._on_init_progress)
+        self._init_worker.finished_ok.connect(self._on_init_success)
+        self._init_worker.finished_error.connect(self._on_init_error)
+        self._init_worker.start()
 
-    def _init_complete(self):
-        """Called when initialization completes."""
+    def _on_init_progress(self, message: str, progress: int):
+        """Handle initialization progress updates."""
+        self.lblMessage.setText(message)
+        self.progressBar.setValue(progress)
+
+    def _on_init_success(self):
+        """Called when initialization completes successfully."""
         self._initialized = True
         self._cycle_state = "READY"
         self.lblState.setText("READY")
         self.lblMessage.setText("Ініціалізація завершена. Натисніть START для запуску циклу.")
+        self.progressBar.setValue(100)
         self.btnInit.setEnabled(True)
         self.btnStart.setEnabled(True)
+        self._init_worker = None
 
         # Sync state to server
         self._sync_state_to_server("READY", "Готово до запуску")
+
+    def _on_init_error(self, error_msg: str):
+        """Called when initialization fails."""
+        self._initialized = False
+        self._cycle_state = "INIT_ERROR"
+        self.lblState.setText("INIT_ERROR")
+        self.lblMessage.setText(f"ПОМИЛКА: {error_msg}")
+        self.progressBar.setValue(0)
+        self.btnInit.setEnabled(True)
+        self.btnStart.setEnabled(False)
+        self._init_worker = None
+
+        # Sync state to server
+        self._sync_state_to_server("INIT_ERROR", f"Помилка: {error_msg}")
 
     def on_start(self):
         """Handle START button."""
@@ -403,8 +631,19 @@ class ControlTab(QWidget):
 
     def on_stop(self):
         """Handle STOP button."""
+        # Abort init worker if running
+        if self._init_worker and self._init_worker.isRunning():
+            self._init_worker.abort()
+            self._init_worker = None
+
         try:
             self.api.xy_stop()
+        except Exception:
+            pass
+
+        # Safety: turn off cylinder relay
+        try:
+            self.api.relay_set("r04_c2", "off")
         except Exception:
             pass
 
@@ -412,6 +651,7 @@ class ControlTab(QWidget):
         self._initialized = False
         self.lblState.setText("STOPPED")
         self.lblMessage.setText("Цикл зупинено оператором.")
+        self.progressBar.setValue(0)
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(True)
 
@@ -420,6 +660,17 @@ class ControlTab(QWidget):
 
     def on_estop(self):
         """Handle E-STOP button."""
+        # Abort init worker if running
+        if self._init_worker and self._init_worker.isRunning():
+            self._init_worker.abort()
+            self._init_worker = None
+
+        # Safety: turn off cylinder relay first
+        try:
+            self.api.relay_set("r04_c2", "off")
+        except Exception:
+            pass
+
         try:
             self.api.xy_estop()
             self.api.cycle_estop()
@@ -430,6 +681,7 @@ class ControlTab(QWidget):
         self._initialized = False
         self.lblState.setText("E-STOP")
         self.lblMessage.setText("АВАРІЙНА ЗУПИНКА! Натисніть Clear E-Stop для продовження.")
+        self.progressBar.setValue(0)
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(False)
 
