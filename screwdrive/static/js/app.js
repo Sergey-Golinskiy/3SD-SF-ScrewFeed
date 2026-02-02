@@ -198,16 +198,17 @@ function updateConnectionIndicator(connected) {
 }
 
 function updateStatusTab(status) {
-    // Cycle status - only update from server when NOT running frontend cycle
-    // (frontend cycle updates the panel directly via updateCycleStatusPanel)
-    if (!cycleInProgress && !initializationInProgress) {
+    // Cycle status - frontend manages this entirely via updateCycleStatusPanel()
+    // Server cycle state is not used because cycles run on frontend
+    // We only update if NO device is selected locally (initial page state)
+    if (!state.selectedDevice && !cycleInProgress && !initializationInProgress) {
         const cycle = status.cycle || {};
-        $('cycleState').textContent = cycle.state || '-';
+        $('cycleState').textContent = cycle.state || 'IDLE';
         $('currentDevice').textContent = cycle.current_device || '-';
         $('cycleProgress').textContent = `${cycle.holes_completed || 0} / ${cycle.total_holes || 0}`;
-        // Don't overwrite totalCyclesCompleted from server - keep frontend count
-        // $('cycleCount').textContent = cycle.cycle_count || 0;
     }
+    // Cycles count is always managed by frontend
+    $('cycleCount').textContent = totalCyclesCompleted;
 
     // XY Table
     const xy = status.xy_table || {};
@@ -377,12 +378,17 @@ function initControlTab() {
     // START button - run screwing cycle
     $('btnCycleStart').addEventListener('click', runCycle);
 
-    // Device select dropdown - sync selection with state
+    // Device select dropdown - sync selection with state and update status panel
     $('deviceSelect').addEventListener('change', (e) => {
         const selectedKey = e.target.value;
         if (selectedKey) {
             state.selectedDevice = selectedKey;
             renderDeviceList();
+            // Update Cycle Status panel to show selected device
+            updateCycleStatusPanel('IDLE', selectedKey, 0, 0);
+        } else {
+            // No device selected
+            updateCycleStatusPanel('IDLE', '-', 0, 0);
         }
     });
 
@@ -1500,6 +1506,9 @@ async function selectDevice(key) {
         select.value = key;
     }
 
+    // Update Cycle Status panel to show selected device
+    updateCycleStatusPanel('IDLE', key, 0, 0);
+
     try {
         const device = await api.get(`/devices/${key}`);
         loadDeviceToEditor(device);
@@ -1833,6 +1842,9 @@ function init() {
     initControlTab();
     initXYTab();
     initSettingsTab();
+
+    // Initialize Cycle Status panel with default values
+    updateCycleStatusPanel('IDLE', '-', 0, 0);
 
     // Start polling
     updateStatus();
