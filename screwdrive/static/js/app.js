@@ -41,7 +41,14 @@ function pluralizeGvynt(n) {
 const api = {
     async get(path) {
         const response = await fetch(`${API_BASE}${path}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         return response.json();
     },
 
@@ -51,7 +58,14 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         return response.json();
     },
 
@@ -61,13 +75,27 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         return response.json();
     },
 
     async delete(path) {
         const response = await fetch(`${API_BASE}${path}`, { method: 'DELETE' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         return response.json();
     }
 };
