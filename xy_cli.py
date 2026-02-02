@@ -24,6 +24,14 @@ from typing import Optional
 # We stay in /tmp for the entire runtime to avoid issues with lgpio callbacks
 os.chdir('/tmp')
 
+# Clean up old lgpio notification files that may have wrong permissions
+import glob
+for old_file in glob.glob('/tmp/.lgd-nfy*'):
+    try:
+        os.remove(old_file)
+    except Exception:
+        pass
+
 try:
     import lgpio
 except ImportError:
