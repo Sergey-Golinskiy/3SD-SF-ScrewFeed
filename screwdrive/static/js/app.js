@@ -151,9 +151,10 @@ function updateStatusTab(status) {
     // XY Table
     const xy = status.xy_table || {};
     $('xyState').textContent = xy.state || '-';
-    const x = (xy.x || 0).toFixed(2);
-    const y = (xy.y || 0).toFixed(2);
-    $('xyPosition').textContent = `X: ${x}  Y: ${y}`;
+    // Show position as invalid when not homed (after E-STOP)
+    const xPos = xy.x_homed ? (xy.x || 0).toFixed(2) : '?.??';
+    const yPos = xy.y_homed ? (xy.y || 0).toFixed(2) : '?.??';
+    $('xyPosition').textContent = `X: ${xPos}  Y: ${yPos}`;
 
     // Sensors
     updateSensors(status.sensors || {});
@@ -332,10 +333,20 @@ function updateXYTab(status) {
     const health = xy.health || {};
     const endstops = xy.endstops || {};
 
-    // Position
-    const x = (xy.x || 0).toFixed(2);
-    const y = (xy.y || 0).toFixed(2);
-    $('xyPosDisplay').textContent = `X: ${x}  Y: ${y}`;
+    // Position - show as invalid when not homed (after E-STOP)
+    const xHomed = xy.x_homed;
+    const yHomed = xy.y_homed;
+    const xPos = xHomed ? (xy.x || 0).toFixed(2) : '?.??';
+    const yPos = yHomed ? (xy.y || 0).toFixed(2) : '?.??';
+    $('xyPosDisplay').textContent = `X: ${xPos}  Y: ${yPos}`;
+
+    // Add warning class when not homed
+    const posDisplay = $('xyPosDisplay');
+    if (!xHomed || !yHomed) {
+        posDisplay.classList.add('position-invalid');
+    } else {
+        posDisplay.classList.remove('position-invalid');
+    }
 
     // Connection status
     const serviceStatus = health.service_status || 'unknown';
@@ -1049,11 +1060,18 @@ function initSettingsTab() {
 // Update XY position on settings tab
 function updateSettingsXYPos(status) {
     const xy = status.xy_table || {};
-    const x = (xy.x || 0).toFixed(2);
-    const y = (xy.y || 0).toFixed(2);
+    // Show position as invalid when not homed (after E-STOP)
+    const xPos = xy.x_homed ? (xy.x || 0).toFixed(2) : '?.??';
+    const yPos = xy.y_homed ? (xy.y || 0).toFixed(2) : '?.??';
     const posDisplay = $('settingsXYPos');
     if (posDisplay) {
-        posDisplay.textContent = `X: ${x}  Y: ${y}`;
+        posDisplay.textContent = `X: ${xPos}  Y: ${yPos}`;
+        // Add warning class when not homed
+        if (!xy.x_homed || !xy.y_homed) {
+            posDisplay.classList.add('position-invalid');
+        } else {
+            posDisplay.classList.remove('position-invalid');
+        }
     }
 }
 

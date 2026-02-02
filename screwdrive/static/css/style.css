@@ -545,8 +545,15 @@ body {
 }
 
 .homed-indicator.not-homed {
-    color: var(--text-muted);
-    border: 1px solid var(--border-color);
+    color: var(--accent-red);
+    border: 1px solid var(--accent-red);
+    background: rgba(235, 87, 87, 0.1);
+    animation: not-homed-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes not-homed-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
 
 /* E-STOP indicator */
@@ -1442,4 +1449,19 @@ body {
     0% { transform: scale(1); }
     50% { transform: scale(0.95); }
     100% { transform: scale(1); }
+}
+
+/* Invalid position display (after E-STOP) */
+.position-invalid {
+    color: var(--accent-red) !important;
+    animation: position-blink 1s ease-in-out infinite;
+}
+
+.xy-coord.position-invalid {
+    color: var(--accent-red) !important;
+}
+
+@keyframes position-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
