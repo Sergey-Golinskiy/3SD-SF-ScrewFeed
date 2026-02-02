@@ -721,6 +721,9 @@ async function performScrewing() {
 
     // If torque not reached - safe shutdown and return to operator
     if (!torqueReached) {
+        // Free run pulse - R05 (200ms)
+        await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
+
         // Turn OFF R06
         await api.post('/relays/r06_di1_pot', { state: 'off' });
 
