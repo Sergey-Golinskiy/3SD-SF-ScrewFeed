@@ -21,7 +21,7 @@ from typing import Optional
 
 # Change to /tmp before importing lgpio to avoid pipe file creation issues
 # lgpio creates .lgd-nfy* files in current directory on import
-_original_cwd = os.getcwd()
+# We stay in /tmp for the entire runtime to avoid issues with lgpio callbacks
 os.chdir('/tmp')
 
 try:
@@ -29,9 +29,6 @@ try:
 except ImportError:
     print("ERROR: lgpio library not found. Install with: pip install lgpio")
     sys.exit(1)
-
-# Restore original working directory
-os.chdir(_original_cwd)
 
 # =========================
 # GPIO mapping (BCM) - Raspberry Pi 5
