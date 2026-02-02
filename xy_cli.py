@@ -38,7 +38,7 @@ os.chdir(_original_cwd)
 # =========================
 X_MIN_GPIO = 2   # endstop X (GPIO2)
 Y_MIN_GPIO = 3   # endstop Y (GPIO3)
-ESTOP_GPIO = 17  # Emergency stop button (GPIO17)
+ESTOP_GPIO = 13  # Emergency stop button (GPIO13)
 ESTOP_ACTIVE_LOW = True  # True = GPIO LOW means E-STOP triggered (NC button to GND with pull-up)
 
 # X axis driver
