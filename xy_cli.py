@@ -1665,6 +1665,13 @@ def run_serial_mode(port: str, baud: int) -> None:
                 # Check hardware E-STOP button
                 if estop_gpio_active() and not estop:
                     trigger_hardware_estop()
+                    # Clear pending commands from queue
+                    while not cmd_queue.empty():
+                        try:
+                            cmd_queue.get_nowait()
+                        except:
+                            break
+                    print("E-STOP: Command queue cleared")
                     # Notify master about hardware E-STOP
                     with _serial_lock:
                         ser.write(b"!! HARDWARE_ESTOP\n")
@@ -1704,7 +1711,13 @@ def run_serial_mode(port: str, baud: int) -> None:
                                 x_homed = False  # Invalidate homing
                                 y_homed = False
                                 enable_all(False)
-                                print("E-STOP: Homing invalidated - rehoming required")
+                                # Clear pending commands from queue
+                                while not cmd_queue.empty():
+                                    try:
+                                        cmd_queue.get_nowait()
+                                    except:
+                                        break
+                                print("E-STOP: Homing invalidated, queue cleared - rehoming required")
                                 # Send response immediately
                                 with _serial_lock:
                                     ser.write(b"ok ESTOP\n")

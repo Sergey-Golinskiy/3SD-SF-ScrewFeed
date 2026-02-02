@@ -453,6 +453,11 @@ class XYTableController:
                 elif part.startswith("ESTOP:"):
                     if part[6:] == "1":
                         self._state = XYTableState.ESTOP
+                        self._notify_state_change()
+                    elif self._state == XYTableState.ESTOP:
+                        # E-STOP cleared, but check if homing required
+                        self._state = XYTableState.READY
+                        self._notify_state_change()
         except ValueError:
             pass
 

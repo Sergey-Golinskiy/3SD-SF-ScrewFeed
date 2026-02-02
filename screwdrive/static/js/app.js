@@ -462,7 +462,7 @@ function getStateText(state) {
         'MOVING': 'Рух',
         'HOMING': 'Хомінг',
         'ERROR': 'Помилка',
-        'ESTOP': 'E-STOP',
+        'ESTOP': '⚠️ АВАРІЙНА ЗУПИНКА',
         'TIMEOUT': 'Таймаут',
         'DISCONNECTED': 'Відключено',
         'CONNECTING': 'Підключення...'
