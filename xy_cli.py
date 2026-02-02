@@ -189,9 +189,26 @@ def init_gpio() -> None:
 # Low-level GPIO functions
 # =========================
 def endstop_active(gpio: int) -> bool:
-    """Check if endstop is triggered."""
+    """Check if endstop is triggered (single read, for status display)."""
     v = io.read(gpio)
     return (v == 0) if ENDSTOP_ACTIVE_LOW else (v == 1)
+
+
+def endstop_active_debounced(gpio: int, reads: int = 3) -> bool:
+    """
+    Check if endstop is triggered with debouncing.
+    Requires multiple consecutive reads to confirm trigger.
+    This helps filter out electrical noise from stepper motors.
+    """
+    count = 0
+    for _ in range(reads):
+        v = io.read(gpio)
+        is_active = (v == 0) if ENDSTOP_ACTIVE_LOW else (v == 1)
+        if is_active:
+            count += 1
+        else:
+            count = 0  # Reset if any read is inactive
+    return count >= reads
 
 
 def estop_gpio_active() -> bool:
@@ -292,7 +309,8 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
             # Check for cancel request
             if cancel_requested:
                 return False
-            if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
+            # Use debounced endstop check to filter electrical noise
+            if stop_on_endstop_gpio is not None and endstop_active_debounced(stop_on_endstop_gpio, 3):
                 return False
 
             if STEP_PULSE_ACTIVE_LOW:
@@ -349,7 +367,8 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
         # Check for cancel request
         if cancel_requested:
             return False
-        if stop_on_endstop_gpio is not None and endstop_active(stop_on_endstop_gpio):
+        # Use debounced endstop check to filter electrical noise
+        if stop_on_endstop_gpio is not None and endstop_active_debounced(stop_on_endstop_gpio, 3):
             return False
 
         # Calculate current frequency based on phase
@@ -432,8 +451,8 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         if ok:
             cur_x_mm = target_mm
-        elif stop_gpio is not None and endstop_active(stop_gpio):
-            # Only set to 0 if we hit the MIN endstop
+        elif stop_gpio is not None and endstop_active_debounced(stop_gpio, 3):
+            # Only set to 0 if we really hit the MIN endstop (debounced)
             cur_x_mm = 0.0
         # For other failures (E-STOP, cancel), keep current position
         # Position will be re-established after homing
@@ -462,8 +481,8 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
 
         if ok:
             cur_y_mm = target_mm
-        elif stop_gpio is not None and endstop_active(stop_gpio):
-            # Only set to 0 if we hit the MIN endstop
+        elif stop_gpio is not None and endstop_active_debounced(stop_gpio, 3):
+            # Only set to 0 if we really hit the MIN endstop (debounced)
             cur_y_mm = 0.0
         # For other failures (E-STOP, cancel), keep current position
         # Position will be re-established after homing
@@ -655,8 +674,9 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
             accum_y -= 1.0
 
         # Check endstops and generate pulses
+        # Use debounced endstop check to filter electrical noise from steppers
         if do_step_x:
-            if stop_x and endstop_active(X_MIN_GPIO):
+            if stop_x and endstop_active_debounced(X_MIN_GPIO, 3):
                 cur_x_mm = 0.0
                 hit_x = True
                 do_step_x = False
@@ -668,7 +688,7 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
                 done_x += 1
 
         if do_step_y:
-            if stop_y and endstop_active(Y_MIN_GPIO):
+            if stop_y and endstop_active_debounced(Y_MIN_GPIO, 3):
                 cur_y_mm = 0.0
                 hit_y = True
                 do_step_y = False
