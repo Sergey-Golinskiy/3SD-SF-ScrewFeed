@@ -549,7 +549,7 @@ async function runInitialization() {
         }
 
         const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
-        if (!moveResponse.success) {
+        if (moveResponse.status !== 'ok') {
             throw new Error('Не вдалося виїхати до робочої позиції');
         }
 
