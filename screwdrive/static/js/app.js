@@ -487,8 +487,8 @@ async function runInitialization() {
 
         // Step 1.1: Homing
         updateInitStatus('Виконується хомінг XY столу...', 25);
-        const homeResponse = await api.post('/xy/home', { axis: 'all' });
-        if (!homeResponse.success) {
+        const homeResponse = await api.post('/xy/home');
+        if (homeResponse.status !== 'homed') {
             throw new Error('Не вдалося запустити хомінг');
         }
 
