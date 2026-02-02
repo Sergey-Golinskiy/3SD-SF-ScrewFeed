@@ -19,6 +19,24 @@ const state = {
     brakeY: false   // true = brake released (relay ON), false = brake engaged (relay OFF)
 };
 
+// Ukrainian pluralization for "гвинт" (screw)
+function pluralizeGvynt(n) {
+    n = Math.abs(n);
+    const lastTwo = n % 100;
+    const lastOne = n % 10;
+
+    if (lastTwo >= 11 && lastTwo <= 19) {
+        return 'гвинтів';  // 11-19: гвинтів
+    }
+    if (lastOne === 1) {
+        return 'гвинт';    // 1, 21, 31...: гвинт
+    }
+    if (lastOne >= 2 && lastOne <= 4) {
+        return 'гвинти';   // 2-4, 22-24...: гвинти
+    }
+    return 'гвинтів';      // 0, 5-20, 25-30...: гвинтів
+}
+
 // API Functions
 const api = {
     async get(path) {
@@ -927,15 +945,16 @@ async function saveDevice() {
         return;
     }
 
-    // Generate key from fields: Назва_Щокрутим_Розмір(Кількість)
-    // Example: ABCD_КРУТ_M3x8(4)
+    // Generate key from fields: Назва_Щокрутим_Розмір(Кількість гвинтів)
+    // Example: ABCD_КРУТ_M3x8(4 гвинти)
     let deviceKey = key;
     if (!deviceKey) {
         deviceKey = name;
         if (what) {
             deviceKey += '_' + what.toUpperCase();
         }
-        deviceKey += '_' + screwSize + '(' + holes + ')';
+        const holesNum = parseInt(holes);
+        deviceKey += '_' + screwSize + '(' + holesNum + ' ' + pluralizeGvynt(holesNum) + ')';
     }
 
     // Validate and get work position
