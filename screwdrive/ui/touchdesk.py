@@ -125,6 +125,17 @@ class ApiClient:
     def cycle_clear_estop(self):
         return self._post("cycle/clear_estop")
 
+    # UI State Sync
+    def get_ui_state(self):
+        return self._get("ui/state")
+
+    def set_ui_state(self, state_data: dict):
+        state_data["source"] = "desktop"
+        return self._post("ui/state", state_data)
+
+    def select_device(self, device_key: str):
+        return self._post("ui/select-device", {"device": device_key, "source": "desktop"})
+
 
 # ================== UI Helpers ==================
 def make_card(title: str = None) -> QFrame:
@@ -161,6 +172,8 @@ class ControlTab(QWidget):
         self._selected_device = None
         self._cycle_state = "IDLE"
         self._initialized = False
+        self._last_server_state_time = 0
+        self._total_cycles = 0
 
         self._setup_ui()
 
@@ -305,6 +318,7 @@ class ControlTab(QWidget):
         """Select a device."""
         self._selected_device = key
         self._initialized = False
+        self._cycle_state = "IDLE"
         self._update_device_styles()
 
         self.lblDevice.setText(key)
@@ -313,16 +327,48 @@ class ControlTab(QWidget):
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(True)
 
+        # Sync to server for web UI
+        try:
+            self.api.select_device(key)
+        except Exception as e:
+            print(f"Device selection sync failed: {e}")
+
+    def _sync_state_to_server(self, cycle_state: str, message: str = ""):
+        """Sync current state to server for web UI."""
+        try:
+            # Get total holes from selected device
+            total_holes = 0
+            for dev in self._devices:
+                if dev.get("key") == self._selected_device:
+                    total_holes = dev.get("holes", 0)
+                    break
+
+            self.api.set_ui_state({
+                "selected_device": self._selected_device,
+                "cycle_state": cycle_state,
+                "initialized": self._initialized,
+                "holes_completed": 0,
+                "total_holes": total_holes,
+                "cycles_completed": self._total_cycles,
+                "message": message
+            })
+        except Exception as e:
+            print(f"State sync failed: {e}")
+
     def on_init(self):
         """Handle initialization button."""
         if not self._selected_device:
             self.lblMessage.setText("Спочатку виберіть девайс!")
             return
 
+        self._cycle_state = "INITIALIZING"
         self.lblState.setText("INITIALIZING")
         self.lblMessage.setText("Ініціалізація... Виконується хомінг...")
         self.btnInit.setEnabled(False)
         self.btnStart.setEnabled(False)
+
+        # Sync state to server
+        self._sync_state_to_server("INITIALIZING", "Ініціалізація...")
 
         # In a real app, this would call the API and wait for completion
         # For now, we just enable the START button
@@ -331,10 +377,14 @@ class ControlTab(QWidget):
     def _init_complete(self):
         """Called when initialization completes."""
         self._initialized = True
+        self._cycle_state = "READY"
         self.lblState.setText("READY")
         self.lblMessage.setText("Ініціалізація завершена. Натисніть START для запуску циклу.")
         self.btnInit.setEnabled(True)
         self.btnStart.setEnabled(True)
+
+        # Sync state to server
+        self._sync_state_to_server("READY", "Готово до запуску")
 
     def on_start(self):
         """Handle START button."""
@@ -342,10 +392,14 @@ class ControlTab(QWidget):
             self.lblMessage.setText("Спочатку виконайте ініціалізацію!")
             return
 
+        self._cycle_state = "RUNNING"
         self.lblState.setText("RUNNING")
         self.lblMessage.setText("Цикл виконується...")
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(False)
+
+        # Sync state to server
+        self._sync_state_to_server("RUNNING", "Цикл виконується")
 
     def on_stop(self):
         """Handle STOP button."""
@@ -354,11 +408,15 @@ class ControlTab(QWidget):
         except Exception:
             pass
 
+        self._cycle_state = "STOPPED"
+        self._initialized = False
         self.lblState.setText("STOPPED")
         self.lblMessage.setText("Цикл зупинено оператором.")
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(True)
-        self._initialized = False
+
+        # Sync state to server
+        self._sync_state_to_server("STOPPED", "Цикл зупинено")
 
     def on_estop(self):
         """Handle E-STOP button."""
@@ -368,10 +426,15 @@ class ControlTab(QWidget):
         except Exception:
             pass
 
+        self._cycle_state = "E-STOP"
+        self._initialized = False
         self.lblState.setText("E-STOP")
         self.lblMessage.setText("АВАРІЙНА ЗУПИНКА! Натисніть Clear E-Stop для продовження.")
         self.btnStart.setEnabled(False)
         self.btnInit.setEnabled(False)
+
+        # Sync state to server
+        self._sync_state_to_server("E-STOP", "Аварійна зупинка")
 
     def render(self, status: dict):
         """Update UI from status."""
@@ -382,6 +445,9 @@ class ControlTab(QWidget):
                 self._rebuild_devices(self._devices)
             except Exception:
                 pass
+
+        # Check for UI state changes from web UI
+        self._check_server_ui_state()
 
         # Update cycle status from status dict
         cycle = status.get("cycle", {})
@@ -396,8 +462,61 @@ class ControlTab(QWidget):
 
         # XY Table state
         xy_state = xy.get("state", "DISCONNECTED")
-        if xy_state == "DISCONNECTED" or xy_state == "ERROR":
-            self.lblMessage.setText(f"XY стіл: {xy_state}")
+
+    def _check_server_ui_state(self):
+        """Check if server UI state was updated by web client."""
+        try:
+            server_state = self.api.get_ui_state()
+
+            # Only update if state is newer and was updated by web
+            if (server_state.get("updated_at", 0) > self._last_server_state_time and
+                server_state.get("updated_by") == "web"):
+
+                self._last_server_state_time = server_state.get("updated_at", 0)
+
+                # Update device selection from web
+                new_device = server_state.get("selected_device")
+                if new_device != self._selected_device:
+                    self._selected_device = new_device
+                    self._update_device_styles()
+                    self.lblDevice.setText(new_device or "-")
+
+                # Update cycle state from web
+                new_state = server_state.get("cycle_state", "IDLE")
+                if new_state != self._cycle_state:
+                    self._cycle_state = new_state
+                    self.lblState.setText(new_state)
+
+                    # Update buttons based on state
+                    if new_state in ("IDLE", "STOPPED"):
+                        self.btnInit.setEnabled(bool(self._selected_device))
+                        self.btnStart.setEnabled(False)
+                        self._initialized = False
+                    elif new_state == "READY":
+                        self.btnInit.setEnabled(True)
+                        self.btnStart.setEnabled(True)
+                        self._initialized = True
+                    elif new_state == "RUNNING":
+                        self.btnInit.setEnabled(False)
+                        self.btnStart.setEnabled(False)
+
+                # Update progress
+                holes = server_state.get("holes_completed", 0)
+                total = server_state.get("total_holes", 0)
+                self.lblProgress.setText(f"{holes} / {total}")
+
+                # Update cycles count
+                cycles = server_state.get("cycles_completed", 0)
+                if cycles > self._total_cycles:
+                    self._total_cycles = cycles
+
+            # Update our timestamp if we're the latest
+            if server_state.get("updated_by") == "desktop":
+                self._last_server_state_time = server_state.get("updated_at", 0)
+
+        except Exception as e:
+            # Ignore errors - server might not have endpoint yet
+            pass
 
 
 # ================== Service Tab ==================

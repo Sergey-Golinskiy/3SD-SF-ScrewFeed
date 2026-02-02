@@ -323,8 +323,75 @@ def create_app(
 
     # === Legacy API Compatibility (for old touchdesk.py) ===
 
-    # Store selected device key
+    # Shared UI state (synchronized between Web UI and Desktop UI)
+    app.ui_state = {
+        'selected_device': None,
+        'cycle_state': 'IDLE',  # IDLE, INITIALIZING, READY, RUNNING, STOPPED, ERROR, E-STOP
+        'initialized': False,
+        'holes_completed': 0,
+        'total_holes': 0,
+        'cycles_completed': 0,
+        'message': '',
+        'updated_by': None,  # 'web' or 'desktop'
+        'updated_at': 0
+    }
+
+    # Legacy compatibility
     app.selected_device = None
+
+    # === Shared UI State API ===
+
+    @app.route('/api/ui/state', methods=['GET'])
+    def get_ui_state():
+        """Get shared UI state for synchronization between Web and Desktop UI."""
+        return jsonify(app.ui_state)
+
+    @app.route('/api/ui/state', methods=['POST'])
+    def set_ui_state():
+        """Update shared UI state (partial updates supported)."""
+        data = request.get_json() or {}
+
+        # Update only provided fields
+        for key in ['selected_device', 'cycle_state', 'initialized', 'holes_completed',
+                    'total_holes', 'cycles_completed', 'message']:
+            if key in data:
+                app.ui_state[key] = data[key]
+
+        # Track who updated and when
+        app.ui_state['updated_by'] = data.get('source', 'unknown')
+        app.ui_state['updated_at'] = time.time()
+
+        # Keep legacy selected_device in sync
+        if 'selected_device' in data:
+            app.selected_device = data['selected_device']
+
+        return jsonify(app.ui_state)
+
+    @app.route('/api/ui/select-device', methods=['POST'])
+    def ui_select_device():
+        """Select device and sync across all UIs."""
+        data = request.get_json() or {}
+        device_key = data.get('device')
+
+        if device_key and device_key not in app.devices:
+            return jsonify({'error': f'Unknown device: {device_key}'}), 404
+
+        app.ui_state['selected_device'] = device_key
+        app.ui_state['cycle_state'] = 'IDLE'
+        app.ui_state['initialized'] = False
+        app.ui_state['holes_completed'] = 0
+        app.ui_state['message'] = f'Девайс {device_key} вибрано' if device_key else ''
+        app.ui_state['updated_by'] = data.get('source', 'unknown')
+        app.ui_state['updated_at'] = time.time()
+
+        # Get total holes from device
+        if device_key and device_key in app.devices:
+            app.ui_state['total_holes'] = app.devices[device_key].holes
+
+        # Legacy sync
+        app.selected_device = device_key
+
+        return jsonify(app.ui_state)
 
     @app.route('/api/config', methods=['GET'])
     def get_config():

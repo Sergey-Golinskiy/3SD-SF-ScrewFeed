@@ -26,6 +26,9 @@ let cycleAborted = false;
 let areaMonitoringActive = false;
 let totalCyclesCompleted = 0;
 
+// Last known server UI state timestamp (for sync detection)
+let lastServerStateTime = 0;
+
 // Ukrainian pluralization for "гвинт" (screw)
 function pluralizeGvynt(n) {
     n = Math.abs(n);
@@ -111,6 +114,76 @@ const api = {
 const $ = (id) => document.getElementById(id);
 const $$ = (selector) => document.querySelectorAll(selector);
 
+// ========== UI STATE SYNC (Web <-> Desktop) ==========
+
+async function syncUIStateToServer(cycleState, message = '') {
+    // Sync local UI state to server for desktop UI to pick up
+    try {
+        await api.post('/ui/state', {
+            selected_device: state.selectedDevice,
+            cycle_state: cycleState,
+            initialized: cycleState === 'READY' || cycleState === 'RUNNING',
+            holes_completed: parseInt($('cycleProgress').textContent.split('/')[0].trim()) || 0,
+            total_holes: parseInt($('cycleProgress').textContent.split('/')[1]?.trim()) || 0,
+            cycles_completed: totalCyclesCompleted,
+            message: message,
+            source: 'web'
+        });
+    } catch (e) {
+        console.error('UI state sync failed:', e);
+    }
+}
+
+async function checkServerUIState() {
+    // Check if server UI state was updated by another client (desktop)
+    try {
+        const serverState = await api.get('/ui/state');
+
+        // If server state is newer and was updated by desktop
+        if (serverState.updated_at > lastServerStateTime && serverState.updated_by === 'desktop') {
+            lastServerStateTime = serverState.updated_at;
+
+            // Update local state from server
+            if (serverState.selected_device !== state.selectedDevice) {
+                state.selectedDevice = serverState.selected_device;
+                $('deviceSelect').value = serverState.selected_device || '';
+                renderDeviceList();
+            }
+
+            // Update cycle status panel from server
+            $('cycleState').textContent = serverState.cycle_state || 'IDLE';
+            $('currentDevice').textContent = serverState.selected_device || '-';
+            $('cycleProgress').textContent = `${serverState.holes_completed || 0} / ${serverState.total_holes || 0}`;
+
+            // Update cycles count from server
+            if (serverState.cycles_completed > totalCyclesCompleted) {
+                totalCyclesCompleted = serverState.cycles_completed;
+                $('cycleCount').textContent = totalCyclesCompleted;
+            }
+        }
+
+        // Update our timestamp if we're the latest
+        if (serverState.updated_by === 'web') {
+            lastServerStateTime = serverState.updated_at;
+        }
+
+    } catch (e) {
+        // Ignore - server might not have the endpoint yet
+    }
+}
+
+async function syncDeviceSelection(deviceKey) {
+    // Sync device selection to server
+    try {
+        await api.post('/ui/select-device', {
+            device: deviceKey,
+            source: 'web'
+        });
+    } catch (e) {
+        console.error('Device selection sync failed:', e);
+    }
+}
+
 // Tab Management
 function initTabs() {
     $$('.tab-btn').forEach(btn => {
@@ -148,6 +221,11 @@ async function updateStatus() {
 
         // Monitor emergency stop button
         checkEmergencyStopButton(status);
+
+        // Check for UI state changes from desktop app (only if not in active cycle)
+        if (!cycleInProgress && !initializationInProgress) {
+            checkServerUIState();
+        }
 
     } catch (error) {
         state.connected = false;
@@ -386,9 +464,13 @@ function initControlTab() {
             renderDeviceList();
             // Update Cycle Status panel to show selected device
             updateCycleStatusPanel('IDLE', selectedKey, 0, 0);
+            // Sync to server for desktop UI
+            syncDeviceSelection(selectedKey);
         } else {
             // No device selected
+            state.selectedDevice = null;
             updateCycleStatusPanel('IDLE', '-', 0, 0);
+            syncDeviceSelection(null);
         }
     });
 
@@ -410,6 +492,10 @@ function initControlTab() {
         state.selectedDevice = null;
         $('deviceSelect').value = '';
         renderDeviceList();
+
+        // Sync stopped state to server
+        syncUIStateToServer('STOPPED', 'Цикл зупинено оператором');
+        syncDeviceSelection(null);
     });
 
     // E-STOP button
@@ -654,6 +740,9 @@ function updateCycleStatusPanel(cycleState, deviceName, holesCompleted, totalHol
     $('currentDevice').textContent = deviceName || '-';
     $('cycleProgress').textContent = `${holesCompleted || 0} / ${totalHoles || 0}`;
     $('cycleCount').textContent = totalCyclesCompleted;
+
+    // Sync state to server for desktop UI (don't await to avoid blocking)
+    syncUIStateToServer(cycleState);
 }
 
 function updateCycleStatus(text, statusClass = '') {
