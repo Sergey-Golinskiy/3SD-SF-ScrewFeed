@@ -401,6 +401,14 @@ def move_axis_abs(axis: str, target_mm: float, feed_mm_min: float) -> bool:
     if estop:
         return False
 
+    # Require homing before movement (safety after E-STOP)
+    if axis == "X" and not x_homed:
+        print("ERROR: X axis not homed - movement blocked")
+        return False
+    if axis == "Y" and not y_homed:
+        print("ERROR: Y axis not homed - movement blocked")
+        return False
+
     if axis == "X":
         target_mm = float(clamp(target_mm, X_MIN_MM, X_MAX_MM))
         delta = target_mm - cur_x_mm
@@ -467,6 +475,11 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     global cur_x_mm, cur_y_mm, cancel_requested
 
     if estop or cancel_requested:
+        return False
+
+    # Require homing before movement (safety after E-STOP)
+    if not x_homed or not y_homed:
+        print(f"ERROR: Axes not homed (X:{x_homed}, Y:{y_homed}) - movement blocked")
         return False
 
     if x_mm is None:
@@ -1236,6 +1249,8 @@ def handle_command(line: str) -> str:
         if up == "WORK" or up.startswith("WORK "):
             if estop:
                 return "err ESTOP"
+            if not x_homed or not y_homed:
+                return "err NOT_HOMED"
             x, y, f = WORK_X_MM, WORK_Y_MM, WORK_F_MM_MIN
             if len(up) > 4:
                 for tok in line.split()[1:]:
@@ -1321,6 +1336,8 @@ def handle_command(line: str) -> str:
         if up.startswith("DX "):
             if estop:
                 return "err ESTOP"
+            if not x_homed:
+                return "err NOT_HOMED_X"
             d, f = 0.0, 600.0
             for tok in line.split()[1:]:
                 t = tok.upper()
@@ -1338,6 +1355,8 @@ def handle_command(line: str) -> str:
         if up.startswith("DY "):
             if estop:
                 return "err ESTOP"
+            if not y_homed:
+                return "err NOT_HOMED_Y"
             d, f = 0.0, 600.0
             for tok in line.split()[1:]:
                 t = tok.upper()
@@ -1356,6 +1375,8 @@ def handle_command(line: str) -> str:
         if up.startswith("JX "):
             if estop:
                 return "err ESTOP"
+            if not x_homed:
+                return "err NOT_HOMED_X"
             toks = line.split()
             if len(toks) < 2:
                 return "err BAD_ARGS"
@@ -1374,6 +1395,8 @@ def handle_command(line: str) -> str:
         if up.startswith("JY "):
             if estop:
                 return "err ESTOP"
+            if not y_homed:
+                return "err NOT_HOMED_Y"
             toks = line.split()
             if len(toks) < 2:
                 return "err BAD_ARGS"
@@ -1393,6 +1416,8 @@ def handle_command(line: str) -> str:
         if up.startswith("GF "):
             if estop:
                 return "err ESTOP"
+            if not x_homed or not y_homed:
+                return "err NOT_HOMED"
             x, y, f = None, None, 1200.0
             for tok in line.split()[1:]:
                 t = tok.upper()
@@ -1415,6 +1440,8 @@ def handle_command(line: str) -> str:
         if up.startswith("G "):
             if estop:
                 return "err ESTOP"
+            if not x_homed or not y_homed:
+                return "err NOT_HOMED"
             x, y, f = None, None, 1200.0
             for tok in line.split()[1:]:
                 t = tok.upper()
@@ -1442,6 +1469,8 @@ def handle_command(line: str) -> str:
         if up.startswith("G0") or up.startswith("G1"):
             if estop:
                 return "err ESTOP"
+            if not x_homed or not y_homed:
+                return "err NOT_HOMED"
             x, y, f = None, None, cur_feed_mm_min
             for tok in line.split()[1:]:
                 t = tok.upper()
@@ -1468,6 +1497,8 @@ def handle_command(line: str) -> str:
         if up.startswith("G2") or up.startswith("G3"):
             if estop:
                 return "err ESTOP"
+            if not x_homed or not y_homed:
+                return "err NOT_HOMED"
             clockwise = up.startswith("G2")
             x, y, i, j, r, f, p = None, None, None, None, None, cur_feed_mm_min, 1
             for tok in line.split()[1:]:
