@@ -383,6 +383,21 @@ body {
     background: #6a5a3d;
 }
 
+.btn-info {
+    background: #2d4a5a;
+    color: #5dade2;
+}
+
+.btn-info:hover {
+    background: #3d5a6a;
+}
+
+.btn-info:disabled {
+    background: #1a2a30;
+    color: #4a6070;
+    cursor: not-allowed;
+}
+
 .btn-large {
     padding: 16px 40px;
     font-size: 18px;
@@ -1545,4 +1560,56 @@ body {
 @keyframes position-blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+/* ========== INITIALIZATION STYLES ========== */
+
+.init-status-text {
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    min-height: 24px;
+}
+
+.init-status-text.error {
+    color: var(--accent-red);
+}
+
+.init-status-text.success {
+    color: var(--accent-green);
+}
+
+.init-progress {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+.init-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3498db, #5dade2);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.init-progress-bar.error {
+    background: linear-gradient(90deg, #e74c3c, #ff6b6b);
+}
+
+.init-progress-bar.success {
+    background: linear-gradient(90deg, #27ae60, #2ecc71);
+}
+
+#initStatusCard {
+    border-left: 4px solid #3498db;
+}
+
+#initStatusCard.error {
+    border-left-color: var(--accent-red);
+}
+
+#initStatusCard.success {
+    border-left-color: var(--accent-green);
 }

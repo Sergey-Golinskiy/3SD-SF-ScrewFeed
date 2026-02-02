@@ -100,9 +100,19 @@
                         <select id="deviceSelect" class="input-select">
                             <option value="">-- Select Device --</option>
                         </select>
-                        <button class="btn btn-primary" id="btnCycleStart">START</button>
+                        <button class="btn btn-info" id="btnInit">ІНІЦІАЛІЗАЦІЯ</button>
+                        <button class="btn btn-primary" id="btnCycleStart" disabled>START</button>
                         <button class="btn btn-danger" id="btnCycleStop">STOP</button>
                         <button class="btn btn-warning" id="btnCyclePause">PAUSE</button>
+                    </div>
+                </div>
+
+                <!-- Initialization Status Card -->
+                <div class="card" id="initStatusCard" style="display: none;">
+                    <h2>Статус ініціалізації</h2>
+                    <div id="initStatusText" class="init-status-text">-</div>
+                    <div class="init-progress">
+                        <div class="init-progress-bar" id="initProgressBar"></div>
                     </div>
                 </div>
 

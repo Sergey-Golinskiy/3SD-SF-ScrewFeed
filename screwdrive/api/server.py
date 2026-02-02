@@ -749,13 +749,19 @@ def create_app(
 
     @app.route('/api/devices', methods=['GET'])
     def get_devices():
-        """Get list of available devices."""
+        """Get list of available devices with full details."""
         return jsonify([
             {
                 'key': key,
                 'name': prog.name,
                 'holes': prog.holes,
-                'steps': len(prog.steps)
+                'what': prog.what,
+                'screw_size': prog.screw_size,
+                'task': prog.task,
+                'work_x': prog.work_x,
+                'work_y': prog.work_y,
+                'work_feed': prog.work_feed,
+                'steps_count': len(prog.steps)
             }
             for key, prog in app.devices.items()
         ])

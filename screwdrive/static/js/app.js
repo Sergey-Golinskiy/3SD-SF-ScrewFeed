@@ -332,6 +332,9 @@ async function toggleRelay(name) {
 }
 
 function initControlTab() {
+    // Initialization button
+    $('btnInit').addEventListener('click', runInitialization);
+
     // Device select
     $('btnCycleStart').addEventListener('click', async () => {
         const device = $('deviceSelect').value;
@@ -350,6 +353,198 @@ function initControlTab() {
     $('btnCyclePause').addEventListener('click', () => api.post('/cycle/pause'));
     $('btnEstop').addEventListener('click', () => api.post('/cycle/estop'));
     $('btnClearEstop').addEventListener('click', () => api.post('/cycle/clear_estop'));
+}
+
+// ========== INITIALIZATION SEQUENCE ==========
+
+let initializationInProgress = false;
+
+function updateInitStatus(text, progress, statusClass = '') {
+    const card = $('initStatusCard');
+    const statusText = $('initStatusText');
+    const progressBar = $('initProgressBar');
+
+    card.style.display = 'block';
+    card.className = 'card' + (statusClass ? ' ' + statusClass : '');
+    statusText.textContent = text;
+    statusText.className = 'init-status-text' + (statusClass ? ' ' + statusClass : '');
+    progressBar.style.width = progress + '%';
+    progressBar.className = 'init-progress-bar' + (statusClass ? ' ' + statusClass : '');
+}
+
+function hideInitStatus() {
+    $('initStatusCard').style.display = 'none';
+}
+
+async function waitForSensor(sensorName, expectedState, timeout = 10000, pollInterval = 100) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+        const response = await api.get(`/sensors/${sensorName}`);
+        if (response.state === expectedState) {
+            return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+    return false;
+}
+
+async function waitForHoming(timeout = 10000) {
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeout) {
+        const status = await api.get('/xy/status');
+        if (status.x_homed && status.y_homed) {
+            return true;
+        }
+        if (status.state === 'ERROR' || status.state === 'ESTOP') {
+            throw new Error('Homing error: ' + (status.last_error || status.state));
+        }
+        await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return false;
+}
+
+async function runInitialization() {
+    if (initializationInProgress) {
+        alert('Ініціалізація вже виконується');
+        return;
+    }
+
+    const deviceKey = $('deviceSelect').value;
+    if (!deviceKey) {
+        alert('Виберіть девайс для ініціалізації');
+        return;
+    }
+
+    // Get selected device details
+    const device = state.devices.find(d => d.key === deviceKey);
+    if (!device) {
+        alert('Девайс не знайдено');
+        return;
+    }
+
+    initializationInProgress = true;
+    $('btnInit').disabled = true;
+    $('btnCycleStart').disabled = true;
+
+    try {
+        // Step 0: Check E-STOP
+        updateInitStatus('Перевірка аварійної кнопки...', 5);
+        const safety = await api.get('/sensors/safety');
+        if (safety.estop_pressed) {
+            throw new Error('Аварійна кнопка натиснута! Відпустіть її перед ініціалізацією.');
+        }
+
+        // Step 0.1: Check Slave Pi connection
+        updateInitStatus('Перевірка підключення XY столу...', 10);
+        const xyStatus = await api.get('/xy/status');
+        if (!xyStatus.connected) {
+            throw new Error('XY стіл не підключено! Перевірте з\'єднання з Raspberry Pi.');
+        }
+
+        // Step 1: Check and release brakes
+        updateInitStatus('Перевірка та відпускання гальм...', 15);
+        const relays = await api.get('/relays');
+
+        // Release brake X if engaged (relay OFF = brake engaged)
+        if (relays.r02_brake_x !== 'ON') {
+            await api.post('/relays/r02_brake_x', { state: 'on' });
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+
+        // Release brake Y if engaged
+        if (relays.r03_brake_y !== 'ON') {
+            await api.post('/relays/r03_brake_y', { state: 'on' });
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+
+        // Step 1.1: Homing
+        updateInitStatus('Виконується хомінг XY столу...', 25);
+        const homeResponse = await api.post('/xy/home', { axis: 'all' });
+        if (!homeResponse.success) {
+            throw new Error('Не вдалося запустити хомінг');
+        }
+
+        // Wait for homing to complete with 15 second timeout
+        const homingComplete = await waitForHoming(15000);
+        if (!homingComplete) {
+            throw new Error('Хомінг не завершено за 15 секунд. Перевірте датчики.');
+        }
+
+        // Step 2: Check cylinder sensors
+        updateInitStatus('Перевірка датчиків циліндра...', 40);
+        const gerUp = await api.get('/sensors/ger_c2_up');
+        const gerDown = await api.get('/sensors/ger_c2_down');
+
+        // GER_C2_UP should be ACTIVE (cylinder is up), GER_C2_DOWN should be INACTIVE
+        if (gerUp.state !== 'ACTIVE') {
+            throw new Error('Датчик GER_C2_UP не активний. Циліндр не у верхньому положенні.');
+        }
+        if (gerDown.state === 'ACTIVE') {
+            throw new Error('Датчик GER_C2_DOWN активний. Можливо проблема з пневматикою.');
+        }
+
+        // Step 3: Lower cylinder (turn on R04_C2) and wait for GER_C2_DOWN
+        updateInitStatus('Опускання циліндра...', 50);
+        await api.post('/relays/r04_c2', { state: 'on' });
+
+        const cylinderLowered = await waitForSensor('ger_c2_down', 'ACTIVE', 5000);
+        if (!cylinderLowered) {
+            await api.post('/relays/r04_c2', { state: 'off' });
+            throw new Error('Циліндр не опустився за 5 секунд. Перевірте пневматику.');
+        }
+
+        // Step 4: Raise cylinder (turn off R04_C2) and wait for GER_C2_UP
+        updateInitStatus('Піднімання циліндра...', 60);
+        await api.post('/relays/r04_c2', { state: 'off' });
+
+        const cylinderRaised = await waitForSensor('ger_c2_up', 'ACTIVE', 5000);
+        if (!cylinderRaised) {
+            throw new Error('Циліндр не піднявся за 5 секунд. Перевірте пневматику.');
+        }
+
+        // Step 5: Select task (pulse R07 or R08)
+        updateInitStatus('Вибір задачі для закручування...', 75);
+        const taskRelay = device.task === '1' ? 'r08_di6_tsk1' : 'r07_di5_tsk0';
+        await api.post(`/relays/${taskRelay}`, { state: 'pulse', duration: 0.7 });
+        await new Promise(resolve => setTimeout(resolve, 800)); // Wait for pulse to complete
+
+        // Step 6: Move to work position
+        updateInitStatus('Виїзд до оператора...', 85);
+
+        const workX = device.work_x;
+        const workY = device.work_y;
+        const workFeed = device.work_feed || 5000;
+
+        if (workX === null || workX === undefined || workY === null || workY === undefined) {
+            throw new Error('Робоча позиція не задана для цього девайсу. Вкажіть Робоча X та Робоча Y в налаштуваннях.');
+        }
+
+        const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
+        if (!moveResponse.success) {
+            throw new Error('Не вдалося виїхати до робочої позиції');
+        }
+
+        // Wait a bit for the move to start
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Success!
+        updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+
+        // Enable START button
+        $('btnCycleStart').disabled = false;
+
+    } catch (error) {
+        console.error('Initialization error:', error);
+        updateInitStatus('ПОМИЛКА: ' + error.message, 100, 'error');
+
+        // Turn off cylinder relay for safety
+        try {
+            await api.post('/relays/r04_c2', { state: 'off' });
+        } catch (e) {}
+    } finally {
+        initializationInProgress = false;
+        $('btnInit').disabled = false;
+    }
 }
 
 // XY Table Tab
