@@ -523,17 +523,17 @@ function initXYTab() {
         });
     });
 
-    // Home buttons with brake checks
+    // Home buttons - only check brakes, NOT homed status (we're homing!)
     $('btnXYHome').addEventListener('click', () => {
-        if (!checkBothBrakes()) return;
+        if (!checkBothBrakesOnly()) return;
         api.post('/xy/home');
     });
     $('btnHomeX').addEventListener('click', () => {
-        if (!checkBrakeX()) return;
+        if (!checkBrakeXOnly()) return;
         api.post('/xy/home/x');
     });
     $('btnHomeY').addEventListener('click', () => {
-        if (!checkBrakeY()) return;
+        if (!checkBrakeYOnly()) return;
         api.post('/xy/home/y');
     });
     $('btnZero').addEventListener('click', () => {
@@ -721,6 +721,35 @@ function checkBothBrakes() {
     if (!checkHomedForMove()) {
         return false;
     }
+    if (!state.brakeX) {
+        alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
+        return false;
+    }
+    if (!state.brakeY) {
+        alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+// Brake checks WITHOUT homed check (for homing commands)
+function checkBrakeXOnly() {
+    if (!state.brakeX) {
+        alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+function checkBrakeYOnly() {
+    if (!state.brakeY) {
+        alert('Гальмо Y затиснуто! Відпустіть гальмо Y для цієї операції.');
+        return false;
+    }
+    return true;
+}
+
+function checkBothBrakesOnly() {
     if (!state.brakeX) {
         alert('Гальмо X затиснуто! Відпустіть гальмо X для цієї операції.');
         return false;
@@ -994,17 +1023,17 @@ function initSettingsTab() {
         });
     });
 
-    // Home buttons in settings with brake checks
+    // Home buttons in settings - only check brakes, NOT homed status
     $('btnHomeSettings').addEventListener('click', () => {
-        if (!checkBothBrakes()) return;
+        if (!checkBothBrakesOnly()) return;
         api.post('/xy/home');
     });
     $('btnHomeXSettings').addEventListener('click', () => {
-        if (!checkBrakeX()) return;
+        if (!checkBrakeXOnly()) return;
         api.post('/xy/home/x');
     });
     $('btnHomeYSettings').addEventListener('click', () => {
-        if (!checkBrakeY()) return;
+        if (!checkBrakeYOnly()) return;
         api.post('/xy/home/y');
     });
 }
