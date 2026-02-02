@@ -271,6 +271,12 @@ class XYTableController:
                     self._health.service_status = "running"
                     self._health.consecutive_errors = 0
 
+                    # Get full status (M114) to update position and homed state
+                    # This is critical for detecting E-STOP triggered on Slave Pi
+                    status_response = self._send_command("M114", timeout=2.0)
+                    if status_response:
+                        self._parse_status(status_response)
+
                     # Also get endstop status
                     endstops = self._send_command("M119", timeout=2.0)
                     if endstops:
