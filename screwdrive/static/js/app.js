@@ -384,6 +384,7 @@ function initControlTab() {
             await api.post('/xy/estop');
         } catch (e) {}
         updateCycleStatus('Цикл зупинено оператором', 'error');
+        updateCycleStatusPanel('STOPPED', '-', 0, 0);
         $('btnCycleStart').disabled = false;
         $('btnInit').disabled = false;
         cycleInProgress = false;
@@ -482,6 +483,9 @@ async function runInitialization() {
     initializationInProgress = true;
     $('btnInit').disabled = true;
     $('btnCycleStart').disabled = true;
+
+    // Update cycle status panel
+    updateCycleStatusPanel('INITIALIZING', deviceKey, 0, 0);
 
     try {
         // Step 0: Check E-STOP
@@ -607,6 +611,7 @@ async function runInitialization() {
 
         // Success!
         updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+        updateCycleStatusPanel('READY', deviceKey, 0, 0);
 
         // Enable START button
         $('btnCycleStart').disabled = false;
@@ -614,6 +619,7 @@ async function runInitialization() {
     } catch (error) {
         console.error('Initialization error:', error);
         updateInitStatus('ПОМИЛКА: ' + error.message, 100, 'error');
+        updateCycleStatusPanel('INIT_ERROR', deviceKey, 0, 0);
 
         // Turn off cylinder relay for safety
         try {
@@ -630,6 +636,15 @@ async function runInitialization() {
 let cycleInProgress = false;
 let cycleAborted = false;
 let areaMonitoringActive = false;
+let totalCyclesCompleted = 0;
+
+// Update Cycle Status panel (State, Device, Progress, Cycles)
+function updateCycleStatusPanel(cycleState, deviceName, holesCompleted, totalHoles) {
+    $('cycleState').textContent = cycleState || '-';
+    $('currentDevice').textContent = deviceName || '-';
+    $('cycleProgress').textContent = `${holesCompleted || 0} / ${totalHoles || 0}`;
+    $('cycleCount').textContent = totalCyclesCompleted;
+}
 
 function updateCycleStatus(text, statusClass = '') {
     const statusText = $('initStatusText');
@@ -831,6 +846,7 @@ async function runCycle() {
         }
 
         updateCycleStatus(`Цикл запущено. Винтів: 0 / ${totalHoles}`);
+        updateCycleStatusPanel('RUNNING', deviceKey, 0, totalHoles);
 
         // Process each step
         for (let i = 0; i < device.steps.length; i++) {
@@ -901,6 +917,7 @@ async function runCycle() {
 
                 holesCompleted++;
                 updateCycleStatus(`Закручено: ${holesCompleted} / ${totalHoles}`);
+                updateCycleStatusPanel('RUNNING', deviceKey, holesCompleted, totalHoles);
             }
         }
 
@@ -909,11 +926,15 @@ async function runCycle() {
 
         // Cycle complete - return to operator
         updateCycleStatus('Цикл завершено. Повернення до оператора...', 'success');
+        updateCycleStatusPanel('RETURNING', deviceKey, holesCompleted, totalHoles);
 
         await returnToOperator();
         await waitForMove();
 
+        // Increment total cycles completed
+        totalCyclesCompleted++;
         updateCycleStatus(`Цикл завершено! Закручено ${holesCompleted} винтів. Натисніть START для наступного.`, 'success');
+        updateCycleStatusPanel('COMPLETED', deviceKey, holesCompleted, totalHoles);
 
         // Re-enable START for next cycle
         $('btnCycleStart').disabled = false;
@@ -927,6 +948,7 @@ async function runCycle() {
 
         if (error.message === 'AREA_BLOCKED') {
             updateCycleStatus('УВАГА: Світлова завіса! Повернення до оператора...', 'error');
+            updateCycleStatusPanel('AREA_BLOCKED', deviceKey, holesCompleted, totalHoles);
 
             // Return to operator position
             try {
@@ -934,9 +956,11 @@ async function runCycle() {
             } catch (e) {}
 
             updateCycleStatus('Світлова завіса спрацювала. Натисніть START для повторного циклу.', 'error');
+            updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
             $('btnCycleStart').disabled = false;
         } else if (error.message === 'TORQUE_NOT_REACHED') {
             updateCycleStatus('УВАГА: Момент не досягнуто! Повернення до оператора...', 'error');
+            updateCycleStatusPanel('TORQUE_ERROR', deviceKey, holesCompleted, totalHoles);
 
             // Return to operator position
             try {
@@ -945,9 +969,11 @@ async function runCycle() {
             } catch (e) {}
 
             updateCycleStatus('Момент не досягнуто за 2 сек. Перевірте гвинт та повторіть.', 'error');
+            updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
             $('btnCycleStart').disabled = false;
         } else {
             updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
+            updateCycleStatusPanel('ERROR', deviceKey, holesCompleted, totalHoles);
         }
     } finally {
         cycleInProgress = false;
