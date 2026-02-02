@@ -437,7 +437,8 @@ async function waitForHoming(timeout = 10000) {
         if (pos.x_homed && pos.y_homed) {
             return true;
         }
-        if (status.state === 'ERROR' || status.state === 'ESTOP') {
+        const state = (status.state || '').toLowerCase();
+        if (state === 'error' || state === 'estop') {
             throw new Error('Homing error: ' + (status.last_error || status.state));
         }
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -648,10 +649,11 @@ async function waitForMove(timeout = 30000) {
         }
 
         const status = await api.get('/xy/status');
-        if (status.state === 'READY' || status.state === 'IDLE') {
+        const state = (status.state || '').toLowerCase();
+        if (state === 'ready') {
             return true;
         }
-        if (status.state === 'ERROR' || status.state === 'ESTOP') {
+        if (state === 'error' || state === 'estop') {
             throw new Error('XY table error: ' + status.state);
         }
         await new Promise(resolve => setTimeout(resolve, 100));
