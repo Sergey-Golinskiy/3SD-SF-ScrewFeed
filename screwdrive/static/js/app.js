@@ -608,34 +608,6 @@ function initXYTab() {
     // Brake control buttons
     $('btnBrakeX').addEventListener('click', toggleBrakeX);
     $('btnBrakeY').addEventListener('click', toggleBrakeY);
-
-    // Cancel button - immediate stop of all commands
-    $('btnCancel').addEventListener('click', cancelAllCommands);
-}
-
-// Cancel all commands - immediate stop
-async function cancelAllCommands() {
-    console.log('CANCEL: Stopping all commands...');
-
-    // Visual feedback
-    const btn = $('btnCancel');
-    btn.classList.add('cancelling');
-
-    try {
-        // Send cancel command to API
-        await api.post('/xy/cancel');
-        console.log('CANCEL: All commands stopped');
-
-        // Brief visual confirmation
-        setTimeout(() => {
-            btn.classList.remove('cancelling');
-        }, 500);
-
-    } catch (error) {
-        console.error('Cancel failed:', error);
-        btn.classList.remove('cancelling');
-        alert('Помилка скасування команд: ' + error.message);
-    }
 }
 
 // Brake toggle functions
