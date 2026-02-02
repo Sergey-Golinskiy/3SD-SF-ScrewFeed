@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
 # ================== Config ==================
 API_BASE = os.getenv("API_BASE", "http://127.0.0.1:5000/api")
 POLL_MS = 1000
-BORDER_W = 8
+BORDER_W = 6
 
 # ================== Colors (matching web UI) ==================
 COLORS = {
@@ -132,8 +132,8 @@ def make_card(title: str = None) -> QFrame:
     box = QFrame()
     box.setObjectName("card")
     lay = QVBoxLayout(box)
-    lay.setContentsMargins(16, 16, 16, 16)
-    lay.setSpacing(12)
+    lay.setContentsMargins(10, 10, 10, 10)
+    lay.setSpacing(8)
     if title:
         t = QLabel(title)
         t.setObjectName("cardTitle")
@@ -146,7 +146,7 @@ def big_button(text: str, style: str = "primary") -> QPushButton:
     btn = QPushButton(text)
     btn.setObjectName(f"btn_{style}")
     btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-    btn.setMinimumHeight(120)
+    btn.setMinimumHeight(80)
     return btn
 
 
@@ -166,12 +166,12 @@ class ControlTab(QWidget):
 
     def _setup_ui(self):
         root = QHBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(24)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(12)
 
         # Left column - Device selection
         left = QVBoxLayout()
-        left.setSpacing(16)
+        left.setSpacing(8)
 
         # Device card
         self.devCard = make_card("Вибір девайсу")
@@ -191,7 +191,7 @@ class ControlTab(QWidget):
 
         # Right column - Controls
         right = QVBoxLayout()
-        right.setSpacing(16)
+        right.setSpacing(8)
 
         # Status card
         self.statusCard = make_card("Статус циклу")
@@ -234,7 +234,7 @@ class ControlTab(QWidget):
 
         # Control buttons
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(16)
+        btn_row.setSpacing(8)
 
         self.btnInit = big_button("ІНІЦІАЛІЗАЦІЯ", "info")
         self.btnStart = big_button("START", "primary")
@@ -284,7 +284,7 @@ class ControlTab(QWidget):
             btn = QPushButton(f"{key}\n{holes} отворів")
             btn.setObjectName("devButton")
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            btn.setMinimumHeight(70)
+            btn.setMinimumHeight(50)
             btn.clicked.connect(lambda _, k=key: self._select_device(k))
 
             self.devListLay.addWidget(btn)
@@ -413,12 +413,12 @@ class ServiceTab(QWidget):
 
     def _setup_ui(self):
         root = QHBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(24)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(12)
 
         # Left - Sensors
         left = QVBoxLayout()
-        left.setSpacing(16)
+        left.setSpacing(8)
 
         self.sensorsCard = make_card("Сенсори")
         self.sensorsGrid = QGridLayout()
@@ -429,7 +429,7 @@ class ServiceTab(QWidget):
 
         # Right - Relays
         right = QVBoxLayout()
-        right.setSpacing(16)
+        right.setSpacing(8)
 
         self.relaysCard = make_card("Реле (ON / OFF / PULSE)")
         self.relaysGrid = QGridLayout()
@@ -556,8 +556,8 @@ class XYTab(QWidget):
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(24)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(12)
 
         # Status card
         self.statusCard = make_card("XY Стіл - Статус")
@@ -594,7 +594,7 @@ class XYTab(QWidget):
         btn_lay = btn_card.layout()
 
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(16)
+        btn_row.setSpacing(8)
 
         self.btnHomeAll = QPushButton("HOME ALL")
         self.btnHomeX = QPushButton("HOME X")
@@ -765,11 +765,11 @@ APP_QSS = f"""
 #card {{
     background: {COLORS['bg_card']};
     border: 1px solid {COLORS['border']};
-    border-radius: 16px;
+    border-radius: 10px;
     color: {COLORS['text']};
 }}
 #cardTitle {{
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     color: {COLORS['text']};
 }}
@@ -779,30 +779,30 @@ APP_QSS = f"""
 QTabBar::tab {{
     color: {COLORS['text_muted']};
     background: {COLORS['bg_card']};
-    padding: 16px 28px;
-    margin-right: 4px;
-    border-top-left-radius: 10px;
-    border-top-right-radius: 10px;
-    font-size: 22px;
+    padding: 8px 20px;
+    margin-right: 2px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-size: 18px;
     font-weight: 700;
-    min-height: 60px;
-    min-width: 180px;
+    min-height: 40px;
+    min-width: 140px;
     border: 1px solid {COLORS['border']};
 }}
 QTabBar::tab:selected {{
     background: {COLORS['bg_input']};
     color: white;
-    border-bottom: 4px solid {COLORS['green']};
+    border-bottom: 3px solid {COLORS['green']};
 }}
 
 /* Device buttons */
 #devButton {{
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     text-align: left;
-    padding: 12px 16px;
+    padding: 8px 12px;
     border: 2px solid {COLORS['border_light']};
-    border-radius: 12px;
+    border-radius: 8px;
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
 }}
@@ -815,43 +815,43 @@ QTabBar::tab:selected {{
 
 /* Big buttons */
 #btn_primary {{
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     background: {COLORS['green_bg']};
     color: #e9ffee;
     border: 2px solid {COLORS['green']};
-    border-radius: 16px;
+    border-radius: 10px;
 }}
 #btn_primary:hover {{ background: #1a5235; }}
 #btn_primary:disabled {{ opacity: 0.5; }}
 
 #btn_info {{
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
     border: 2px solid {COLORS['blue']};
-    border-radius: 16px;
+    border-radius: 10px;
 }}
 #btn_info:hover {{ background: #1a3050; }}
 
 #btn_danger {{
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 700;
     background: {COLORS['red_bg']};
     color: #ffe9e9;
     border: 2px solid {COLORS['red']};
-    border-radius: 16px;
+    border-radius: 10px;
 }}
 #btn_danger:hover {{ background: #4a2525; }}
 
 #btn_estop {{
-    font-size: 32px;
+    font-size: 26px;
     font-weight: 900;
     background: {COLORS['red']};
     color: white;
-    border: 4px solid #ff0000;
-    border-radius: 16px;
+    border: 3px solid #ff0000;
+    border-radius: 10px;
 }}
 #btn_estop:hover {{ background: #ff3333; }}
 
