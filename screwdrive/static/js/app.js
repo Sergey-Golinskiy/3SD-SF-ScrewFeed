@@ -660,13 +660,28 @@ async function waitForMove(timeout = 30000) {
 }
 
 async function performScrewing() {
-    // 1. Feed screw - pulse R01 (200ms)
-    await api.post('/relays/r01_pit', { state: 'pulse', duration: 0.2 });
+    // 1. Feed screw with retry logic (max 3 attempts)
+    let screwDetected = false;
+    const maxAttempts = 3;
 
-    // 2. Wait for screw to pass sensor (ind_scrw) - 3 second timeout
-    const screwDetected = await waitForSensorWithAreaCheck('ind_scrw', 'ACTIVE', 3000, 50);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Pulse R01 (200ms) to feed screw
+        await api.post('/relays/r01_pit', { state: 'pulse', duration: 0.2 });
+
+        // Wait 1 second for screw to pass sensor
+        screwDetected = await waitForSensorWithAreaCheck('ind_scrw', 'ACTIVE', 1000, 50);
+
+        if (screwDetected) {
+            break; // Screw detected, continue with screwing
+        }
+
+        if (attempt < maxAttempts) {
+            console.log(`Screw not detected, retry ${attempt + 1}/${maxAttempts}`);
+        }
+    }
+
     if (!screwDetected) {
-        throw new Error('Гвинт не виявлено датчиком (ind_scrw)');
+        throw new Error(`Гвинт не виявлено після ${maxAttempts} спроб. Перевірте живильник.`);
     }
 
     // 3. Turn ON R06 (torque mode)
