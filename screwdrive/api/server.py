@@ -619,12 +619,15 @@ def create_app(
         if x is None and y is None:
             return jsonify({'error': 'x or y required'}), 400
 
-        if app.xy_table.move_to(x, y, feed):
-            return jsonify({
-                'status': 'ok',
-                'position': {'x': app.xy_table.x, 'y': app.xy_table.y}
-            })
-        return jsonify({'error': 'Move failed'}), 500
+        try:
+            if app.xy_table.move_to(x, y, feed):
+                return jsonify({
+                    'status': 'ok',
+                    'position': {'x': app.xy_table.x, 'y': app.xy_table.y}
+                })
+            return jsonify({'error': 'Move failed', 'details': app.xy_table._health.last_error}), 500
+        except Exception as e:
+            return jsonify({'error': f'Move exception: {str(e)}'}), 500
 
     @app.route('/api/xy/jog', methods=['POST'])
     def xy_jog():
