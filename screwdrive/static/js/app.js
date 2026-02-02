@@ -792,11 +792,29 @@ async function runCycle() {
             const stepNum = i + 1;
             const stepType = (step.type || 'free').toLowerCase();  // Normalize to lowercase
 
+            // Parse coordinates as floats to ensure correct format
+            const stepX = parseFloat(step.x);
+            const stepY = parseFloat(step.y);
+            const stepFeed = parseFloat(step.feed) || 5000;
+
+            console.log(`Step ${stepNum}: type=${stepType}, x=${stepX}, y=${stepY}, feed=${stepFeed}, raw=`, step);
+
+            // Validate coordinates are within machine limits
+            if (isNaN(stepX) || isNaN(stepY)) {
+                throw new Error(`Крок ${stepNum}: некоректні координати (X=${step.x}, Y=${step.y})`);
+            }
+            if (stepX < 0 || stepX > 220) {
+                throw new Error(`Крок ${stepNum}: X=${stepX} за межами (0-220 мм)`);
+            }
+            if (stepY < 0 || stepY > 500) {
+                throw new Error(`Крок ${stepNum}: Y=${stepY} за межами (0-500 мм)`);
+            }
+
             if (stepType === 'free') {
                 // Free movement - just move
-                updateCycleStatus(`Крок ${stepNum}: Переміщення (free) X:${step.x} Y:${step.y}`);
+                updateCycleStatus(`Крок ${stepNum}: Переміщення (free) X:${stepX} Y:${stepY}`);
 
-                const moveResp = await api.post('/xy/move', { x: step.x, y: step.y, feed: step.feed || 10000 });
+                const moveResp = await api.post('/xy/move', { x: stepX, y: stepY, feed: stepFeed });
                 if (moveResp.status !== 'ok') {
                     throw new Error('Помилка переміщення');
                 }
@@ -818,10 +836,10 @@ async function runCycle() {
                     throw new Error('AREA_BLOCKED');
                 }
 
-                updateCycleStatus(`Крок ${stepNum}: Закручування X:${step.x} Y:${step.y} (${holesCompleted + 1}/${totalHoles})`);
+                updateCycleStatus(`Крок ${stepNum}: Закручування X:${stepX} Y:${stepY} (${holesCompleted + 1}/${totalHoles})`);
 
-                // Move to position
-                const moveResp = await api.post('/xy/move', { x: step.x, y: step.y, feed: step.feed || 5000 });
+                // Move to position (use parsed values)
+                const moveResp = await api.post('/xy/move', { x: stepX, y: stepY, feed: stepFeed });
                 if (moveResp.status !== 'ok') {
                     throw new Error('Помилка переміщення');
                 }
