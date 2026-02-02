@@ -1661,6 +1661,15 @@ def run_serial_mode(port: str, baud: int) -> None:
                     with _serial_lock:
                         ser.write(b"!! HARDWARE_ESTOP\n")
 
+                # Auto-clear E-STOP when button is released (but homing still required)
+                if estop and not estop_gpio_active():
+                    estop = False
+                    cancel_requested = False
+                    enable_all(True)
+                    print("E-STOP CLEARED: Button released. Homing required before movement.")
+                    with _serial_lock:
+                        ser.write(b"!! ESTOP_CLEARED (homing required)\n")
+
                 with _serial_lock:
                     if ser.in_waiting > 0:
                         data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
