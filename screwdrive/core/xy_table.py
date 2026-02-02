@@ -120,6 +120,11 @@ class XYTableController:
         self._health_thread: Optional[threading.Thread] = None
         self._health_running = False
 
+        # Auto-reconnect thread
+        self._reconnect_thread: Optional[threading.Thread] = None
+        self._reconnect_running = False
+        self._reconnect_interval = 2.0  # Retry every 2 seconds
+
     def connect(self) -> bool:
         """
         Connect to XY table.
@@ -200,6 +205,8 @@ class XYTableController:
                 self._serial = None
                 self._state = XYTableState.ERROR
                 self._notify_state_change()
+                # Start auto-reconnect loop
+                self._start_reconnect_loop()
                 return False
 
         except Exception as e:
@@ -211,6 +218,8 @@ class XYTableController:
             print(f"ERROR: Cannot connect to XY table on {self._port}: {e}")
             import traceback
             traceback.print_exc()
+            # Start auto-reconnect loop
+            self._start_reconnect_loop()
             return False
 
     def _connect_direct(self) -> bool:
@@ -222,8 +231,9 @@ class XYTableController:
 
     def disconnect(self) -> None:
         """Disconnect from XY table."""
-        # Stop health monitor first
+        # Stop health monitor and reconnect loop first
         self._stop_health_monitor()
+        self._stop_reconnect_loop()
 
         if self._serial is not None:
             try:
@@ -254,6 +264,134 @@ class XYTableController:
             self._health_thread.join(timeout=2.0)
             self._health_thread = None
         print("XY Table health monitor stopped")
+
+    def _start_reconnect_loop(self) -> None:
+        """Start the auto-reconnect background thread."""
+        if self._reconnect_running:
+            return
+
+        self._reconnect_running = True
+        self._reconnect_thread = threading.Thread(target=self._reconnect_loop, daemon=True)
+        self._reconnect_thread.start()
+        print(f"XY Table auto-reconnect started (interval: {self._reconnect_interval}s)")
+
+    def _stop_reconnect_loop(self) -> None:
+        """Stop the auto-reconnect thread."""
+        self._reconnect_running = False
+        if self._reconnect_thread:
+            self._reconnect_thread.join(timeout=3.0)
+            self._reconnect_thread = None
+        print("XY Table auto-reconnect stopped")
+
+    def _reconnect_loop(self) -> None:
+        """Auto-reconnect loop - tries to connect every 2 seconds until successful."""
+        while self._reconnect_running:
+            try:
+                # Only try to reconnect if not already connected
+                if self._state in (XYTableState.DISCONNECTED, XYTableState.ERROR, XYTableState.TIMEOUT):
+                    print(f"Auto-reconnect: Attempting to connect to XY table...")
+
+                    # Close existing serial if any
+                    if self._serial is not None:
+                        try:
+                            self._serial.close()
+                        except Exception:
+                            pass
+                        self._serial = None
+
+                    # Try to connect
+                    if self._try_connect_serial():
+                        print("Auto-reconnect: Connection successful!")
+                        self._reconnect_running = False  # Stop reconnect loop
+                        return
+                    else:
+                        print(f"Auto-reconnect: Connection failed, retrying in {self._reconnect_interval}s...")
+                else:
+                    # Already connected, stop reconnect loop
+                    self._reconnect_running = False
+                    return
+
+            except Exception as e:
+                print(f"Auto-reconnect error: {e}")
+
+            time.sleep(self._reconnect_interval)
+
+    def _try_connect_serial(self) -> bool:
+        """
+        Try to connect via serial port (without starting reconnect loop on failure).
+
+        Returns:
+            True if connection successful.
+        """
+        if not SERIAL_AVAILABLE:
+            self._health.last_error = "pyserial not available"
+            self._health.service_status = "error"
+            return False
+
+        self._state = XYTableState.CONNECTING
+        self._notify_state_change()
+
+        try:
+            self._serial = serial.Serial(
+                port=self._port,
+                baudrate=self._baud,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=1.0,
+                write_timeout=1.0,
+                xonxoff=False,
+                rtscts=False,
+                dsrdtr=False
+            )
+
+            time.sleep(1.0)
+            self._serial.reset_input_buffer()
+            self._serial.reset_output_buffer()
+            time.sleep(0.1)
+
+            # Test connection with PING
+            ping_start = time.time()
+            response = self._send_command("PING", timeout=5.0)
+            ping_latency = (time.time() - ping_start) * 1000
+
+            if response == "PONG":
+                self._state = XYTableState.READY
+                self._health.connected = True
+                self._health.last_ping_ok = True
+                self._health.last_ping_time = datetime.now()
+                self._health.last_ping_latency_ms = ping_latency
+                self._health.service_status = "running"
+                self._health.last_error = None
+                self._health.consecutive_errors = 0
+                self._notify_state_change()
+
+                # Start health monitoring
+                self._start_health_monitor()
+                return True
+            else:
+                self._health.last_error = f"PING failed: got {response!r}"
+                self._health.service_status = "error"
+                self._health.consecutive_errors += 1
+                self._serial.close()
+                self._serial = None
+                self._state = XYTableState.ERROR
+                self._notify_state_change()
+                return False
+
+        except Exception as e:
+            self._health.last_error = str(e)
+            self._health.service_status = "error"
+            self._health.consecutive_errors += 1
+            self._state = XYTableState.ERROR
+            self._notify_state_change()
+            if self._serial:
+                try:
+                    self._serial.close()
+                except Exception:
+                    pass
+                self._serial = None
+            return False
 
     def _health_monitor_loop(self) -> None:
         """Health monitoring loop - periodically ping and get status."""
@@ -294,7 +432,13 @@ class XYTableController:
                     if self._health.consecutive_errors >= 3:
                         self._state = XYTableState.TIMEOUT
                         self._health.service_status = "timeout"
+                        self._health.connected = False
                         self._notify_state_change()
+                        # Stop health monitor and start reconnect loop
+                        print("Health monitor: Connection lost, starting auto-reconnect...")
+                        self._health_running = False
+                        self._start_reconnect_loop()
+                        return
 
             except Exception as e:
                 self._health.last_ping_ok = False
@@ -304,7 +448,13 @@ class XYTableController:
                 if self._health.consecutive_errors >= 3:
                     self._state = XYTableState.TIMEOUT
                     self._health.service_status = "error"
+                    self._health.connected = False
                     self._notify_state_change()
+                    # Stop health monitor and start reconnect loop
+                    print("Health monitor: Connection error, starting auto-reconnect...")
+                    self._health_running = False
+                    self._start_reconnect_loop()
+                    return
 
             time.sleep(self._health_check_interval)
 
