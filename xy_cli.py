@@ -547,6 +547,11 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     stop_x = (dx < 0)
     stop_y = (dy < 0)
 
+    # Debug: check endstop status at start
+    x_endstop_at_start = endstop_active(X_MIN_GPIO)
+    y_endstop_at_start = endstop_active(Y_MIN_GPIO)
+    print(f"DEBUG move_xy_abs: stop_x={stop_x}, stop_y={stop_y}, X_MIN={x_endstop_at_start}, Y_MIN={y_endstop_at_start}")
+
     done_x = 0
     done_y = 0
 
@@ -693,12 +698,18 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
         if hit_x and hit_y:
             break
 
+    print(f"DEBUG move_xy_abs: done_x={done_x}/{sx_orig}, done_y={done_y}/{sy_orig}, hit_x={hit_x}, hit_y={hit_y}")
+
     if done_x == sx_orig and not hit_x:
         cur_x_mm = x_mm
+    else:
+        print(f"DEBUG move_xy_abs: X position NOT updated (done_x!=sx or hit_x)")
     if done_y == sy_orig and not hit_y:
         cur_y_mm = y_mm
+    else:
+        print(f"DEBUG move_xy_abs: Y position NOT updated (done_y!=sy or hit_y)")
 
-    print(f"DEBUG move_xy_abs: done, final pos=({cur_x_mm:.2f}, {cur_y_mm:.2f}), hit_x={hit_x}, hit_y={hit_y}")
+    print(f"DEBUG move_xy_abs: final pos=({cur_x_mm:.2f}, {cur_y_mm:.2f})")
 
     return not (hit_x or hit_y)
 
