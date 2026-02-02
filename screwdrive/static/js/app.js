@@ -545,11 +545,32 @@ async function runInitialization() {
             throw new Error('Циліндр не піднявся за 5 секунд. Перевірте пневматику.');
         }
 
-        // Step 5: Select task (pulse R07 or R08)
+        // Step 5: Select task by setting R07 and R08 relays
+        // Task 0: R07 OFF, R08 OFF
+        // Task 1: R07 ON, R08 OFF
+        // Task 2: R07 OFF, R08 ON
+        // Task 3: R07 ON, R08 ON
         updateInitStatus('Вибір задачі для закручування...', 75);
-        const taskRelay = device.task === '1' ? 'r08_di6_tsk1' : 'r07_di5_tsk0';
-        await api.post(`/relays/${taskRelay}`, { state: 'pulse', duration: 0.7 });
-        await new Promise(resolve => setTimeout(resolve, 800)); // Wait for pulse to complete
+        const task = device.task;
+
+        if (task === '0') {
+            // Task 0: Both OFF
+            await api.post('/relays/r07_di5_tsk0', { state: 'off' });
+            await api.post('/relays/r08_di6_tsk1', { state: 'off' });
+        } else if (task === '1') {
+            // Task 1: R07 ON, R08 OFF
+            await api.post('/relays/r08_di6_tsk1', { state: 'off' });
+            await api.post('/relays/r07_di5_tsk0', { state: 'on' });
+        } else if (task === '2') {
+            // Task 2: R07 OFF, R08 ON
+            await api.post('/relays/r07_di5_tsk0', { state: 'off' });
+            await api.post('/relays/r08_di6_tsk1', { state: 'on' });
+        } else if (task === '3') {
+            // Task 3: Both ON
+            await api.post('/relays/r07_di5_tsk0', { state: 'on' });
+            await api.post('/relays/r08_di6_tsk1', { state: 'on' });
+        }
+        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay after relay changes
 
         // Step 6: Move to work position
         updateInitStatus('Виїзд до оператора...', 85);
