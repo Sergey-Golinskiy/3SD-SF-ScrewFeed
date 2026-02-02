@@ -116,17 +116,19 @@ const $$ = (selector) => document.querySelectorAll(selector);
 
 // ========== UI STATE SYNC (Web <-> Desktop) ==========
 
-async function syncUIStateToServer(cycleState, message = '') {
+async function syncUIStateToServer(cycleState, message = '', progressPercent = 0, currentStep = '') {
     // Sync local UI state to server for desktop UI to pick up
     try {
         await api.post('/ui/state', {
             selected_device: state.selectedDevice,
             cycle_state: cycleState,
-            initialized: cycleState === 'READY' || cycleState === 'RUNNING',
+            initialized: cycleState === 'READY' || cycleState === 'RUNNING' || cycleState === 'COMPLETED',
             holes_completed: parseInt($('cycleProgress').textContent.split('/')[0].trim()) || 0,
             total_holes: parseInt($('cycleProgress').textContent.split('/')[1]?.trim()) || 0,
             cycles_completed: totalCyclesCompleted,
             message: message,
+            progress_percent: progressPercent,
+            current_step: currentStep,
             source: 'web'
         });
     } catch (e) {
@@ -139,8 +141,11 @@ async function checkServerUIState() {
     try {
         const serverState = await api.get('/ui/state');
 
-        // If server state is newer and was updated by desktop
-        if (serverState.updated_at > lastServerStateTime && serverState.updated_by === 'desktop') {
+        // Always update if desktop is operating (regardless of timestamp)
+        const desktopIsOperating = serverState.operator === 'desktop';
+
+        // If server state is newer and was updated by desktop, OR desktop is actively operating
+        if ((serverState.updated_at > lastServerStateTime && serverState.updated_by === 'desktop') || desktopIsOperating) {
             lastServerStateTime = serverState.updated_at;
 
             // Update local state from server
@@ -155,10 +160,34 @@ async function checkServerUIState() {
             $('currentDevice').textContent = serverState.selected_device || '-';
             $('cycleProgress').textContent = `${serverState.holes_completed || 0} / ${serverState.total_holes || 0}`;
 
+            // Update init status card if desktop is running initialization or cycle
+            if (desktopIsOperating && (serverState.cycle_state === 'INITIALIZING' || serverState.cycle_state === 'RUNNING')) {
+                const card = $('initStatusCard');
+                const statusText = $('initStatusText');
+                const progressBar = $('initProgressBar');
+
+                card.style.display = 'block';
+                card.className = 'card';
+                statusText.textContent = serverState.current_step || serverState.message || 'Операція виконується...';
+                statusText.className = 'init-status-text';
+                progressBar.style.width = (serverState.progress_percent || 0) + '%';
+                progressBar.className = 'init-progress-bar';
+
+                // Disable buttons while desktop is operating
+                $('btnInit').disabled = true;
+                $('btnCycleStart').disabled = true;
+            }
+
             // Update cycles count from server
             if (serverState.cycles_completed > totalCyclesCompleted) {
                 totalCyclesCompleted = serverState.cycles_completed;
                 $('cycleCount').textContent = totalCyclesCompleted;
+            }
+
+            // Re-enable buttons if desktop finished
+            if (!desktopIsOperating && serverState.cycle_state === 'READY') {
+                $('btnInit').disabled = false;
+                $('btnCycleStart').disabled = false;
             }
         }
 
@@ -166,6 +195,9 @@ async function checkServerUIState() {
         if (serverState.updated_by === 'web') {
             lastServerStateTime = serverState.updated_at;
         }
+
+        // Store server state for conflict checking
+        state.serverUIState = serverState;
 
     } catch (e) {
         // Ignore - server might not have the endpoint yet
@@ -568,6 +600,12 @@ async function runInitialization() {
         return;
     }
 
+    // Check if desktop is already operating
+    if (state.serverUIState && state.serverUIState.operator === 'desktop') {
+        alert('Desktop UI виконує операцію. Зачекайте завершення.');
+        return;
+    }
+
     const deviceKey = $('deviceSelect').value;
     if (!deviceKey) {
         alert('Виберіть девайс для ініціалізації');
@@ -588,9 +626,15 @@ async function runInitialization() {
     // Update cycle status panel
     updateCycleStatusPanel('INITIALIZING', deviceKey, 0, 0);
 
+    // Helper to sync progress to server
+    const syncProgress = (msg, pct) => {
+        syncUIStateToServer('INITIALIZING', msg, pct, msg);
+    };
+
     try {
         // Step 0: Check E-STOP
         updateInitStatus('Перевірка аварійної кнопки...', 5);
+        syncProgress('Перевірка аварійної кнопки...', 5);
         const safety = await api.get('/sensors/safety');
         if (safety.estop_pressed) {
             throw new Error('Аварійна кнопка натиснута! Відпустіть її перед ініціалізацією.');
@@ -598,6 +642,7 @@ async function runInitialization() {
 
         // Step 0.1: Check Slave Pi connection
         updateInitStatus('Перевірка підключення XY столу...', 10);
+        syncProgress('Перевірка підключення XY столу...', 10);
         const xyStatus = await api.get('/xy/status');
         if (!xyStatus.connected) {
             throw new Error('XY стіл не підключено! Перевірте з\'єднання з Raspberry Pi.');
@@ -605,6 +650,7 @@ async function runInitialization() {
 
         // Step 1: Check and release brakes
         updateInitStatus('Перевірка та відпускання гальм...', 15);
+        syncProgress('Перевірка та відпускання гальм...', 15);
         const relays = await api.get('/relays');
 
         // Release brake X if engaged (relay OFF = brake engaged)
@@ -621,6 +667,7 @@ async function runInitialization() {
 
         // Step 1.1: Homing
         updateInitStatus('Виконується хомінг XY столу...', 25);
+        syncProgress('Виконується хомінг XY столу...', 25);
         const homeResponse = await api.post('/xy/home');
         if (homeResponse.status !== 'homed') {
             throw new Error('Не вдалося запустити хомінг');
@@ -634,6 +681,7 @@ async function runInitialization() {
 
         // Step 2: Check cylinder sensors
         updateInitStatus('Перевірка датчиків циліндра...', 40);
+        syncProgress('Перевірка датчиків циліндра...', 40);
         const gerUp = await api.get('/sensors/ger_c2_up');
         const gerDown = await api.get('/sensors/ger_c2_down');
 
@@ -647,6 +695,7 @@ async function runInitialization() {
 
         // Step 3: Lower cylinder (turn on R04_C2) and wait for GER_C2_DOWN
         updateInitStatus('Опускання циліндра...', 50);
+        syncProgress('Опускання циліндра...', 50);
         await api.post('/relays/r04_c2', { state: 'on' });
 
         const cylinderLowered = await waitForSensor('ger_c2_down', 'ACTIVE', 5000);
@@ -657,6 +706,7 @@ async function runInitialization() {
 
         // Step 4: Raise cylinder (turn off R04_C2) and wait for GER_C2_UP
         updateInitStatus('Піднімання циліндра...', 60);
+        syncProgress('Піднімання циліндра...', 60);
         await api.post('/relays/r04_c2', { state: 'off' });
 
         const cylinderRaised = await waitForSensor('ger_c2_up', 'ACTIVE', 5000);
@@ -670,6 +720,7 @@ async function runInitialization() {
         // Task 2: R07 OFF, R08 ON
         // Task 3: R07 ON, R08 ON
         updateInitStatus('Вибір задачі для закручування...', 75);
+        syncProgress('Вибір задачі для закручування...', 75);
         const task = device.task;
 
         if (task === '0') {
@@ -693,6 +744,7 @@ async function runInitialization() {
 
         // Step 6: Move to work position
         updateInitStatus('Виїзд до оператора...', 85);
+        syncProgress('Виїзд до оператора...', 85);
 
         const workX = device.work_x;
         const workY = device.work_y;
@@ -713,6 +765,7 @@ async function runInitialization() {
         // Success!
         updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
         updateCycleStatusPanel('READY', deviceKey, 0, 0);
+        syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
 
         // Enable START button
         $('btnCycleStart').disabled = false;
@@ -721,6 +774,7 @@ async function runInitialization() {
         console.error('Initialization error:', error);
         updateInitStatus('ПОМИЛКА: ' + error.message, 100, 'error');
         updateCycleStatusPanel('INIT_ERROR', deviceKey, 0, 0);
+        syncUIStateToServer('INIT_ERROR', error.message, 0, 'Помилка ініціалізації');
 
         // Turn off cylinder relay for safety
         try {
@@ -907,6 +961,12 @@ async function runCycle() {
         return;
     }
 
+    // Check if desktop is already operating
+    if (state.serverUIState && state.serverUIState.operator === 'desktop') {
+        alert('Desktop UI виконує операцію. Зачекайте завершення.');
+        return;
+    }
+
     const deviceKey = $('deviceSelect').value;
     if (!deviceKey) {
         alert('Виберіть девайс');
@@ -937,6 +997,12 @@ async function runCycle() {
     let holesCompleted = 0;
     const totalHoles = device.steps.filter(s => (s.type || '').toLowerCase() === 'work').length;
 
+    // Helper to sync cycle progress
+    const syncCycleProgress = (msg, holes) => {
+        const pct = totalHoles > 0 ? Math.round((holes / totalHoles) * 100) : 0;
+        syncUIStateToServer('RUNNING', msg, pct, msg);
+    };
+
     try {
         // Check E-STOP before starting
         const safety = await api.get('/sensors/safety');
@@ -946,6 +1012,7 @@ async function runCycle() {
 
         updateCycleStatus(`Цикл запущено. Винтів: 0 / ${totalHoles}`);
         updateCycleStatusPanel('RUNNING', deviceKey, 0, totalHoles);
+        syncCycleProgress(`Цикл запущено. Винтів: 0 / ${totalHoles}`, 0);
 
         // Process each step
         for (let i = 0; i < device.steps.length; i++) {
@@ -1017,6 +1084,7 @@ async function runCycle() {
                 holesCompleted++;
                 updateCycleStatus(`Закручено: ${holesCompleted} / ${totalHoles}`);
                 updateCycleStatusPanel('RUNNING', deviceKey, holesCompleted, totalHoles);
+                syncCycleProgress(`Закручено: ${holesCompleted} / ${totalHoles}`, holesCompleted);
             }
         }
 
@@ -1026,6 +1094,7 @@ async function runCycle() {
         // Cycle complete - return to operator
         updateCycleStatus('Цикл завершено. Повернення до оператора...', 'success');
         updateCycleStatusPanel('RETURNING', deviceKey, holesCompleted, totalHoles);
+        syncUIStateToServer('RETURNING', 'Повернення до оператора...', 100, 'Повернення');
 
         await returnToOperator();
         await waitForMove();
@@ -1034,6 +1103,7 @@ async function runCycle() {
         totalCyclesCompleted++;
         updateCycleStatus(`Цикл завершено! Закручено ${holesCompleted} винтів. Натисніть START для наступного.`, 'success');
         updateCycleStatusPanel('COMPLETED', deviceKey, holesCompleted, totalHoles);
+        syncUIStateToServer('COMPLETED', `Цикл завершено! Закручено ${holesCompleted} винтів.`, 100, 'Цикл завершено');
 
         // Re-enable START for next cycle
         $('btnCycleStart').disabled = false;
@@ -1048,6 +1118,7 @@ async function runCycle() {
         if (error.message === 'AREA_BLOCKED') {
             updateCycleStatus('УВАГА: Світлова завіса! Повернення до оператора...', 'error');
             updateCycleStatusPanel('AREA_BLOCKED', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('AREA_BLOCKED', 'Світлова завіса спрацювала', 0, 'Світлова завіса');
 
             // Return to operator position
             try {
@@ -1056,10 +1127,12 @@ async function runCycle() {
 
             updateCycleStatus('Світлова завіса спрацювала. Натисніть START для повторного циклу.', 'error');
             updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('PAUSED', 'Світлова завіса. Натисніть START.', 0, 'Пауза');
             $('btnCycleStart').disabled = false;
         } else if (error.message === 'TORQUE_NOT_REACHED') {
             updateCycleStatus('УВАГА: Момент не досягнуто! Повернення до оператора...', 'error');
             updateCycleStatusPanel('TORQUE_ERROR', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('TORQUE_ERROR', 'Момент не досягнуто', 0, 'Помилка моменту');
 
             // Return to operator position
             try {
@@ -1069,10 +1142,12 @@ async function runCycle() {
 
             updateCycleStatus('Момент не досягнуто за 2 сек. Перевірте гвинт та повторіть.', 'error');
             updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('PAUSED', 'Момент не досягнуто. Перевірте гвинт.', 0, 'Пауза');
             $('btnCycleStart').disabled = false;
         } else {
             updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
             updateCycleStatusPanel('ERROR', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('ERROR', error.message, 0, 'Помилка');
         }
     } finally {
         cycleInProgress = false;

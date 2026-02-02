@@ -324,16 +324,21 @@ def create_app(
     # === Legacy API Compatibility (for old touchdesk.py) ===
 
     # Shared UI state (synchronized between Web UI and Desktop UI)
+    # This is the SINGLE SOURCE OF TRUTH - both UIs should mirror this state
     app.ui_state = {
         'selected_device': None,
-        'cycle_state': 'IDLE',  # IDLE, INITIALIZING, READY, RUNNING, STOPPED, ERROR, E-STOP
+        'cycle_state': 'IDLE',  # IDLE, INITIALIZING, READY, RUNNING, STOPPED, ERROR, E-STOP, INIT_ERROR
         'initialized': False,
         'holes_completed': 0,
         'total_holes': 0,
         'cycles_completed': 0,
         'message': '',
-        'updated_by': None,  # 'web' or 'desktop'
-        'updated_at': 0
+        'progress_percent': 0,      # 0-100 progress for init/cycle
+        'current_step': '',         # Current operation step description
+        'operator': None,           # Who is currently operating: 'web', 'desktop', or None
+        'operation_started_at': 0,  # Timestamp when current operation started
+        'updated_by': None,         # 'web' or 'desktop' - who last updated
+        'updated_at': 0             # Timestamp of last update
     }
 
     # Legacy compatibility
@@ -352,14 +357,27 @@ def create_app(
         data = request.get_json() or {}
 
         # Update only provided fields
-        for key in ['selected_device', 'cycle_state', 'initialized', 'holes_completed',
-                    'total_holes', 'cycles_completed', 'message']:
+        allowed_fields = ['selected_device', 'cycle_state', 'initialized', 'holes_completed',
+                         'total_holes', 'cycles_completed', 'message', 'progress_percent',
+                         'current_step', 'operator', 'operation_started_at']
+        for key in allowed_fields:
             if key in data:
                 app.ui_state[key] = data[key]
 
         # Track who updated and when
         app.ui_state['updated_by'] = data.get('source', 'unknown')
         app.ui_state['updated_at'] = time.time()
+
+        # Auto-set operator when starting an operation
+        if data.get('cycle_state') in ('INITIALIZING', 'RUNNING'):
+            if not app.ui_state['operator']:
+                app.ui_state['operator'] = data.get('source', 'unknown')
+                app.ui_state['operation_started_at'] = time.time()
+
+        # Clear operator when operation ends
+        if data.get('cycle_state') in ('IDLE', 'READY', 'STOPPED', 'ERROR', 'E-STOP', 'INIT_ERROR', 'COMPLETED'):
+            app.ui_state['operator'] = None
+            app.ui_state['operation_started_at'] = 0
 
         # Keep legacy selected_device in sync
         if 'selected_device' in data:
@@ -380,6 +398,10 @@ def create_app(
         app.ui_state['cycle_state'] = 'IDLE'
         app.ui_state['initialized'] = False
         app.ui_state['holes_completed'] = 0
+        app.ui_state['progress_percent'] = 0
+        app.ui_state['current_step'] = ''
+        app.ui_state['operator'] = None
+        app.ui_state['operation_started_at'] = 0
         app.ui_state['message'] = f'Девайс {device_key} вибрано' if device_key else ''
         app.ui_state['updated_by'] = data.get('source', 'unknown')
         app.ui_state['updated_at'] = time.time()

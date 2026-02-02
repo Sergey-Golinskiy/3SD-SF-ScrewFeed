@@ -183,10 +183,23 @@ class InitWorker(QThread):
     def abort(self):
         self._abort = True
 
+    def _sync_progress(self, message: str, progress_percent: int):
+        """Sync progress to server for Web UI to see."""
+        try:
+            self.api.set_ui_state({
+                "cycle_state": "INITIALIZING",
+                "message": message,
+                "progress_percent": progress_percent,
+                "current_step": message
+            })
+        except Exception:
+            pass  # Don't fail init if sync fails
+
     def run(self):
         try:
             # Step 0: Check E-STOP
             self.progress.emit("Перевірка аварійної кнопки...", 5)
+            self._sync_progress("Перевірка аварійної кнопки...", 5)
             safety = self.api.sensors_safety()
             if safety.get("estop_pressed"):
                 raise Exception("Аварійна кнопка натиснута! Відпустіть її.")
@@ -196,6 +209,7 @@ class InitWorker(QThread):
 
             # Step 0.1: Check XY connection
             self.progress.emit("Перевірка підключення XY столу...", 10)
+            self._sync_progress("Перевірка підключення XY столу...", 10)
             xy_status = self.api.xy_status()
             if not xy_status.get("connected"):
                 raise Exception("XY стіл не підключено!")
@@ -205,6 +219,7 @@ class InitWorker(QThread):
 
             # Step 1: Release brakes
             self.progress.emit("Відпускання гальм...", 15)
+            self._sync_progress("Відпускання гальм...", 15)
             relays = self.api.relays()
 
             if relays.get("r02_brake_x") != "ON":
@@ -220,6 +235,7 @@ class InitWorker(QThread):
 
             # Step 2: Homing
             self.progress.emit("Виконується хомінг XY столу...", 25)
+            self._sync_progress("Виконується хомінг XY столу...", 25)
             home_resp = self.api.xy_home()
             if home_resp.get("status") != "homed":
                 raise Exception("Не вдалося запустити хомінг")
@@ -245,6 +261,7 @@ class InitWorker(QThread):
 
             # Step 3: Check cylinder sensors
             self.progress.emit("Перевірка датчиків циліндра...", 40)
+            self._sync_progress("Перевірка датчиків циліндра...", 40)
             ger_up = self.api.sensor("ger_c2_up")
             ger_down = self.api.sensor("ger_c2_down")
 
@@ -258,6 +275,7 @@ class InitWorker(QThread):
 
             # Step 4: Lower cylinder test
             self.progress.emit("Опускання циліндра...", 50)
+            self._sync_progress("Опускання циліндра...", 50)
             self.api.relay_set("r04_c2", "on")
 
             # Wait for cylinder down (5 seconds)
@@ -280,6 +298,7 @@ class InitWorker(QThread):
 
             # Step 5: Raise cylinder
             self.progress.emit("Піднімання циліндра...", 60)
+            self._sync_progress("Піднімання циліндра...", 60)
             self.api.relay_set("r04_c2", "off")
 
             # Wait for cylinder up (5 seconds)
@@ -299,6 +318,7 @@ class InitWorker(QThread):
 
             # Step 6: Set task relays
             self.progress.emit("Вибір задачі для закручування...", 75)
+            self._sync_progress("Вибір задачі для закручування...", 75)
             task = self.device.get("task", "0")
 
             if task == "0":
@@ -320,6 +340,7 @@ class InitWorker(QThread):
 
             # Step 7: Move to work position
             self.progress.emit("Виїзд до оператора...", 85)
+            self._sync_progress("Виїзд до оператора...", 85)
             work_x = self.device.get("work_x")
             work_y = self.device.get("work_y")
             work_feed = self.device.get("work_feed", 5000)
@@ -519,7 +540,7 @@ class ControlTab(QWidget):
         except Exception as e:
             print(f"Device selection sync failed: {e}")
 
-    def _sync_state_to_server(self, cycle_state: str, message: str = ""):
+    def _sync_state_to_server(self, cycle_state: str, message: str = "", progress_percent: int = 0, current_step: str = ""):
         """Sync current state to server for web UI."""
         try:
             # Get total holes from selected device
@@ -536,7 +557,9 @@ class ControlTab(QWidget):
                 "holes_completed": 0,
                 "total_holes": total_holes,
                 "cycles_completed": self._total_cycles,
-                "message": message
+                "message": message,
+                "progress_percent": progress_percent,
+                "current_step": current_step or message
             })
         except Exception as e:
             print(f"State sync failed: {e}")
@@ -546,6 +569,15 @@ class ControlTab(QWidget):
         if not self._selected_device:
             self.lblMessage.setText("Спочатку виберіть девайс!")
             return
+
+        # Check if web is already operating
+        try:
+            server_state = self.api.get_ui_state()
+            if server_state.get("operator") == "web":
+                self.lblMessage.setText("Web UI виконує операцію. Зачекайте...")
+                return
+        except Exception:
+            pass
 
         # Get device data
         device = None
@@ -720,9 +752,12 @@ class ControlTab(QWidget):
         try:
             server_state = self.api.get_ui_state()
 
-            # Only update if state is newer and was updated by web
-            if (server_state.get("updated_at", 0) > self._last_server_state_time and
-                server_state.get("updated_by") == "web"):
+            # Check if web is actively operating
+            web_is_operating = server_state.get("operator") == "web"
+
+            # Always update if web is operating (to show live progress)
+            if web_is_operating or (server_state.get("updated_at", 0) > self._last_server_state_time and
+                                    server_state.get("updated_by") == "web"):
 
                 self._last_server_state_time = server_state.get("updated_at", 0)
 
@@ -735,12 +770,24 @@ class ControlTab(QWidget):
 
                 # Update cycle state from web
                 new_state = server_state.get("cycle_state", "IDLE")
-                if new_state != self._cycle_state:
-                    self._cycle_state = new_state
-                    self.lblState.setText(new_state)
+                self._cycle_state = new_state
+                self.lblState.setText(new_state)
 
-                    # Update buttons based on state
-                    if new_state in ("IDLE", "STOPPED"):
+                # Update progress bar and message when web is operating
+                if web_is_operating:
+                    progress_pct = server_state.get("progress_percent", 0)
+                    current_step = server_state.get("current_step", "")
+                    message = server_state.get("message", "")
+
+                    self.progressBar.setValue(progress_pct)
+                    self.lblMessage.setText(current_step or message or "Web UI виконує операцію...")
+
+                    # Disable buttons while web is operating
+                    self.btnInit.setEnabled(False)
+                    self.btnStart.setEnabled(False)
+                else:
+                    # Update buttons based on state when web is not operating
+                    if new_state in ("IDLE", "STOPPED", "ERROR", "INIT_ERROR"):
                         self.btnInit.setEnabled(bool(self._selected_device))
                         self.btnStart.setEnabled(False)
                         self._initialized = False
@@ -748,9 +795,13 @@ class ControlTab(QWidget):
                         self.btnInit.setEnabled(True)
                         self.btnStart.setEnabled(True)
                         self._initialized = True
-                    elif new_state == "RUNNING":
+                    elif new_state in ("RUNNING", "INITIALIZING", "RETURNING"):
                         self.btnInit.setEnabled(False)
                         self.btnStart.setEnabled(False)
+                    elif new_state == "COMPLETED":
+                        self.btnInit.setEnabled(True)
+                        self.btnStart.setEnabled(True)
+                        self._initialized = True
 
                 # Update progress
                 holes = server_state.get("holes_completed", 0)
