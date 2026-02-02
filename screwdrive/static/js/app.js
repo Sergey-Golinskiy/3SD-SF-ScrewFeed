@@ -813,15 +813,12 @@ function renderDeviceList() {
 
     for (const device of state.devices) {
         const isSelected = state.selectedDevice === device.key;
-        // Format: NAME_SCREWSIZE (X holes)
-        const displayName = device.screw_size
-            ? `${device.name}_${device.screw_size} (${device.holes} holes)`
-            : `${device.name} (${device.holes} holes)`;
+        // Display key directly - format: Назва_Щокрутим_Розмір(Кількість)
         list.innerHTML += `
             <div class="device-item ${isSelected ? 'selected' : ''}"
                  data-key="${device.key}"
                  onclick="selectDevice('${device.key}')">
-                <div class="device-name">${displayName}</div>
+                <div class="device-name">${device.key}</div>
             </div>
         `;
     }
@@ -832,7 +829,8 @@ function updateDeviceSelect() {
     select.innerHTML = '<option value="">-- Select Device --</option>';
 
     for (const device of state.devices) {
-        select.innerHTML += `<option value="${device.key}">${device.name} (${device.holes} holes)</option>`;
+        // Display key directly - format: Назва_Щокрутим_Розмір(Кількість)
+        select.innerHTML += `<option value="${device.key}">${device.key}</option>`;
     }
 }
 
