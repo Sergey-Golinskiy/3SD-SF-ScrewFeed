@@ -111,21 +111,22 @@ async function checkEmergencyStopButton(status) {
     if (state.lastEstopState !== null && state.lastEstopState !== estopActive) {
         if (estopActive) {
             // Button pressed - trigger E-STOP
-            console.log('Emergency stop button PRESSED - triggering E-STOP');
+            // NOTE: XY table (Slave Pi) handles E-STOP directly via GPIO
+            // We only need to handle cycle E-STOP on Master side
+            console.log('Emergency stop button PRESSED - Slave Pi handles via GPIO');
             try {
                 await api.post('/cycle/estop');
-                await api.post('/xy/estop');
             } catch (error) {
-                console.error('E-STOP trigger failed:', error);
+                console.error('Cycle E-STOP trigger failed:', error);
             }
         } else {
             // Button released - clear E-STOP
-            console.log('Emergency stop button RELEASED - clearing E-STOP');
+            // NOTE: XY table (Slave Pi) auto-clears E-STOP via GPIO
+            console.log('Emergency stop button RELEASED - Slave Pi auto-clears via GPIO');
             try {
                 await api.post('/cycle/clear_estop');
-                await api.post('/xy/clear_estop');
             } catch (error) {
-                console.error('Clear E-STOP failed:', error);
+                console.error('Cycle clear E-STOP failed:', error);
             }
         }
     }

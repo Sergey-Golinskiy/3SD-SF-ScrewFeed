@@ -91,7 +91,9 @@ class EstopMonitor:
                 if self._last_state is not None and self._last_state != estop_pressed:
                     if estop_pressed:
                         # Button pressed - save brake states and trigger E-STOP
-                        print("E-STOP BUTTON PRESSED - sending M112 to XY table")
+                        # NOTE: XY table (Slave Pi) has its own GPIO monitoring for E-STOP
+                        # so we don't send M112 here - it handles E-STOP directly via GPIO
+                        print("E-STOP BUTTON PRESSED - Slave Pi handles via GPIO")
 
                         # Save current brake states before E-STOP
                         if self._relays:
@@ -103,13 +105,15 @@ class EstopMonitor:
                             except Exception as e:
                                 print(f"E-STOP: Failed to save brake states: {e}")
 
-                        self._xy_table.estop()
+                        # Only handle cycle E-STOP on Master side
                         if self._cycle:
                             self._cycle.emergency_stop()
                     else:
-                        # Button released - clear E-STOP and restore brake states
-                        print("E-STOP BUTTON RELEASED - sending M999 to XY table")
-                        self._xy_table.clear_estop()
+                        # Button released - restore brake states
+                        # NOTE: XY table (Slave Pi) auto-clears E-STOP when GPIO shows button released
+                        print("E-STOP BUTTON RELEASED - Slave Pi auto-clears via GPIO")
+
+                        # Only handle cycle clear on Master side
                         if self._cycle:
                             self._cycle.clear_estop()
 
