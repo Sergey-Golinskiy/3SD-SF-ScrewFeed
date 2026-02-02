@@ -366,7 +366,16 @@ function initControlTab() {
     // START button - run screwing cycle
     $('btnCycleStart').addEventListener('click', runCycle);
 
-    // STOP button - abort cycle and safety shutdown
+    // Device select dropdown - sync selection with state
+    $('deviceSelect').addEventListener('change', (e) => {
+        const selectedKey = e.target.value;
+        if (selectedKey) {
+            state.selectedDevice = selectedKey;
+            renderDeviceList();
+        }
+    });
+
+    // STOP button - abort cycle, safety shutdown, and reset device selection
     $('btnCycleStop').addEventListener('click', async () => {
         cycleAborted = true;
         areaMonitoringActive = false;
@@ -378,6 +387,11 @@ function initControlTab() {
         $('btnCycleStart').disabled = false;
         $('btnInit').disabled = false;
         cycleInProgress = false;
+
+        // Reset device selection
+        state.selectedDevice = null;
+        $('deviceSelect').value = '';
+        renderDeviceList();
     });
 
     // E-STOP button
@@ -1439,11 +1453,22 @@ function updateDeviceSelect() {
         // Display key directly - format: Назва_Щокрутим_Розмір(Кількість)
         select.innerHTML += `<option value="${device.key}">${device.key}</option>`;
     }
+
+    // Restore selection if device was previously selected
+    if (state.selectedDevice) {
+        select.value = state.selectedDevice;
+    }
 }
 
 async function selectDevice(key) {
     state.selectedDevice = key;
     renderDeviceList();
+
+    // Update the cycle control dropdown
+    const select = $('deviceSelect');
+    if (select) {
+        select.value = key;
+    }
 
     try {
         const device = await api.get(`/devices/${key}`);
