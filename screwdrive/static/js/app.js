@@ -716,11 +716,11 @@ async function performScrewing() {
     // 5. Wait for DO2_OK (torque reached) with 2 second timeout
     const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 2000, 50);
 
-    // 6. Raise cylinder (R04 OFF) - do this regardless of torque result
-    await api.post('/relays/r04_c2', { state: 'off' });
-
     // If torque not reached - safe shutdown and return to operator
     if (!torqueReached) {
+        // Raise cylinder (R04 OFF)
+        await api.post('/relays/r04_c2', { state: 'off' });
+
         // Turn OFF R06
         await api.post('/relays/r06_di1_pot', { state: 'off' });
 
@@ -734,11 +734,15 @@ async function performScrewing() {
         throw new Error('TORQUE_NOT_REACHED');
     }
 
-    // 7. Free run pulse - R05 (200ms)
-    await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
-
-    // 8. Turn OFF R06
+    // SUCCESS PATH:
+    // 6. Turn OFF R06 (torque mode) first
     await api.post('/relays/r06_di1_pot', { state: 'off' });
+
+    // 7. Raise cylinder (R04 OFF)
+    await api.post('/relays/r04_c2', { state: 'off' });
+
+    // 8. Free run pulse - R05 (200ms)
+    await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
 
     // 9. Wait for cylinder to go up (GER_C2_UP)
     const cylinderUp = await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
