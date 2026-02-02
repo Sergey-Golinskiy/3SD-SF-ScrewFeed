@@ -432,7 +432,7 @@ def create_app(
             return jsonify({'error': 'Sensors not initialized'}), 503
         return jsonify({
             'safe': app.sensors.is_safe(),
-            'estop_pressed': app.sensors.is_estop_pressed(),
+            'estop_pressed': app.sensors.is_emergency_stop_pressed(),
             'area_blocked': app.sensors.is_area_blocked()
         })
 
