@@ -19,6 +19,13 @@ const state = {
     brakeY: false   // true = brake released (relay ON), false = brake engaged (relay OFF)
 };
 
+// Cycle state flags (need to be at top for updateStatusTab to access)
+let cycleInProgress = false;
+let initializationInProgress = false;
+let cycleAborted = false;
+let areaMonitoringActive = false;
+let totalCyclesCompleted = 0;
+
 // Ukrainian pluralization for "гвинт" (screw)
 function pluralizeGvynt(n) {
     n = Math.abs(n);
@@ -191,12 +198,16 @@ function updateConnectionIndicator(connected) {
 }
 
 function updateStatusTab(status) {
-    // Cycle status
-    const cycle = status.cycle || {};
-    $('cycleState').textContent = cycle.state || '-';
-    $('currentDevice').textContent = cycle.current_device || '-';
-    $('cycleProgress').textContent = `${cycle.holes_completed || 0} / ${cycle.total_holes || 0}`;
-    $('cycleCount').textContent = cycle.cycle_count || 0;
+    // Cycle status - only update from server when NOT running frontend cycle
+    // (frontend cycle updates the panel directly via updateCycleStatusPanel)
+    if (!cycleInProgress && !initializationInProgress) {
+        const cycle = status.cycle || {};
+        $('cycleState').textContent = cycle.state || '-';
+        $('currentDevice').textContent = cycle.current_device || '-';
+        $('cycleProgress').textContent = `${cycle.holes_completed || 0} / ${cycle.total_holes || 0}`;
+        // Don't overwrite totalCyclesCompleted from server - keep frontend count
+        // $('cycleCount').textContent = cycle.cycle_count || 0;
+    }
 
     // XY Table
     const xy = status.xy_table || {};
@@ -412,8 +423,6 @@ function initControlTab() {
 }
 
 // ========== INITIALIZATION SEQUENCE ==========
-
-let initializationInProgress = false;
 
 function updateInitStatus(text, progress, statusClass = '') {
     const card = $('initStatusCard');
@@ -632,11 +641,6 @@ async function runInitialization() {
 }
 
 // ========== CYCLE (SCREWING) ==========
-
-let cycleInProgress = false;
-let cycleAborted = false;
-let areaMonitoringActive = false;
-let totalCyclesCompleted = 0;
 
 // Update Cycle Status panel (State, Device, Progress, Cycles)
 function updateCycleStatusPanel(cycleState, deviceName, holesCompleted, totalHoles) {
