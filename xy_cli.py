@@ -38,6 +38,8 @@ os.chdir(_original_cwd)
 # =========================
 X_MIN_GPIO = 2   # endstop X (GPIO2)
 Y_MIN_GPIO = 3   # endstop Y (GPIO3)
+ESTOP_GPIO = 17  # Emergency stop button (GPIO17)
+ESTOP_ACTIVE_LOW = True  # True = GPIO LOW means E-STOP triggered (NC button to GND with pull-up)
 
 # X axis driver
 X_STEP_GPIO = 9
@@ -155,6 +157,9 @@ class GPIO:
         lgpio.gpio_claim_input(self.h, X_MIN_GPIO, pull_up)
         lgpio.gpio_claim_input(self.h, Y_MIN_GPIO, pull_up)
 
+        # E-STOP button input with pull-up (for NC button wired to GND)
+        lgpio.gpio_claim_input(self.h, ESTOP_GPIO, pull_up)
+
     def close(self) -> None:
         """Release GPIO resources."""
         lgpio.gpiochip_close(self.h)
@@ -182,6 +187,27 @@ def endstop_active(gpio: int) -> bool:
     """Check if endstop is triggered."""
     v = io.read(gpio)
     return (v == 0) if ENDSTOP_ACTIVE_LOW else (v == 1)
+
+
+def estop_gpio_active() -> bool:
+    """Check if hardware E-STOP button is triggered (pressed)."""
+    if io is None:
+        return False
+    v = io.read(ESTOP_GPIO)
+    return (v == 0) if ESTOP_ACTIVE_LOW else (v == 1)
+
+
+def trigger_hardware_estop() -> None:
+    """Called when hardware E-STOP button is detected - immediately stops everything."""
+    global estop, cancel_requested, x_homed, y_homed
+    if not estop:  # Only trigger once
+        print("HARDWARE E-STOP: Physical button triggered!")
+        estop = True
+        cancel_requested = True
+        x_homed = False  # Invalidate homing
+        y_homed = False
+        enable_all(False)
+        print("E-STOP: Motors disabled, homing invalidated - rehoming required")
 
 
 def enable_driver_x(en: bool) -> None:
@@ -254,6 +280,10 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
         t = time.perf_counter_ns()
 
         for _ in range(steps):
+            # Check for hardware E-STOP button
+            if estop_gpio_active():
+                trigger_hardware_estop()
+                return False
             # Check for cancel request
             if cancel_requested:
                 return False
@@ -307,6 +337,10 @@ def step_pulses(step_gpio: int, steps: int, step_hz: float,
     step_count = 0
 
     for i in range(steps):
+        # Check for hardware E-STOP button
+        if estop_gpio_active():
+            trigger_hardware_estop()
+            return False
         # Check for cancel request
         if cancel_requested:
             return False
@@ -519,6 +553,18 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
     t = time.perf_counter_ns()
 
     for step_i in range(total_steps):
+        # Check for hardware E-STOP button
+        if estop_gpio_active():
+            trigger_hardware_estop()
+            # Update position based on steps done so far
+            old_x, old_y = cur_x_mm, cur_y_mm
+            if done_x > 0:
+                cur_x_mm += (done_x / STEPS_PER_MM_X) * (1 if dx >= 0 else -1)
+            if done_y > 0:
+                cur_y_mm += (done_y / STEPS_PER_MM_Y) * (1 if dy >= 0 else -1)
+            print(f"ESTOP: Movement stopped at step {step_i}/{total_steps}")
+            print(f"ESTOP: Position updated: ({old_x:.2f}, {old_y:.2f}) -> ({cur_x_mm:.2f}, {cur_y_mm:.2f})")
+            return False
         # Check for cancel request
         if cancel_requested:
             # Update position based on steps done so far
@@ -726,6 +772,10 @@ def arc_move(x_end: float, y_end: float, i_offset: float, j_offset: float,
     current_angle = start_angle
 
     for i in range(num_segments):
+        # Check for hardware E-STOP button
+        if estop_gpio_active():
+            trigger_hardware_estop()
+            return False
         if estop:
             return False
 
@@ -940,6 +990,10 @@ def home_axis(axis: str) -> bool:
         while True:
             if check_timeout():
                 return False
+            # Check hardware E-STOP
+            if estop_gpio_active():
+                trigger_hardware_estop()
+                return False
             ok = step_pulses(X_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=X_MIN_GPIO)
             if not ok:
                 break
@@ -953,6 +1007,10 @@ def home_axis(axis: str) -> bool:
         set_dir_x(False)
         while not endstop_active(X_MIN_GPIO):
             if check_timeout():
+                return False
+            # Check hardware E-STOP
+            if estop_gpio_active():
+                trigger_hardware_estop()
                 return False
             step_pulses(X_STEP_GPIO, int(STEPS_PER_MM_X * 0.5), slow_hz, stop_on_endstop_gpio=X_MIN_GPIO)
 
@@ -979,6 +1037,10 @@ def home_axis(axis: str) -> bool:
         while True:
             if check_timeout():
                 return False
+            # Check hardware E-STOP
+            if estop_gpio_active():
+                trigger_hardware_estop()
+                return False
             ok = step_pulses(Y_STEP_GPIO, chunk, fast_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
             if not ok:
                 break
@@ -990,6 +1052,10 @@ def home_axis(axis: str) -> bool:
         set_dir_y(False)
         while not endstop_active(Y_MIN_GPIO):
             if check_timeout():
+                return False
+            # Check hardware E-STOP
+            if estop_gpio_active():
+                trigger_hardware_estop()
                 return False
             step_pulses(Y_STEP_GPIO, int(STEPS_PER_MM_Y * 0.5), slow_hz, stop_on_endstop_gpio=Y_MIN_GPIO)
 
@@ -1015,7 +1081,8 @@ def get_status_str() -> str:
     """Get status string in format compatible with Arduino version."""
     x_end = "TRIG" if endstop_active(X_MIN_GPIO) else "open"
     y_end = "TRIG" if endstop_active(Y_MIN_GPIO) else "open"
-    return f"STATUS X:{cur_x_mm:.3f} Y:{cur_y_mm:.3f} X_MIN:{x_end} Y_MIN:{y_end} X_HOMED:{'1' if x_homed else '0'} Y_HOMED:{'1' if y_homed else '0'} ESTOP:{'1' if estop else '0'}"
+    hw_estop = "TRIG" if estop_gpio_active() else "open"
+    return f"STATUS X:{cur_x_mm:.3f} Y:{cur_y_mm:.3f} X_MIN:{x_end} Y_MIN:{y_end} X_HOMED:{'1' if x_homed else '0'} Y_HOMED:{'1' if y_homed else '0'} ESTOP:{'1' if estop else '0'} HW_ESTOP:{hw_estop}"
 
 
 def get_endstop_str() -> str:
@@ -1582,7 +1649,7 @@ def run_serial_mode(port: str, baud: int) -> None:
     reader_running = True
 
     def serial_reader():
-        """Background thread to read serial commands."""
+        """Background thread to read serial commands and monitor hardware E-STOP."""
         global cancel_requested, estop, x_homed, y_homed
         nonlocal reader_running
 
@@ -1590,6 +1657,13 @@ def run_serial_mode(port: str, baud: int) -> None:
 
         while reader_running:
             try:
+                # Check hardware E-STOP button
+                if estop_gpio_active() and not estop:
+                    trigger_hardware_estop()
+                    # Notify master about hardware E-STOP
+                    with _serial_lock:
+                        ser.write(b"!! HARDWARE_ESTOP\n")
+
                 with _serial_lock:
                     if ser.in_waiting > 0:
                         data = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
