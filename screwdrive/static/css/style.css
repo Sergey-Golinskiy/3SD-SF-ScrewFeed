@@ -549,6 +549,28 @@ body {
     border: 1px solid var(--border-color);
 }
 
+/* E-STOP indicator */
+.xy-estop-indicator {
+    margin-top: 12px;
+    padding: 12px;
+    background: #ff000020;
+    border: 2px solid #ff0000;
+    border-radius: var(--radius);
+    text-align: center;
+    animation: estop-blink 1s ease-in-out infinite;
+}
+
+.estop-warning {
+    color: #ff0000;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+@keyframes estop-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
 .xy-position {
     text-align: center;
     padding: 20px;

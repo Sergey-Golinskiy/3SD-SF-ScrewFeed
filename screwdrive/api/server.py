@@ -37,7 +37,9 @@ class EstopMonitor:
     """
 
     def __init__(self, sensors: SensorController, xy_table: XYTableController,
-                 cycle: Optional[CycleStateMachine] = None, poll_interval: float = 0.05):
+                 cycle: Optional[CycleStateMachine] = None,
+                 relays: Optional[RelayController] = None,
+                 poll_interval: float = 0.05):
         """
         Initialize E-STOP monitor.
 
@@ -45,15 +47,20 @@ class EstopMonitor:
             sensors: Sensor controller to read E-STOP button
             xy_table: XY table controller to send estop/clear commands
             cycle: Optional cycle state machine for cycle estop
+            relays: Optional relay controller to save/restore brake states
             poll_interval: Polling interval in seconds (default 50ms)
         """
         self._sensors = sensors
         self._xy_table = xy_table
         self._cycle = cycle
+        self._relays = relays
         self._poll_interval = poll_interval
         self._last_state: Optional[bool] = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        # Saved brake states (to restore after E-STOP cleared)
+        self._saved_brake_x: Optional[bool] = None
+        self._saved_brake_y: Optional[bool] = None
 
     def start(self) -> None:
         """Start the E-STOP monitoring thread."""
@@ -83,17 +90,47 @@ class EstopMonitor:
                 # Check if state changed
                 if self._last_state is not None and self._last_state != estop_pressed:
                     if estop_pressed:
-                        # Button pressed - trigger E-STOP immediately
+                        # Button pressed - save brake states and trigger E-STOP
                         print("E-STOP BUTTON PRESSED - sending M112 to XY table")
+
+                        # Save current brake states before E-STOP
+                        if self._relays:
+                            try:
+                                states = self._relays.get_all_states()
+                                self._saved_brake_x = states.get('r02_brake_x') == 'ON'
+                                self._saved_brake_y = states.get('r03_brake_y') == 'ON'
+                                print(f"E-STOP: Saved brake states - X: {self._saved_brake_x}, Y: {self._saved_brake_y}")
+                            except Exception as e:
+                                print(f"E-STOP: Failed to save brake states: {e}")
+
                         self._xy_table.estop()
                         if self._cycle:
                             self._cycle.emergency_stop()
                     else:
-                        # Button released - clear E-STOP
+                        # Button released - clear E-STOP and restore brake states
                         print("E-STOP BUTTON RELEASED - sending M999 to XY table")
                         self._xy_table.clear_estop()
                         if self._cycle:
                             self._cycle.clear_estop()
+
+                        # Restore brake states after E-STOP cleared
+                        if self._relays:
+                            try:
+                                if self._saved_brake_x is not None:
+                                    if self._saved_brake_x:
+                                        self._relays.turn_on('r02_brake_x')
+                                    else:
+                                        self._relays.turn_off('r02_brake_x')
+                                    print(f"E-STOP CLEARED: Restored brake X to {'ON' if self._saved_brake_x else 'OFF'}")
+
+                                if self._saved_brake_y is not None:
+                                    if self._saved_brake_y:
+                                        self._relays.turn_on('r03_brake_y')
+                                    else:
+                                        self._relays.turn_off('r03_brake_y')
+                                    print(f"E-STOP CLEARED: Restored brake Y to {'ON' if self._saved_brake_y else 'OFF'}")
+                            except Exception as e:
+                                print(f"E-STOP CLEARED: Failed to restore brake states: {e}")
 
                 self._last_state = estop_pressed
 
@@ -151,7 +188,7 @@ def create_app(
     # Start E-STOP hardware monitor (polls every 50ms for immediate response)
     app.estop_monitor = None
     if sensors and xy_table:
-        app.estop_monitor = EstopMonitor(sensors, xy_table, cycle, poll_interval=0.05)
+        app.estop_monitor = EstopMonitor(sensors, xy_table, cycle, relays, poll_interval=0.05)
         app.estop_monitor.start()
 
     # === Web UI Routes ===

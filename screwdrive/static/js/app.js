@@ -400,6 +400,13 @@ function updateXYTab(status) {
     homedY.textContent = xy.y_homed ? 'Y: захомлено' : 'Y: не захомлено';
     homedY.className = `homed-indicator ${xy.y_homed ? 'homed' : 'not-homed'}`;
 
+    // E-STOP indicator - show when not homed (after emergency stop)
+    const estopIndicator = $('xyEstopIndicator');
+    if (estopIndicator) {
+        const needsHoming = !xy.x_homed || !xy.y_homed;
+        estopIndicator.style.display = needsHoming ? 'block' : 'none';
+    }
+
     // Update brake states from relays
     updateBrakeStatus(status.relays || {});
 }
