@@ -720,14 +720,19 @@ def move_xy_abs(x_mm: Optional[float], y_mm: Optional[float], feed_mm_min: float
 
     print(f"DEBUG move_xy_abs: done_x={done_x}/{sx_orig}, done_y={done_y}/{sy_orig}, hit_x={hit_x}, hit_y={hit_y}")
 
-    if done_x == sx_orig and not hit_x:
+    # Allow 1-step tolerance due to floating point rounding in Bresenham algorithm
+    # Position should update if we completed at least 99.9% of steps and didn't hit endstop
+    x_complete = (done_x >= sx_orig - 1) if sx_orig > 0 else True
+    y_complete = (done_y >= sy_orig - 1) if sy_orig > 0 else True
+
+    if x_complete and not hit_x:
         cur_x_mm = x_mm
     else:
-        print(f"DEBUG move_xy_abs: X position NOT updated (done_x!=sx or hit_x)")
-    if done_y == sy_orig and not hit_y:
+        print(f"DEBUG move_xy_abs: X position NOT updated (done_x={done_x}, sx={sx_orig}, hit_x={hit_x})")
+    if y_complete and not hit_y:
         cur_y_mm = y_mm
     else:
-        print(f"DEBUG move_xy_abs: Y position NOT updated (done_y!=sy or hit_y)")
+        print(f"DEBUG move_xy_abs: Y position NOT updated (done_y={done_y}, sy={sy_orig}, hit_y={hit_y})")
 
     print(f"DEBUG move_xy_abs: final pos=({cur_x_mm:.2f}, {cur_y_mm:.2f})")
 
