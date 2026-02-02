@@ -1727,7 +1727,16 @@ def run_serial_mode(port: str, baud: int) -> None:
             try:
                 line = cmd_queue.get(timeout=0.01)
 
-                # Skip if we're in cancel/estop state
+                # Check if E-STOP button is released - auto-clear before processing
+                if estop and not estop_gpio_active():
+                    estop = False
+                    cancel_requested = False
+                    enable_all(True)
+                    print("E-STOP CLEARED: Button released. Homing required before movement.")
+                    with _serial_lock:
+                        ser.write(b"!! ESTOP_CLEARED (homing required)\n")
+
+                # Skip if we're in cancel/estop state (button still pressed)
                 if cancel_requested or estop:
                     with _serial_lock:
                         ser.write(b"err ESTOP\n")
