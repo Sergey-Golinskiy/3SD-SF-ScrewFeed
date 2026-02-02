@@ -64,15 +64,15 @@ def get_local_ip() -> str:
 class ApiClient:
     """HTTP client for screwdrive API."""
 
-    def _get(self, path: str):
+    def _get(self, path: str, timeout: int = 5):
         url = f"{API_BASE}/{path.lstrip('/')}"
-        r = requests.get(url, timeout=3)
+        r = requests.get(url, timeout=timeout)
         r.raise_for_status()
         return r.json()
 
-    def _post(self, path: str, payload=None):
+    def _post(self, path: str, payload=None, timeout: int = 10):
         url = f"{API_BASE}/{path.lstrip('/')}"
-        r = requests.post(url, json=payload or {}, timeout=5)
+        r = requests.post(url, json=payload or {}, timeout=timeout)
         r.raise_for_status()
         return r.json()
 
@@ -113,10 +113,10 @@ class ApiClient:
 
     def xy_home(self, axis: str = None):
         data = {"axis": axis} if axis else {}
-        return self._post("xy/home", data)
+        return self._post("xy/home", data, timeout=30)
 
     def xy_move(self, x: float, y: float, feed: float = 5000):
-        return self._post("xy/move", {"x": x, "y": y, "feed": feed})
+        return self._post("xy/move", {"x": x, "y": y, "feed": feed}, timeout=30)
 
     def xy_stop(self):
         return self._post("xy/stop")
