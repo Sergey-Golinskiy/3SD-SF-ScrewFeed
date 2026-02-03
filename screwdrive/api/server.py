@@ -269,7 +269,7 @@ def create_app(
         user = get_current_user()
         if user:
             return jsonify({
-                'authenticated': True,
+                'logged_in': True,
                 'user': {
                     'username': user['username'],
                     'role': user['role'],
@@ -277,7 +277,7 @@ def create_app(
                 }
             })
         else:
-            return jsonify({'authenticated': False})
+            return jsonify({'logged_in': False})
 
     # === Admin User Management API ===
 
