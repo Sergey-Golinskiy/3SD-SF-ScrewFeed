@@ -206,211 +206,323 @@ class InitWorker(QThread):
         except Exception:
             pass  # Don't fail init if sync fails
 
-    def _check_driver_alarms_init(self) -> str:
+    def _check_driver_alarms(self) -> tuple:
         """
-        Check if any motor driver alarm is active during initialization.
-        Returns alarm message if alarm is active, empty string if OK.
-
-        During initialization: if alarm detected, STOP and notify operator.
-        Operator must restart initialization after checking the machine.
+        Check if any motor driver alarm is active.
+        Returns (alarm_x: bool, alarm_y: bool) tuple.
         """
+        alarm_x = False
+        alarm_y = False
         try:
             sensors = self.api.sensors()
-
-            # Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
-            if sensors.get("alarm_x") == "ACTIVE":
-                return "АВАРІЯ: Аларм драйвера осі X!"
-
-            # Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
-            if sensors.get("alarm_y") == "ACTIVE":
-                return "АВАРІЯ: Аларм драйвера осі Y!"
-
+            alarm_x = sensors.get("alarm_x") == "ACTIVE"
+            alarm_y = sensors.get("alarm_y") == "ACTIVE"
         except Exception as e:
             print(f"WARNING: Failed to check driver alarms: {e}")
+        return alarm_x, alarm_y
 
-        return ""
+    def _power_cycle_drivers(self, reset_x: bool = True, reset_y: bool = True) -> None:
+        """
+        Power cycle motor drivers by toggling power relays.
+        Turns power OFF for 1 second, then back ON.
+
+        Args:
+            reset_x: Reset X axis driver
+            reset_y: Reset Y axis driver
+        """
+        msg_parts = []
+        if reset_x:
+            msg_parts.append("X")
+        if reset_y:
+            msg_parts.append("Y")
+
+        if not msg_parts:
+            return
+
+        axis_str = " та ".join(msg_parts)
+        self.progress.emit(f"Перезапуск драйвера {axis_str}...", 0)
+        self._sync_progress(f"Перезапуск драйвера {axis_str}...", 0)
+
+        try:
+            # Turn power OFF (relay ON due to inverted logic)
+            if reset_x:
+                self.api.relay_set("r09_pwr_x", "on")
+            if reset_y:
+                self.api.relay_set("r10_pwr_y", "on")
+
+            time.sleep(1.0)  # Wait 1 second with power off
+
+            # Turn power ON (relay OFF)
+            if reset_x:
+                self.api.relay_set("r09_pwr_x", "off")
+            if reset_y:
+                self.api.relay_set("r10_pwr_y", "off")
+
+            time.sleep(0.5)  # Wait for driver to stabilize
+
+        except Exception as e:
+            print(f"WARNING: Failed to power cycle drivers: {e}")
+
+    def _check_and_reset_alarms(self) -> bool:
+        """
+        Check for driver alarms and reset them by power cycling.
+        Returns True if alarm was found (and reset attempted), False if no alarm.
+        """
+        alarm_x, alarm_y = self._check_driver_alarms()
+
+        if alarm_x or alarm_y:
+            self._power_cycle_drivers(reset_x=alarm_x, reset_y=alarm_y)
+            return True
+
+        return False
 
     def run(self):
-        try:
-            # Step 0: Check motor driver alarms - STOP if any alarm active
-            self.progress.emit("Перевірка алармів драйверів...", 2)
-            self._sync_progress("Перевірка алармів драйверів...", 2)
-            alarm = self._check_driver_alarms_init()
-            if alarm:
-                raise Exception(f"{alarm}\n\nПерезапустіть ініціалізацію після перевірки машини.")
+        """
+        Run initialization with automatic driver alarm recovery.
 
-            # Step 0.1: Check E-STOP
-            self.progress.emit("Перевірка аварійної кнопки...", 5)
-            self._sync_progress("Перевірка аварійної кнопки...", 5)
-            safety = self.api.sensors_safety()
-            if safety.get("estop_pressed"):
-                raise Exception("Аварійна кнопка натиснута! Відпустіть її.")
+        If alarm is detected at any point:
+        - Power cycle the affected driver(s) for 1 second
+        - Restart initialization from the beginning
+        - Maximum 3 retry attempts before giving up
+        """
+        MAX_RETRIES = 3
+        retry_count = 0
 
-            if self._abort:
-                return
-
-            # Step 0.2: Check XY connection
-            self.progress.emit("Перевірка підключення XY столу...", 10)
-            self._sync_progress("Перевірка підключення XY столу...", 10)
-            xy_status = self.api.xy_status()
-            if not xy_status.get("connected"):
-                raise Exception("XY стіл не підключено!")
-
-            if self._abort:
-                return
-
-            # Step 1: Release brakes
-            self.progress.emit("Відпускання гальм...", 15)
-            self._sync_progress("Відпускання гальм...", 15)
-            relays = self.api.relays()
-
-            if relays.get("r02_brake_x") != "ON":
-                self.api.relay_set("r02_brake_x", "on")
-                time.sleep(0.3)
-
-            if relays.get("r03_brake_y") != "ON":
-                self.api.relay_set("r03_brake_y", "on")
-                time.sleep(0.3)
-
-            if self._abort:
-                return
-
-            # Step 2: Homing
-            self.progress.emit("Виконується хомінг XY столу...", 25)
-            self._sync_progress("Виконується хомінг XY столу...", 25)
-            home_resp = self.api.xy_home()
-            if home_resp.get("status") != "homed":
-                raise Exception("Не вдалося запустити хомінг")
-
-            # Wait for homing to complete (15 seconds timeout)
-            start_time = time.time()
-            while time.time() - start_time < 15:
+        while retry_count < MAX_RETRIES:
+            try:
                 if self._abort:
                     return
-                xy = self.api.xy_status()
-                pos = xy.get("position", xy)  # Handle both formats
-                if pos.get("x_homed") and pos.get("y_homed"):
-                    break
-                state = (xy.get("state") or "").lower()
-                if state in ("error", "estop"):
-                    raise Exception(f"Помилка хомінгу: {xy.get('last_error', state)}")
-                time.sleep(0.2)
-            else:
-                raise Exception("Хомінг не завершено за 15 секунд")
 
-            # Short delay after homing for motor driver stabilization
-            # This ensures drivers are ready before subsequent move commands
-            time.sleep(0.5)
+                # Step 0: Check and reset driver alarms if needed
+                self.progress.emit("Перевірка алармів драйверів...", 2)
+                self._sync_progress("Перевірка алармів драйверів...", 2)
 
-            if self._abort:
-                return
+                if self._check_and_reset_alarms():
+                    # Alarm was reset, notify and continue
+                    self.progress.emit("Аларм скинуто, продовжуємо...", 3)
+                    time.sleep(0.5)
 
-            # Step 3: Check cylinder sensors
-            self.progress.emit("Перевірка датчиків циліндра...", 40)
-            self._sync_progress("Перевірка датчиків циліндра...", 40)
-            ger_up = self.api.sensor("ger_c2_up")
-            ger_down = self.api.sensor("ger_c2_down")
+                # Step 0.1: Check E-STOP
+                self.progress.emit("Перевірка аварійної кнопки...", 5)
+                self._sync_progress("Перевірка аварійної кнопки...", 5)
+                safety = self.api.sensors_safety()
+                if safety.get("estop_pressed"):
+                    raise Exception("Аварійна кнопка натиснута! Відпустіть її.")
 
-            if ger_up.get("state") != "ACTIVE":
-                raise Exception("Датчик GER_C2_UP не активний")
-            if ger_down.get("state") == "ACTIVE":
-                raise Exception("Датчик GER_C2_DOWN активний")
+                if self._abort:
+                    return
 
-            if self._abort:
-                return
+                # Step 0.2: Check XY connection
+                self.progress.emit("Перевірка підключення XY столу...", 10)
+                self._sync_progress("Перевірка підключення XY столу...", 10)
+                xy_status = self.api.xy_status()
+                if not xy_status.get("connected"):
+                    raise Exception("XY стіл не підключено!")
 
-            # Step 4: Lower cylinder test
-            self.progress.emit("Опускання циліндра...", 50)
-            self._sync_progress("Опускання циліндра...", 50)
-            self.api.relay_set("r04_c2", "on")
+                if self._abort:
+                    return
 
-            # Wait for cylinder down (5 seconds)
-            start_time = time.time()
-            while time.time() - start_time < 5:
+                # Step 1: Release brakes
+                self.progress.emit("Відпускання гальм...", 15)
+                self._sync_progress("Відпускання гальм...", 15)
+                relays = self.api.relays()
+
+                if relays.get("r02_brake_x") != "ON":
+                    self.api.relay_set("r02_brake_x", "on")
+                    time.sleep(0.3)
+
+                if relays.get("r03_brake_y") != "ON":
+                    self.api.relay_set("r03_brake_y", "on")
+                    time.sleep(0.3)
+
+                if self._abort:
+                    return
+
+                # Check alarms before homing
+                if self._check_and_reset_alarms():
+                    retry_count += 1
+                    self.progress.emit(f"Аларм виявлено, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                    continue
+
+                # Step 2: Homing
+                self.progress.emit("Виконується хомінг XY столу...", 25)
+                self._sync_progress("Виконується хомінг XY столу...", 25)
+                home_resp = self.api.xy_home()
+                if home_resp.get("status") != "homed":
+                    raise Exception("Не вдалося запустити хомінг")
+
+                # Wait for homing to complete (15 seconds timeout)
+                start_time = time.time()
+                homing_alarm = False
+                while time.time() - start_time < 15:
+                    if self._abort:
+                        return
+
+                    # Check for alarms during homing
+                    alarm_x, alarm_y = self._check_driver_alarms()
+                    if alarm_x or alarm_y:
+                        self._power_cycle_drivers(reset_x=alarm_x, reset_y=alarm_y)
+                        homing_alarm = True
+                        break
+
+                    xy = self.api.xy_status()
+                    pos = xy.get("position", xy)  # Handle both formats
+                    if pos.get("x_homed") and pos.get("y_homed"):
+                        break
+                    state = (xy.get("state") or "").lower()
+                    if state in ("error", "estop"):
+                        raise Exception(f"Помилка хомінгу: {xy.get('last_error', state)}")
+                    time.sleep(0.2)
+                else:
+                    raise Exception("Хомінг не завершено за 15 секунд")
+
+                # If alarm during homing, restart
+                if homing_alarm:
+                    retry_count += 1
+                    self.progress.emit(f"Аларм під час хомінгу, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                    continue
+
+                # Short delay after homing for motor driver stabilization
+                time.sleep(0.5)
+
+                # Check alarms after homing
+                if self._check_and_reset_alarms():
+                    retry_count += 1
+                    self.progress.emit(f"Аларм після хомінгу, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                    continue
+
+                if self._abort:
+                    return
+
+                # Step 3: Check cylinder sensors
+                self.progress.emit("Перевірка датчиків циліндра...", 40)
+                self._sync_progress("Перевірка датчиків циліндра...", 40)
+                ger_up = self.api.sensor("ger_c2_up")
+                ger_down = self.api.sensor("ger_c2_down")
+
+                if ger_up.get("state") != "ACTIVE":
+                    raise Exception("Датчик GER_C2_UP не активний")
+                if ger_down.get("state") == "ACTIVE":
+                    raise Exception("Датчик GER_C2_DOWN активний")
+
+                if self._abort:
+                    return
+
+                # Step 4: Lower cylinder test
+                self.progress.emit("Опускання циліндра...", 50)
+                self._sync_progress("Опускання циліндра...", 50)
+                self.api.relay_set("r04_c2", "on")
+
+                # Wait for cylinder down (5 seconds)
+                start_time = time.time()
+                while time.time() - start_time < 5:
+                    if self._abort:
+                        self.api.relay_set("r04_c2", "off")
+                        return
+                    sensor = self.api.sensor("ger_c2_down")
+                    if sensor.get("state") == "ACTIVE":
+                        break
+                    time.sleep(0.1)
+                else:
+                    self.api.relay_set("r04_c2", "off")
+                    raise Exception("Циліндр не опустився за 5 секунд")
+
                 if self._abort:
                     self.api.relay_set("r04_c2", "off")
                     return
-                sensor = self.api.sensor("ger_c2_down")
-                if sensor.get("state") == "ACTIVE":
-                    break
-                time.sleep(0.1)
-            else:
+
+                # Step 5: Raise cylinder
+                self.progress.emit("Піднімання циліндра...", 60)
+                self._sync_progress("Піднімання циліндра...", 60)
                 self.api.relay_set("r04_c2", "off")
-                raise Exception("Циліндр не опустився за 5 секунд")
 
-            if self._abort:
-                self.api.relay_set("r04_c2", "off")
-                return
+                # Wait for cylinder up (5 seconds)
+                start_time = time.time()
+                while time.time() - start_time < 5:
+                    if self._abort:
+                        return
+                    sensor = self.api.sensor("ger_c2_up")
+                    if sensor.get("state") == "ACTIVE":
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise Exception("Циліндр не піднявся за 5 секунд")
 
-            # Step 5: Raise cylinder
-            self.progress.emit("Піднімання циліндра...", 60)
-            self._sync_progress("Піднімання циліндра...", 60)
-            self.api.relay_set("r04_c2", "off")
-
-            # Wait for cylinder up (5 seconds)
-            start_time = time.time()
-            while time.time() - start_time < 5:
                 if self._abort:
                     return
-                sensor = self.api.sensor("ger_c2_up")
-                if sensor.get("state") == "ACTIVE":
-                    break
-                time.sleep(0.1)
-            else:
-                raise Exception("Циліндр не піднявся за 5 секунд")
 
-            if self._abort:
+                # Step 6: Set task relays
+                self.progress.emit("Вибір задачі для закручування...", 75)
+                self._sync_progress("Вибір задачі для закручування...", 75)
+                task = self.device.get("task", "0")
+
+                if task == "0":
+                    self.api.relay_set("r07_di5_tsk0", "off")
+                    self.api.relay_set("r08_di6_tsk1", "off")
+                elif task == "1":
+                    self.api.relay_set("r08_di6_tsk1", "off")
+                    self.api.relay_set("r07_di5_tsk0", "on")
+                elif task == "2":
+                    self.api.relay_set("r07_di5_tsk0", "off")
+                    self.api.relay_set("r08_di6_tsk1", "on")
+                elif task == "3":
+                    self.api.relay_set("r07_di5_tsk0", "on")
+                    self.api.relay_set("r08_di6_tsk1", "on")
+                time.sleep(0.3)
+
+                if self._abort:
+                    return
+
+                # Check alarms before move
+                if self._check_and_reset_alarms():
+                    retry_count += 1
+                    self.progress.emit(f"Аларм перед рухом, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                    continue
+
+                # Step 7: Move to work position
+                self.progress.emit("Виїзд до оператора...", 85)
+                self._sync_progress("Виїзд до оператора...", 85)
+                work_x = self.device.get("work_x")
+                work_y = self.device.get("work_y")
+                work_feed = self.device.get("work_feed", 5000)
+
+                if work_x is None or work_y is None:
+                    raise Exception("Робоча позиція не задана для цього девайсу")
+
+                move_resp = self.api.xy_move(work_x, work_y, work_feed)
+                if move_resp.get("status") != "ok":
+                    # Check if alarm caused the failure
+                    if self._check_and_reset_alarms():
+                        retry_count += 1
+                        self.progress.emit(f"Аларм під час руху, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                        continue
+                    raise Exception("Не вдалося виїхати до робочої позиції")
+
+                # Wait for move to complete
+                time.sleep(0.5)
+
+                # Final alarm check
+                if self._check_and_reset_alarms():
+                    retry_count += 1
+                    self.progress.emit(f"Аларм після руху, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
+                    continue
+
+                # Success!
+                self.progress.emit("Ініціалізація завершена!", 100)
+                self.finished_ok.emit("")
                 return
 
-            # Step 6: Set task relays
-            self.progress.emit("Вибір задачі для закручування...", 75)
-            self._sync_progress("Вибір задачі для закручування...", 75)
-            task = self.device.get("task", "0")
-
-            if task == "0":
-                self.api.relay_set("r07_di5_tsk0", "off")
-                self.api.relay_set("r08_di6_tsk1", "off")
-            elif task == "1":
-                self.api.relay_set("r08_di6_tsk1", "off")
-                self.api.relay_set("r07_di5_tsk0", "on")
-            elif task == "2":
-                self.api.relay_set("r07_di5_tsk0", "off")
-                self.api.relay_set("r08_di6_tsk1", "on")
-            elif task == "3":
-                self.api.relay_set("r07_di5_tsk0", "on")
-                self.api.relay_set("r08_di6_tsk1", "on")
-            time.sleep(0.3)
-
-            if self._abort:
+            except Exception as e:
+                # Safety: turn off cylinder relay
+                try:
+                    self.api.relay_set("r04_c2", "off")
+                except:
+                    pass
+                self.finished_error.emit(str(e))
                 return
 
-            # Step 7: Move to work position
-            self.progress.emit("Виїзд до оператора...", 85)
-            self._sync_progress("Виїзд до оператора...", 85)
-            work_x = self.device.get("work_x")
-            work_y = self.device.get("work_y")
-            work_feed = self.device.get("work_feed", 5000)
-
-            if work_x is None or work_y is None:
-                raise Exception("Робоча позиція не задана для цього девайсу")
-
-            move_resp = self.api.xy_move(work_x, work_y, work_feed)
-            if move_resp.get("status") != "ok":
-                raise Exception("Не вдалося виїхати до робочої позиції")
-
-            # Wait for move to complete
-            time.sleep(0.5)
-
-            self.progress.emit("Ініціалізація завершена!", 100)
-            self.finished_ok.emit("")  # No warnings - alarms now stop init
-
-        except Exception as e:
-            # Safety: turn off cylinder relay
-            try:
-                self.api.relay_set("r04_c2", "off")
-            except:
-                pass
-            self.finished_error.emit(str(e))
+        # Max retries exceeded
+        self.finished_error.emit(f"Не вдалося завершити ініціалізацію після {MAX_RETRIES} спроб скидання алармів драйверів.")
 
 
 # ================== Cycle Worker ==================
