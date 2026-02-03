@@ -1893,6 +1893,198 @@ class PlatformTab(QWidget):
             self._fetch_logs()
 
 
+# ================== Logs Tab ==================
+class LogsTab(QWidget):
+    """Logs tab - displays all system logs like web UI."""
+
+    MAX_LOG_LINES = 200
+
+    def __init__(self, api: ApiClient, parent=None):
+        super().__init__(parent)
+        self.api = api
+        self._log_lines = []
+        self._last_log_fetch = 0
+        self._auto_refresh = True
+        self._categories = ['']  # Empty = all
+        self._levels = ['']  # Empty = all
+        self._selected_category = ''
+        self._selected_level = ''
+        self._setup_ui()
+        self._load_filters()
+
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(16)
+
+        # Top row: Filters
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(16)
+
+        # Category filter
+        cat_label = QLabel("Категорія:")
+        cat_label.setObjectName("filterLabel")
+        filter_row.addWidget(cat_label)
+
+        self.cmbCategory = QComboBox()
+        self.cmbCategory.setMinimumWidth(180)
+        self.cmbCategory.addItem("Всі", "")
+        self.cmbCategory.currentIndexChanged.connect(self._on_filter_changed)
+        filter_row.addWidget(self.cmbCategory)
+
+        filter_row.addSpacing(20)
+
+        # Level filter
+        lvl_label = QLabel("Рівень:")
+        lvl_label.setObjectName("filterLabel")
+        filter_row.addWidget(lvl_label)
+
+        self.cmbLevel = QComboBox()
+        self.cmbLevel.setMinimumWidth(150)
+        self.cmbLevel.addItem("Всі", "")
+        self.cmbLevel.currentIndexChanged.connect(self._on_filter_changed)
+        filter_row.addWidget(self.cmbLevel)
+
+        filter_row.addStretch(1)
+
+        # Auto-refresh toggle
+        self.btnAutoRefresh = QPushButton("Авто-оновлення")
+        self.btnAutoRefresh.setObjectName("btn_toggle")
+        self.btnAutoRefresh.setCheckable(True)
+        self.btnAutoRefresh.setChecked(True)
+        self.btnAutoRefresh.clicked.connect(self._on_auto_refresh_toggled)
+        filter_row.addWidget(self.btnAutoRefresh)
+
+        # Refresh button
+        self.btnRefresh = QPushButton("Оновити")
+        self.btnRefresh.setObjectName("btn_info")
+        self.btnRefresh.setMinimumWidth(120)
+        self.btnRefresh.clicked.connect(self._fetch_logs)
+        filter_row.addWidget(self.btnRefresh)
+
+        root.addLayout(filter_row)
+
+        # Stats row
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(20)
+
+        self.lblLogCount = QLabel("Записів: 0")
+        self.lblLogCount.setObjectName("statusValue")
+        stats_row.addWidget(self.lblLogCount)
+
+        stats_row.addStretch(1)
+
+        self.lblLastUpdate = QLabel("Оновлено: -")
+        self.lblLastUpdate.setObjectName("statusValue")
+        stats_row.addWidget(self.lblLastUpdate)
+
+        root.addLayout(stats_row)
+
+        # Log text area
+        from PyQt5.QtWidgets import QTextEdit
+        self.logText = QTextEdit()
+        self.logText.setReadOnly(True)
+        self.logText.setObjectName("logTextArea")
+        self.logText.setMinimumHeight(400)
+        root.addWidget(self.logText, 1)
+
+    def _load_filters(self):
+        """Load available categories and levels from API."""
+        try:
+            # Load categories
+            resp = self.api._get("desktop/logs/categories")
+            cats = resp.get("categories", [])
+            for cat in cats:
+                self.cmbCategory.addItem(cat, cat)
+            self._categories = [''] + cats
+        except Exception:
+            # Add default categories if API fails
+            for cat in ['XY', 'COMM', 'GCODE', 'SYSTEM', 'CYCLE', 'RELAY', 'SENSOR']:
+                self.cmbCategory.addItem(cat, cat)
+
+        try:
+            # Load levels
+            resp = self.api._get("desktop/logs/levels")
+            lvls = resp.get("levels", [])
+            for lvl in lvls:
+                self.cmbLevel.addItem(lvl, lvl)
+            self._levels = [''] + lvls
+        except Exception:
+            # Add default levels if API fails
+            for lvl in ['DEBUG', 'INFO', 'WARNING', 'ERROR']:
+                self.cmbLevel.addItem(lvl, lvl)
+
+    def _on_filter_changed(self):
+        """Handle filter change."""
+        self._selected_category = self.cmbCategory.currentData() or ''
+        self._selected_level = self.cmbLevel.currentData() or ''
+        self._fetch_logs()
+
+    def _on_auto_refresh_toggled(self, checked):
+        """Handle auto-refresh toggle."""
+        self._auto_refresh = checked
+
+    def _fetch_logs(self):
+        """Fetch logs from API."""
+        try:
+            # Build query params
+            params = ["limit=200"]
+            if self._selected_category:
+                params.append(f"category={self._selected_category}")
+            if self._selected_level:
+                params.append(f"level={self._selected_level}")
+
+            query = "&".join(params)
+            response = self.api._get(f"desktop/logs?{query}")
+            logs = response.get("logs", [])
+
+            # Format log entries with colors
+            new_lines = []
+            for log in logs:
+                timestamp = log.get("timestamp", "")[:19]  # Trim to seconds
+                level = log.get("level", "INFO")
+                category = log.get("category", "")
+                message = log.get("message", "")
+                source = log.get("source", "")
+
+                # Color coding based on level
+                if level == "ERROR":
+                    color = COLORS['red']
+                elif level == "WARNING":
+                    color = COLORS['yellow']
+                elif level == "DEBUG":
+                    color = COLORS['text_muted']
+                else:
+                    color = COLORS['text']
+
+                src_str = f" [{source}]" if source else ""
+                line = f'<span style="color:{color}">[{timestamp}] [{level}] [{category}]{src_str} {message}</span>'
+                new_lines.append(line)
+
+            # Update display
+            self._log_lines = new_lines
+            self.logText.setHtml("<br>".join(new_lines))
+            self.lblLogCount.setText(f"Записів: {len(logs)}")
+
+            # Update last update time
+            import time
+            from datetime import datetime
+            now = datetime.now().strftime("%H:%M:%S")
+            self.lblLastUpdate.setText(f"Оновлено: {now}")
+
+        except Exception as e:
+            self.logText.setPlainText(f"Помилка завантаження логів: {e}")
+
+    def render(self, status: dict):
+        """Update UI from status - called periodically."""
+        # Auto-refresh logs every 3 seconds
+        import time
+        current_time = time.time()
+        if self._auto_refresh and current_time - self._last_log_fetch > 3:
+            self._last_log_fetch = current_time
+            self._fetch_logs()
+
+
 # ================== Main Window ==================
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -1922,6 +2114,7 @@ class MainWindow(QMainWindow):
         # Create tabs - new structure
         self.tabStartWork = StartWorkTab(self.api)
         self.tabPlatform = PlatformTab(self.api)
+        self.tabLogs = LogsTab(self.api)
         self.tabService = ServiceTab(self.api)
 
         # Connect tab name change signal
@@ -1929,6 +2122,7 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(self.tabStartWork, "СТАРТ")
         self.tabs.addTab(self.tabPlatform, "ПЛАТФОРМА")
+        self.tabs.addTab(self.tabLogs, "ЛОГИ")
         self.tabs.addTab(self.tabService, "СЕРВІС")
 
         # Timer for status polling
@@ -1962,7 +2156,7 @@ class MainWindow(QMainWindow):
             return
 
         # Update tabs
-        for tab in (self.tabStartWork, self.tabPlatform, self.tabService):
+        for tab in (self.tabStartWork, self.tabPlatform, self.tabLogs, self.tabService):
             try:
                 tab.render(status)
             except Exception as e:
@@ -2332,6 +2526,13 @@ QLabel {{
     font-family: 'Consolas', 'Monaco', monospace;
     font-size: 13px;
     line-height: 1.4;
+}}
+
+/* Filter label */
+#filterLabel {{
+    font-size: 18px;
+    font-weight: 500;
+    color: {COLORS['text']};
 }}
 
 /* Scrollbar */

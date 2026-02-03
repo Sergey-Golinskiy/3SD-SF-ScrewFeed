@@ -1148,6 +1148,29 @@ def create_app(
         all_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
         return jsonify({'logs': all_logs[:limit]})
 
+    @app.route('/api/desktop/logs', methods=['GET'])
+    def desktop_logs():
+        """Get all logs for desktop app. No auth required."""
+        level = request.args.get('level')
+        category = request.args.get('category')
+        since_id = request.args.get('since_id', type=int)
+        search = request.args.get('search')
+        limit = request.args.get('limit', 100, type=int)
+
+        # Get logs with optional filters
+        logs = syslog.get_logs(level, category, since_id, search, min(limit, 500))
+        return jsonify({'logs': logs})
+
+    @app.route('/api/desktop/logs/categories', methods=['GET'])
+    def desktop_log_categories():
+        """Get available log categories. No auth required for desktop app."""
+        return jsonify({'categories': get_log_categories()})
+
+    @app.route('/api/desktop/logs/levels', methods=['GET'])
+    def desktop_log_levels():
+        """Get available log levels. No auth required for desktop app."""
+        return jsonify({'levels': get_log_levels()})
+
     # === Cycle Control ===
 
     @app.route('/api/cycle/status', methods=['GET'])
