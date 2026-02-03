@@ -182,7 +182,12 @@
                     <div class="card">
                         <h2>Позиція</h2>
                         <div class="xy-position">
-                            <span class="xy-coord" id="xyPosDisplay">X: 0.00  Y: 0.00</span>
+                            <span class="xy-coord xy-coord-physical" id="xyPosDisplay">X: 0.00  Y: 0.00</span>
+                            <span class="xy-coord-label">фізичні координати</span>
+                        </div>
+                        <div class="xy-position xy-position-work">
+                            <span class="xy-coord xy-coord-work" id="xyPosWorkDisplay">X: 0.00  Y: 0.00</span>
+                            <span class="xy-coord-label">робочі координати (зі зміщенням)</span>
                         </div>
                         <div class="xy-homed-status">
                             <span class="homed-indicator" id="xyHomedX">X: не захомлено</span>
@@ -313,7 +318,8 @@
                         <div class="card">
                             <h2>XY TABLE CONTROL</h2>
                             <div class="xy-control-compact">
-                                <div class="xy-pos-display" id="settingsXYPos">X: 0.00  Y: 0.00</div>
+                                <div class="xy-pos-display xy-pos-work-settings" id="settingsXYPos">X: 0.00  Y: 0.00</div>
+                                <div class="xy-pos-label-settings">робочі координати</div>
                                 <div class="jog-grid-compact">
                                     <div></div>
                                     <button class="btn btn-jog-compact" data-jog-settings="y-">Y-</button>

@@ -1482,16 +1482,32 @@ function updateXYTab(status) {
     // E-STOP sensor check provides immediate visual feedback
     const xHomed = xy.x_homed && !estopSensorActive;
     const yHomed = xy.y_homed && !estopSensorActive;
-    const xPos = xHomed ? (xy.x || 0).toFixed(2) : '?.??';
-    const yPos = yHomed ? (xy.y || 0).toFixed(2) : '?.??';
+    const physicalX = xy.x || 0;
+    const physicalY = xy.y || 0;
+    const xPos = xHomed ? physicalX.toFixed(2) : '?.??';
+    const yPos = yHomed ? physicalY.toFixed(2) : '?.??';
+
+    // Calculate work coordinates (physical - offset)
+    const workX = xHomed ? (physicalX - workOffsets.x).toFixed(2) : '?.??';
+    const workY = yHomed ? (physicalY - workOffsets.y).toFixed(2) : '?.??';
+
+    // Update physical coordinates display (large)
     $('xyPosDisplay').textContent = `X: ${xPos}  Y: ${yPos}`;
+
+    // Update work coordinates display (smaller)
+    const workPosDisplay = $('xyPosWorkDisplay');
+    if (workPosDisplay) {
+        workPosDisplay.textContent = `X: ${workX}  Y: ${workY}`;
+    }
 
     // Add warning class when not homed or E-STOP active
     const posDisplay = $('xyPosDisplay');
     if (!xHomed || !yHomed || estopSensorActive) {
         posDisplay.classList.add('position-invalid');
+        if (workPosDisplay) workPosDisplay.classList.add('position-invalid');
     } else {
         posDisplay.classList.remove('position-invalid');
+        if (workPosDisplay) workPosDisplay.classList.remove('position-invalid');
     }
 
     // Connection status
@@ -2363,20 +2379,26 @@ function initSettingsTab() {
     });
 }
 
-// Update XY position on settings tab
+// Update XY position on settings tab (shows work coordinates)
 function updateSettingsXYPos(status) {
     const xy = status.xy_table || {};
     const sensors = status.sensors || {};
     // Check E-STOP sensor directly for immediate response
     const estopSensorActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
-    // Show position as invalid when E-STOP active or not homed
-    const xPos = (xy.x_homed && !estopSensorActive) ? (xy.x || 0).toFixed(2) : '?.??';
-    const yPos = (xy.y_homed && !estopSensorActive) ? (xy.y || 0).toFixed(2) : '?.??';
+    const xHomed = xy.x_homed && !estopSensorActive;
+    const yHomed = xy.y_homed && !estopSensorActive;
+
+    // Calculate work coordinates (physical - offset)
+    const physicalX = xy.x || 0;
+    const physicalY = xy.y || 0;
+    const workX = xHomed ? (physicalX - workOffsets.x).toFixed(2) : '?.??';
+    const workY = yHomed ? (physicalY - workOffsets.y).toFixed(2) : '?.??';
+
     const posDisplay = $('settingsXYPos');
     if (posDisplay) {
-        posDisplay.textContent = `X: ${xPos}  Y: ${yPos}`;
+        posDisplay.textContent = `X: ${workX}  Y: ${workY}`;
         // Add warning class when E-STOP active or not homed
-        if (!xy.x_homed || !xy.y_homed || estopSensorActive) {
+        if (!xHomed || !yHomed) {
             posDisplay.classList.add('position-invalid');
         } else {
             posDisplay.classList.remove('position-invalid');

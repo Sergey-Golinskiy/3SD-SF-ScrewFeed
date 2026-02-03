@@ -615,6 +615,41 @@ body {
     font-family: 'Courier New', monospace;
 }
 
+.xy-coord-physical {
+    font-size: 32px;
+    display: block;
+}
+
+.xy-coord-work {
+    font-size: 20px;
+    color: var(--accent-green);
+    display: block;
+}
+
+.xy-coord-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: block;
+    margin-top: 2px;
+}
+
+.xy-position-work {
+    padding: 10px 20px;
+    margin-bottom: 8px;
+}
+
+.xy-pos-work-settings {
+    color: var(--accent-green);
+}
+
+.xy-pos-label-settings {
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-top: -8px;
+    margin-bottom: 8px;
+}
+
 .xy-status {
     text-align: center;
     color: var(--text-secondary);
