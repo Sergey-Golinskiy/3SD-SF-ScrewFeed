@@ -1734,7 +1734,7 @@ class ServiceTab(QWidget):
                     item.widget().deleteLater()
             self._sensor_widgets.clear()
 
-            cols = 4
+            cols = 3
             for i, name in enumerate(sensor_names):
                 col = i % cols
                 row = i // cols
