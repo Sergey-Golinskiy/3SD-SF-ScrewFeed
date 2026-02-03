@@ -944,6 +944,7 @@ class StartWorkTab(QWidget):
         self._init_worker = None
         self._cycle_worker = None
         self._current_mode = self.MODE_START
+        self._pedal_was_pressed = False  # Track pedal state for edge detection
 
         self._setup_ui()
 
@@ -1466,6 +1467,14 @@ class StartWorkTab(QWidget):
         if estop and self._cycle_state != "E-STOP":
             self.on_estop()
 
+        # Check pedal press (ped_start) - trigger start on rising edge
+        pedal_pressed = sensors.get("ped_start") == "ACTIVE"
+        if pedal_pressed and not self._pedal_was_pressed:
+            # Pedal just pressed - trigger start if in WORK mode and idle
+            if self._current_mode == self.MODE_WORK and self._cycle_state == "IDLE" and self._initialized:
+                self.on_start()
+        self._pedal_was_pressed = pedal_pressed
+
     def _check_server_ui_state(self):
         """Check if server UI state was updated by web client."""
         try:
@@ -1544,6 +1553,8 @@ class ServiceTab(QWidget):
         'do2_ok': 'Момент OK',
         'alarm_x': 'Аларм X',
         'alarm_y': 'Аларм Y',
+        'ped_start': 'Педаль',
+        'area_sensor': 'Завіса',
     }
 
     def __init__(self, api: ApiClient, parent=None):
