@@ -1531,10 +1531,8 @@ class StartWorkTab(QWidget):
             self.on_estop()
 
         # Check pedal press (ped_start) - trigger start on rising edge
-        # Skip if curtain is active (used for tab toggle mode)
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
-        curtain_active = sensors.get("area_sensor") == "ACTIVE"
-        if pedal_pressed and not self._pedal_was_pressed and not curtain_active:
+        if pedal_pressed and not self._pedal_was_pressed:
             # Pedal just pressed - trigger start if in WORK mode and ready
             can_start = self._cycle_state in ("IDLE", "READY", "COMPLETED", "PAUSED")
             if self._current_mode == self.MODE_WORK and can_start and self._initialized:
@@ -2353,14 +2351,14 @@ class MainWindow(QMainWindow):
             return
 
         # Check pedal hold for tab visibility toggle
-        # Condition: curtain (area_sensor) must be ACTIVE + pedal held for 5 seconds
+        # Condition: must be in START mode (not WORK) + pedal held for 5 seconds
         sensors = status.get("sensors", {})
-        curtain_active = sensors.get("area_sensor") == "ACTIVE"
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
+        in_start_mode = self.tabStartWork._current_mode == self.tabStartWork.MODE_START
 
-        if curtain_active and pedal_pressed:
+        if in_start_mode and pedal_pressed:
             if self._pedal_hold_start is None:
-                # Pedal just pressed while curtain active - start tracking
+                # Pedal just pressed in START mode - start tracking
                 self._pedal_hold_start = time.time()
             else:
                 # Pedal still held - check duration
@@ -2372,7 +2370,7 @@ class MainWindow(QMainWindow):
                     # Reset timer to avoid repeated toggling
                     self._pedal_hold_start = None
         else:
-            # Curtain not active or pedal released - reset timer
+            # Not in START mode or pedal released - reset timer
             self._pedal_hold_start = None
 
         # Update tabs
