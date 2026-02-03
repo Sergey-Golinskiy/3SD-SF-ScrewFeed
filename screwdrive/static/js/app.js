@@ -658,12 +658,39 @@ async function checkDriverAlarmsDuringCycle() {
 
 /**
  * Emergency stop XY table - cancels all commands on Slave Pi.
+ * Sends multiple attempts to ensure it's received.
  */
 async function emergencyStopXY() {
+    // Try multiple times to ensure command is received
+    for (let i = 0; i < 3; i++) {
+        try {
+            await api.post('/xy/estop', {});
+            break;
+        } catch (e) {
+            console.error('Failed to emergency stop XY, attempt ' + (i + 1) + ':', e);
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+    }
+
+    // Also try general emergency stop
     try {
-        await api.post('/xy/estop', {});
+        await api.post('/emergency_stop', {});
     } catch (e) {
-        console.error('Failed to emergency stop XY:', e);
+        // Ignore
+    }
+}
+
+/**
+ * Check for driver alarms and throw if detected.
+ * Used to add alarm checks between operations.
+ */
+async function checkAlarmAndThrow() {
+    const alarm = await checkDriverAlarmsDuringCycle();
+    if (alarm) {
+        // Full emergency shutdown
+        await emergencyStopXY();
+        await safetyShutdown();
+        throw new Error('DRIVER_ALARM:' + alarm);
     }
 }
 
@@ -973,15 +1000,21 @@ async function waitForMove(timeout = 30000) {
 }
 
 async function performScrewing() {
+    // Check for alarms before starting screwing
+    await checkAlarmAndThrow();
+
     // 1. Feed screw with retry logic (max 3 attempts)
     let screwDetected = false;
     const maxAttempts = 3;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        // Check for alarms before each attempt
+        await checkAlarmAndThrow();
+
         // Pulse R01 (200ms) to feed screw
         await api.post('/relays/r01_pit', { state: 'pulse', duration: 0.2 });
 
-        // Wait 1 second for screw to pass sensor
+        // Wait 1 second for screw to pass sensor (also checks alarms)
         screwDetected = await waitForSensorWithAreaCheck('ind_scrw', 'ACTIVE', 1000, 50);
 
         if (screwDetected) {
@@ -997,13 +1030,20 @@ async function performScrewing() {
         throw new Error(`Гвинт не виявлено після ${maxAttempts} спроб. Перевірте живильник.`);
     }
 
+    // Check for alarms before torque mode
+    await checkAlarmAndThrow();
+
     // 3. Turn ON R06 (torque mode)
     await api.post('/relays/r06_di1_pot', { state: 'on' });
+
+    // Check for alarms before lowering cylinder
+    await checkAlarmAndThrow();
 
     // 4. Lower cylinder (R04 ON)
     await api.post('/relays/r04_c2', { state: 'on' });
 
     // 5. Wait for DO2_OK (torque reached) with 2 second timeout
+    // waitForSensorWithAreaCheck already checks for alarms
     const torqueReached = await waitForSensorWithAreaCheck('do2_ok', 'ACTIVE', 2000, 50);
 
     // If torque not reached - safe shutdown and return to operator
@@ -1024,6 +1064,9 @@ async function performScrewing() {
         throw new Error('TORQUE_NOT_REACHED');
     }
 
+    // Check for alarms after torque reached
+    await checkAlarmAndThrow();
+
     // SUCCESS PATH:
     // 6. Turn OFF R06 (torque mode) first
     await api.post('/relays/r06_di1_pot', { state: 'off' });
@@ -1034,12 +1077,15 @@ async function performScrewing() {
     // 8. Free run pulse - R05 (200ms)
     await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.2 });
 
-    // 9. Wait for cylinder to go up (GER_C2_UP)
+    // 9. Wait for cylinder to go up (GER_C2_UP) - also checks alarms
     const cylinderUp = await waitForSensorWithAreaCheck('ger_c2_up', 'ACTIVE', 5000, 50);
 
     if (!cylinderUp) {
         throw new Error('Циліндр не піднявся за 5 секунд');
     }
+
+    // Final alarm check after screwing complete
+    await checkAlarmAndThrow();
 
     return true;
 }
@@ -1135,6 +1181,9 @@ async function runCycle() {
                 throw new Error('Цикл перервано');
             }
 
+            // Check for alarms at the start of each step
+            await checkAlarmAndThrow();
+
             const step = device.steps[i];
             const stepNum = i + 1;
             const stepType = (step.type || 'free').toLowerCase();  // Normalize to lowercase
@@ -1161,11 +1210,15 @@ async function runCycle() {
                 // Free movement - just move
                 updateCycleStatus(`Крок ${stepNum}: Переміщення (free) X:${stepX} Y:${stepY}`);
 
+                // Check alarm before sending move command
+                await checkAlarmAndThrow();
+
                 const moveResp = await api.post('/xy/move', { x: stepX, y: stepY, feed: stepFeed });
                 if (moveResp.status !== 'ok') {
                     throw new Error('Помилка переміщення');
                 }
 
+                // waitForMove also checks alarms
                 await waitForMove();
 
             } else if (stepType === 'work') {
@@ -1177,6 +1230,9 @@ async function runCycle() {
                     updateCycleStatus(`Контроль світлової завіси увімкнено`);
                     await new Promise(resolve => setTimeout(resolve, 300));
                 }
+
+                // Check alarm before move
+                await checkAlarmAndThrow();
 
                 // Check area sensor before moving
                 if (!await checkAreaSensor()) {

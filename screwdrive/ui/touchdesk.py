@@ -446,31 +446,55 @@ class CycleWorker(QThread):
         Returns alarm message if alarm is active, empty string if OK.
 
         Called during cycle execution to detect driver failures.
+        IMPORTANT: This must be called frequently during cycle to detect alarms quickly.
         """
         try:
             sensors = self.api.sensors()
 
-            # Check X axis alarm (GPIO 2)
+            # Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
             if sensors.get("alarm_x") == "ACTIVE":
                 return "АВАРІЯ: Аларм драйвера осі X!"
 
-            # Check Y axis alarm (GPIO 3)
+            # Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
             if sensors.get("alarm_y") == "ACTIVE":
                 return "АВАРІЯ: Аларм драйвера осі Y!"
 
-        except Exception:
+        except Exception as e:
+            print(f"WARNING: Failed to check driver alarms: {e}")
             pass  # If we can't check, continue operation
 
         return ""
+
+    def _check_alarm_and_raise(self):
+        """
+        Check for driver alarms and raise exception if detected.
+        Used to add alarm checks between operations.
+        """
+        alarm = self._check_driver_alarms()
+        if alarm:
+            self._full_emergency_shutdown(alarm)
+            raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}")
 
     def _emergency_stop_xy(self):
         """
         Emergency stop for XY table.
         Cancels all commands on Raspberry Pi Slave.
+        Sends multiple stop commands to ensure it's received.
         """
         try:
-            # Send E-STOP to XY table (Slave Pi)
-            self.api._post("/api/xy/estop", {})
+            # Send E-STOP to XY table (Slave Pi) - try multiple times
+            for _ in range(3):
+                try:
+                    self.api._post("/api/xy/estop", {})
+                    break
+                except Exception:
+                    time.sleep(0.1)
+        except Exception as e:
+            print(f"WARNING: Failed to send E-STOP to Slave Pi: {e}")
+
+        # Also try to stop any movement
+        try:
+            self.api._post("/api/emergency_stop", {})
         except Exception:
             pass
 
@@ -561,15 +585,25 @@ class CycleWorker(QThread):
         return False
 
     def _perform_screwing(self) -> bool:
-        """Perform single screw operation."""
+        """
+        Perform single screw operation.
+        Checks for driver alarms between each step to detect failures quickly.
+        """
+        # Check for alarms before starting screwing
+        self._check_alarm_and_raise()
+
         # 1. Feed screw with retry logic (max 3 attempts)
         screw_detected = False
         for attempt in range(3):
             if self._abort:
                 return False
+
+            # Check for alarms before each attempt
+            self._check_alarm_and_raise()
+
             # Pulse R01 (200ms) to feed screw
             self.api.relay_set("r01_pit", "pulse", 0.2)
-            # Wait for screw sensor
+            # Wait for screw sensor (also checks alarms)
             screw_detected = self._wait_for_sensor("ind_scrw", "ACTIVE", 1.0)
             if screw_detected:
                 break
@@ -577,13 +611,20 @@ class CycleWorker(QThread):
         if not screw_detected:
             raise Exception("Гвинт не виявлено після 3 спроб")
 
+        # Check for alarms before torque mode
+        self._check_alarm_and_raise()
+
         # 2. Turn ON R06 (torque mode)
         self.api.relay_set("r06_di1_pot", "on")
+
+        # Check for alarms before lowering cylinder
+        self._check_alarm_and_raise()
 
         # 3. Lower cylinder (R04 ON)
         self.api.relay_set("r04_c2", "on")
 
         # 4. Wait for DO2_OK (torque reached) with 2 second timeout
+        # _wait_for_sensor already checks for alarms
         torque_reached = self._wait_for_sensor("do2_ok", "ACTIVE", 2.0)
 
         if not torque_reached:
@@ -593,6 +634,9 @@ class CycleWorker(QThread):
             self._wait_for_sensor("ger_c2_up", "ACTIVE", 5.0)
             self.api.relay_set("r05_di4_free", "pulse", 0.2)
             raise Exception("TORQUE_NOT_REACHED")
+
+        # Check for alarms after torque reached
+        self._check_alarm_and_raise()
 
         # SUCCESS PATH:
         # 5. Turn OFF R06 (torque mode)
@@ -604,9 +648,12 @@ class CycleWorker(QThread):
         # 7. Free run pulse - R05 (200ms)
         self.api.relay_set("r05_di4_free", "pulse", 0.2)
 
-        # 8. Wait for cylinder to go up
+        # 8. Wait for cylinder to go up (also checks alarms)
         if not self._wait_for_sensor("ger_c2_up", "ACTIVE", 5.0):
             raise Exception("Циліндр не піднявся за 5 секунд")
+
+        # Final alarm check after screwing complete
+        self._check_alarm_and_raise()
 
         return True
 
@@ -651,6 +698,9 @@ class CycleWorker(QThread):
                 if self._abort:
                     raise Exception("Цикл перервано")
 
+                # Check for alarms at the start of each step
+                self._check_alarm_and_raise()
+
                 step_type = (step.get("type") or "free").lower()
                 step_x = float(step.get("x", 0))
                 step_y = float(step.get("y", 0))
@@ -661,10 +711,14 @@ class CycleWorker(QThread):
                     self.progress.emit(f"Переміщення X:{step_x:.1f} Y:{step_y:.1f}", holes_completed, total_holes,
                                       int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
 
+                    # Check alarm before sending move command
+                    self._check_alarm_and_raise()
+
                     resp = self.api.xy_move(step_x, step_y, step_feed)
                     if resp.get("status") != "ok":
                         raise Exception("Помилка переміщення")
 
+                    # _wait_for_move also checks alarms
                     self._wait_for_move()
 
                 elif step_type == "work":
@@ -674,14 +728,18 @@ class CycleWorker(QThread):
                                       int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
                     self._sync_progress(msg, holes_completed, total_holes)
 
+                    # Check alarm before move
+                    self._check_alarm_and_raise()
+
                     # Move to position
                     resp = self.api.xy_move(step_x, step_y, step_feed)
                     if resp.get("status") != "ok":
                         raise Exception("Помилка переміщення")
 
+                    # _wait_for_move also checks alarms
                     self._wait_for_move()
 
-                    # Perform screwing
+                    # _perform_screwing has alarm checks inside
                     self._perform_screwing()
 
                     holes_completed += 1
