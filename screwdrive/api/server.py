@@ -17,8 +17,9 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from dataclasses import asdict
 
-from flask import Flask, jsonify, request, Response, render_template, send_from_directory
+from flask import Flask, jsonify, request, Response, render_template, send_from_directory, redirect, url_for, session
 from flask_cors import CORS
+from datetime import timedelta
 
 from core import (
     GPIOController, RelayController, SensorController,
@@ -26,6 +27,14 @@ from core import (
 )
 from core.xy_table import XYTableMode
 from core.state_machine import DeviceProgram, ProgramStep
+
+# Import authentication module
+from api.auth import (
+    get_secret_key, authenticate_user, login_user, logout_user,
+    is_logged_in, get_current_user, login_required, admin_required,
+    get_user_tabs, get_all_users, create_user, update_user, delete_user,
+    get_available_tabs, load_auth_config
+)
 
 
 class EstopMonitor:
@@ -175,7 +184,13 @@ def create_app(
                 template_folder=str(template_dir),
                 static_folder=str(static_dir),
                 static_url_path='/static')
-    CORS(app)
+    CORS(app, supports_credentials=True)
+
+    # Configure session
+    app.secret_key = get_secret_key()
+    auth_config = load_auth_config()
+    session_config = auth_config.get("session", {})
+    app.permanent_session_lifetime = timedelta(minutes=session_config.get("timeout_minutes", 480))
 
     # Store instances in app context
     app.gpio = gpio
@@ -197,15 +212,137 @@ def create_app(
 
     # === Web UI Routes ===
 
+    @app.route('/login')
+    def login_page():
+        """Serve login page."""
+        if is_logged_in():
+            return redirect(url_for('index'))
+        return render_template('login.html')
+
     @app.route('/')
+    @login_required
     def index():
         """Serve main Web UI page."""
+        user = get_current_user()
         return render_template('index.html')
 
     @app.route('/static/<path:filename>')
     def serve_static(filename):
         """Serve static files."""
         return send_from_directory(app.static_folder, filename)
+
+    # === Authentication API ===
+
+    @app.route('/api/auth/login', methods=['POST'])
+    def api_login():
+        """Login API endpoint."""
+        data = request.get_json() or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Введіть логін та пароль'}), 400
+
+        user = authenticate_user(username, password)
+        if user:
+            login_user(user)
+            return jsonify({
+                'success': True,
+                'user': {
+                    'username': user['username'],
+                    'role': user['role'],
+                    'allowed_tabs': user['allowed_tabs']
+                }
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Невірний логін або пароль'}), 401
+
+    @app.route('/api/auth/logout', methods=['POST'])
+    def api_logout():
+        """Logout API endpoint."""
+        logout_user()
+        return jsonify({'success': True})
+
+    @app.route('/api/auth/status', methods=['GET'])
+    def api_auth_status():
+        """Get current authentication status."""
+        user = get_current_user()
+        if user:
+            return jsonify({
+                'authenticated': True,
+                'user': {
+                    'username': user['username'],
+                    'role': user['role'],
+                    'allowed_tabs': user['allowed_tabs']
+                }
+            })
+        else:
+            return jsonify({'authenticated': False})
+
+    # === Admin User Management API ===
+
+    @app.route('/api/admin/users', methods=['GET'])
+    @admin_required
+    def api_get_users():
+        """Get all users (admin only)."""
+        users = get_all_users()
+        available = get_available_tabs()
+        return jsonify({'users': users, 'available_tabs': available})
+
+    @app.route('/api/admin/users', methods=['POST'])
+    @admin_required
+    def api_create_user():
+        """Create new user (admin only)."""
+        data = request.get_json() or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        role = data.get('role', 'user')
+        allowed_tabs = data.get('allowed_tabs', ['status'])
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Логін та пароль обов\'язкові'}), 400
+
+        if len(password) < 4:
+            return jsonify({'success': False, 'error': 'Пароль має бути не менше 4 символів'}), 400
+
+        if create_user(username, password, role, allowed_tabs):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Користувач вже існує'}), 400
+
+    @app.route('/api/admin/users/<username>', methods=['PUT'])
+    @admin_required
+    def api_update_user(username):
+        """Update user (admin only)."""
+        data = request.get_json() or {}
+        password = data.get('password')
+        role = data.get('role')
+        allowed_tabs = data.get('allowed_tabs')
+
+        # Don't allow empty password if provided
+        if password is not None and len(password) > 0 and len(password) < 4:
+            return jsonify({'success': False, 'error': 'Пароль має бути не менше 4 символів'}), 400
+
+        # Only update password if non-empty string provided
+        pwd = password if password and len(password) >= 4 else None
+
+        if update_user(username, pwd, role, allowed_tabs):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Користувача не знайдено'}), 404
+
+    @app.route('/api/admin/users/<username>', methods=['DELETE'])
+    @admin_required
+    def api_delete_user(username):
+        """Delete user (admin only)."""
+        current = get_current_user()
+        if current and current['username'] == username:
+            return jsonify({'success': False, 'error': 'Не можна видалити себе'}), 400
+
+        if delete_user(username):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'success': False, 'error': 'Не вдалося видалити користувача'}), 400
 
     # === Health and Status ===
 

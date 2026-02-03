@@ -16,7 +16,11 @@ const state = {
     lastEstopState: null,  // Track emergency stop button state
     estopActive: false,    // Current E-STOP sensor state (for immediate UI update)
     brakeX: false,  // true = brake released (relay ON), false = brake engaged (relay OFF)
-    brakeY: false   // true = brake released (relay ON), false = brake engaged (relay OFF)
+    brakeY: false,  // true = brake released (relay ON), false = brake engaged (relay OFF)
+    // Auth state
+    user: null,
+    allowedTabs: [],
+    editingUser: null  // Username being edited (null = creating new user)
 };
 
 // Cycle state flags (need to be at top for updateStatusTab to access)
@@ -2423,12 +2427,265 @@ function updateSettingsXYPos(status) {
     }
 }
 
+// ========== AUTHENTICATION ==========
+
+async function checkAuthStatus() {
+    try {
+        const response = await fetch('/api/auth/status');
+        const data = await response.json();
+
+        if (data.logged_in && data.user) {
+            state.user = data.user;
+            state.allowedTabs = data.user.allowed_tabs || [];
+
+            // Update UI
+            $('userName').textContent = data.user.username;
+            $('userInfo').style.display = 'flex';
+
+            // Show/hide tabs based on permissions
+            updateTabVisibility();
+
+            return true;
+        }
+    } catch (e) {
+        console.error('Auth status check failed:', e);
+    }
+    return false;
+}
+
+function updateTabVisibility() {
+    const user = state.user;
+    if (!user) return;
+
+    const isAdmin = user.role === 'admin';
+    const allowedTabs = user.allowed_tabs || [];
+
+    // All tab buttons except status (always visible)
+    const tabConfigs = [
+        { tab: 'control', btn: null },
+        { tab: 'xy', btn: null },
+        { tab: 'settings', btn: null },
+        { tab: 'admin', btn: $('tabAdmin') }
+    ];
+
+    tabConfigs.forEach(({ tab, btn }) => {
+        const tabBtn = btn || document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+        if (tabBtn) {
+            const hasAccess = isAdmin || allowedTabs.includes(tab);
+            tabBtn.style.display = hasAccess ? '' : 'none';
+        }
+    });
+}
+
+async function handleLogout() {
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+    } catch (e) {
+        console.error('Logout failed:', e);
+        window.location.href = '/login';
+    }
+}
+
+// ========== ADMIN PANEL ==========
+
+async function loadUsers() {
+    try {
+        const response = await api.get('/admin/users');
+        renderUsersList(response.users || {});
+    } catch (e) {
+        console.error('Failed to load users:', e);
+    }
+}
+
+function renderUsersList(users) {
+    const container = $('usersList');
+    if (!container) return;
+
+    if (Object.keys(users).length === 0) {
+        container.innerHTML = '<p class="empty-message">Немає користувачів</p>';
+        return;
+    }
+
+    const tabLabels = {
+        'status': 'Статус',
+        'control': 'Керування',
+        'xy': 'XY Стіл',
+        'settings': 'Налаштування',
+        'admin': 'Адмін'
+    };
+
+    let html = '<div class="users-table">';
+    html += '<div class="users-header">';
+    html += '<span>Логін</span>';
+    html += '<span>Роль</span>';
+    html += '<span>Вкладки</span>';
+    html += '<span>Дії</span>';
+    html += '</div>';
+
+    for (const [username, userData] of Object.entries(users)) {
+        const roleLabel = userData.role === 'admin' ? 'Адмін' : 'Користувач';
+        const tabs = (userData.allowed_tabs || []).map(t => tabLabels[t] || t).join(', ');
+        const isCurrentUser = state.user && state.user.username === username;
+
+        html += '<div class="users-row">';
+        html += `<span class="user-username">${username}${isCurrentUser ? ' (ви)' : ''}</span>`;
+        html += `<span class="user-role ${userData.role}">${roleLabel}</span>`;
+        html += `<span class="user-tabs">${tabs || '-'}</span>`;
+        html += '<span class="user-actions">';
+        html += `<button class="btn btn-small btn-edit" onclick="editUser('${username}')">Редагувати</button>`;
+        if (!isCurrentUser) {
+            html += `<button class="btn btn-small btn-danger" onclick="deleteUser('${username}')">Видалити</button>`;
+        }
+        html += '</span>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function editUser(username) {
+    state.editingUser = username;
+
+    // Load user data
+    api.get('/admin/users').then(response => {
+        const userData = response.users[username];
+        if (!userData) return;
+
+        $('userFormTitle').textContent = 'Редагувати користувача';
+        $('editUserUsername').value = username;
+        $('editUserUsername').disabled = true;
+        $('editUserPassword').value = '';
+        $('passwordHint').textContent = '(залишити порожнім)';
+        $('editUserRole').value = userData.role || 'user';
+        $('btnCancelUser').style.display = '';
+
+        // Set tab checkboxes
+        const checkboxes = $$('#tabsCheckboxes input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            if (cb.value === 'status') return; // Always checked
+            cb.checked = (userData.allowed_tabs || []).includes(cb.value);
+        });
+    });
+}
+
+function resetUserForm() {
+    state.editingUser = null;
+    $('userFormTitle').textContent = 'Додати користувача';
+    $('editUserUsername').value = '';
+    $('editUserUsername').disabled = false;
+    $('editUserPassword').value = '';
+    $('passwordHint').textContent = "(обов'язково)";
+    $('editUserRole').value = 'user';
+    $('btnCancelUser').style.display = 'none';
+
+    // Reset tab checkboxes
+    const checkboxes = $$('#tabsCheckboxes input[type="checkbox"]');
+    checkboxes.forEach(cb => {
+        if (cb.value === 'status') return;
+        cb.checked = false;
+    });
+}
+
+async function saveUser() {
+    const username = $('editUserUsername').value.trim();
+    const password = $('editUserPassword').value;
+    const role = $('editUserRole').value;
+
+    // Get selected tabs
+    const allowedTabs = ['status']; // Always include status
+    const checkboxes = $$('#tabsCheckboxes input[type="checkbox"]:checked');
+    checkboxes.forEach(cb => {
+        if (cb.value !== 'status' && !allowedTabs.includes(cb.value)) {
+            allowedTabs.push(cb.value);
+        }
+    });
+
+    if (!username) {
+        alert('Введіть логін');
+        return;
+    }
+
+    if (!state.editingUser && !password) {
+        alert('Введіть пароль');
+        return;
+    }
+
+    try {
+        if (state.editingUser) {
+            // Update existing user
+            const data = { role, allowed_tabs: allowedTabs };
+            if (password) data.password = password;
+
+            await api.put(`/admin/users/${username}`, data);
+        } else {
+            // Create new user
+            await api.post('/admin/users', {
+                username,
+                password,
+                role,
+                allowed_tabs: allowedTabs
+            });
+        }
+
+        resetUserForm();
+        loadUsers();
+
+        // If we edited current user, refresh auth status
+        if (state.editingUser === state.user?.username) {
+            checkAuthStatus();
+        }
+    } catch (e) {
+        alert('Помилка: ' + e.message);
+    }
+}
+
+async function deleteUser(username) {
+    if (!confirm(`Видалити користувача "${username}"?`)) return;
+
+    try {
+        await api.delete(`/admin/users/${username}`);
+        loadUsers();
+    } catch (e) {
+        alert('Помилка: ' + e.message);
+    }
+}
+
+function initAdminTab() {
+    // Save user button
+    $('btnSaveUser').addEventListener('click', saveUser);
+
+    // Cancel edit button
+    $('btnCancelUser').addEventListener('click', resetUserForm);
+
+    // Load users when switching to admin tab
+    $$('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.dataset.tab === 'admin') {
+                loadUsers();
+            }
+        });
+    });
+}
+
 // Initialize Application
-function init() {
+async function init() {
+    // Check auth status first
+    const isLoggedIn = await checkAuthStatus();
+    if (!isLoggedIn) {
+        window.location.href = '/login';
+        return;
+    }
+
     initTabs();
     initControlTab();
     initXYTab();
     initSettingsTab();
+    initAdminTab();
+
+    // Setup logout button
+    $('btnLogout').addEventListener('click', handleLogout);
 
     // Initialize Cycle Status panel with default values
     updateCycleStatusPanel('IDLE', '-', 0, 0);
@@ -2453,3 +2710,5 @@ window.relayPulse = relayPulse;
 window.goToCoord = goToCoord;
 window.removeCoordRow = removeCoordRow;
 window.updateTypeStyle = updateTypeStyle;
+window.editUser = editUser;
+window.deleteUser = deleteUser;

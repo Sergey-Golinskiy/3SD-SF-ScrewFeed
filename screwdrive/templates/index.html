@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Панель керування відкруткою</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.0.16">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.17">
 </head>
 <body>
     <div class="app">
@@ -15,10 +15,14 @@
         <header class="header">
             <h1>Панель керування відкруткою</h1>
             <div class="header-right">
-                <span class="version">v1.0.16</span>
+                <span class="version">v1.0.17</span>
                 <div class="status-indicator" id="connectionStatus">
                     <span class="dot"></span>
                     <span class="text">Підключення...</span>
+                </div>
+                <div class="user-info" id="userInfo">
+                    <span class="user-name" id="userName">-</span>
+                    <button class="btn btn-logout" id="btnLogout">Вийти</button>
                 </div>
             </div>
         </header>
@@ -29,6 +33,7 @@
             <button class="tab-btn" data-tab="control">Керування</button>
             <button class="tab-btn" data-tab="xy">XY Стіл</button>
             <button class="tab-btn" data-tab="settings">Налаштування</button>
+            <button class="tab-btn" data-tab="admin" id="tabAdmin" style="display: none;">Адмін</button>
         </nav>
 
         <!-- Tab Content -->
@@ -498,9 +503,81 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Admin Tab -->
+            <section id="admin" class="tab-panel">
+                <div class="grid-2">
+                    <!-- Users List -->
+                    <div class="card">
+                        <h2>Користувачі</h2>
+                        <div class="users-list" id="usersList">
+                            <!-- Users will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Add/Edit User Form -->
+                    <div class="card">
+                        <h2 id="userFormTitle">Додати користувача</h2>
+                        <div class="form-new">
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Логін</label>
+                                    <input type="text" id="editUserUsername" class="input-text" placeholder="Введіть логін">
+                                </div>
+                                <div class="form-group-new">
+                                    <label class="form-label">Пароль <span class="label-hint" id="passwordHint">(обов'язково)</span></label>
+                                    <input type="password" id="editUserPassword" class="input-text" placeholder="Введіть пароль">
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Роль</label>
+                                    <select id="editUserRole" class="input-select">
+                                        <option value="user">Користувач</option>
+                                        <option value="admin">Адміністратор</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Доступні вкладки</label>
+                                    <div class="tabs-checkboxes" id="tabsCheckboxes">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="status" checked disabled>
+                                            <span>Статус</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="control">
+                                            <span>Керування</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="xy">
+                                            <span>XY Стіл</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="settings">
+                                            <span>Налаштування</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="admin">
+                                            <span>Адмін</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new form-group-buttons">
+                                    <button class="btn btn-save-large" id="btnSaveUser">Зберегти</button>
+                                    <button class="btn btn-cancel-large" id="btnCancelUser" style="display: none;">Скасувати</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
-    <script src="/static/js/app.js?v=1.0.16"></script>
+    <script src="/static/js/app.js?v=1.0.17"></script>
 </body>
 </html>
