@@ -12,5 +12,8 @@ pyserial>=3.5
 # Configuration
 pyyaml>=6.0
 
+# Authentication
+bcrypt>=4.0.0
+
 # Optional: Desktop UI (TouchDesk)
 # PyQt5>=5.15.0
