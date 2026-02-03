@@ -1557,65 +1557,73 @@ class ServiceTab(QWidget):
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(12)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(16)
 
-        # Top row: Network info (compact, inline)
+        # Top row: Network info card
+        self.netCard = make_card("Мережа")
+        net_lay = self.netCard.layout()
+
         net_row = QHBoxLayout()
-        net_row.setSpacing(16)
+        net_row.setSpacing(32)
 
-        ip_label = QLabel("IP:")
-        ip_label.setObjectName("serviceLabel")
-        net_row.addWidget(ip_label)
+        # IP section
+        ip_box = QHBoxLayout()
+        ip_box.setSpacing(12)
+        ip_label = QLabel("IP адреса:")
+        ip_label.setObjectName("serviceLabelLarge")
+        ip_box.addWidget(ip_label)
 
         self.lblIp = QLabel(get_local_ip())
-        self.lblIp.setObjectName("serviceValueHighlight")
-        net_row.addWidget(self.lblIp)
+        self.lblIp.setObjectName("serviceIpValue")
+        ip_box.addWidget(self.lblIp)
 
-        # Refresh IP button
         btnRefreshIp = QPushButton("⟳")
-        btnRefreshIp.setObjectName("btn_small")
-        btnRefreshIp.setFixedSize(32, 32)
+        btnRefreshIp.setObjectName("btn_refresh")
+        btnRefreshIp.setFixedSize(44, 44)
         btnRefreshIp.clicked.connect(self._update_ip)
-        net_row.addWidget(btnRefreshIp)
+        ip_box.addWidget(btnRefreshIp)
 
-        net_row.addSpacing(30)
-
-        api_label = QLabel("API:")
-        api_label.setObjectName("serviceLabel")
-        net_row.addWidget(api_label)
-
-        self.lblApiStatus = QLabel("Онлайн")
-        self.lblApiStatus.setObjectName("serviceValueGreen")
-        net_row.addWidget(self.lblApiStatus)
-
+        net_row.addLayout(ip_box)
         net_row.addStretch(1)
 
-        root.addLayout(net_row)
+        # API status section
+        api_box = QHBoxLayout()
+        api_box.setSpacing(12)
+        api_label = QLabel("API:")
+        api_label.setObjectName("serviceLabelLarge")
+        api_box.addWidget(api_label)
+
+        self.lblApiStatus = QLabel("● Онлайн")
+        self.lblApiStatus.setObjectName("serviceStatusOnline")
+        api_box.addWidget(self.lblApiStatus)
+
+        net_row.addLayout(api_box)
+
+        net_lay.addLayout(net_row)
+        root.addWidget(self.netCard)
 
         # Main content row
         content_row = QHBoxLayout()
-        content_row.setSpacing(12)
+        content_row.setSpacing(16)
 
-        # Left - Sensors card (compact grid, no scroll)
+        # Left - Sensors card
         self.sensorsCard = make_card("Сенсори")
         sensors_lay = self.sensorsCard.layout()
-        sensors_lay.setSpacing(8)
 
         self.sensorsGrid = QGridLayout()
-        self.sensorsGrid.setSpacing(8)
-        sensors_lay.addLayout(self.sensorsGrid)
+        self.sensorsGrid.setSpacing(12)
+        sensors_lay.addLayout(self.sensorsGrid, 1)
 
         content_row.addWidget(self.sensorsCard, 2)
 
-        # Right - Relays card (compact grid, no scroll)
-        self.relaysCard = make_card("Реле")
+        # Right - Relays card
+        self.relaysCard = make_card("Реле керування")
         relays_lay = self.relaysCard.layout()
-        relays_lay.setSpacing(8)
 
         self.relaysGrid = QGridLayout()
-        self.relaysGrid.setSpacing(6)
-        relays_lay.addLayout(self.relaysGrid)
+        self.relaysGrid.setSpacing(12)
+        relays_lay.addLayout(self.relaysGrid, 1)
 
         content_row.addWidget(self.relaysCard, 3)
 
@@ -1630,22 +1638,16 @@ class ServiceTab(QWidget):
         return self.SENSOR_NAMES.get(key, key)
 
     def _create_sensor_widget(self, col: int, row: int, name: str, value):
-        """Create compact sensor widget."""
+        """Create sensor widget with status indicator."""
         # Container widget
         container = QFrame()
         container.setObjectName("sensorBox")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         box_lay = QVBoxLayout(container)
-        box_lay.setContentsMargins(8, 6, 8, 6)
-        box_lay.setSpacing(4)
+        box_lay.setContentsMargins(12, 16, 12, 16)
+        box_lay.setSpacing(8)
 
-        # Name label
-        display_name = self._get_sensor_name(name)
-        lblName = QLabel(display_name)
-        lblName.setObjectName("sensorNameCompact")
-        lblName.setAlignment(Qt.AlignCenter)
-        box_lay.addWidget(lblName)
-
-        # State indicator
+        # State indicator (big dot)
         is_active = value == "ACTIVE" or value == True
         lblState = QLabel("●")
         lblState.setObjectName("sensorDot")
@@ -1655,58 +1657,65 @@ class ServiceTab(QWidget):
         lblState.style().polish(lblState)
         box_lay.addWidget(lblState)
 
+        # Name label
+        display_name = self._get_sensor_name(name)
+        lblName = QLabel(display_name)
+        lblName.setObjectName("sensorNameCompact")
+        lblName.setAlignment(Qt.AlignCenter)
+        lblName.setWordWrap(True)
+        box_lay.addWidget(lblName)
+
         self.sensorsGrid.addWidget(container, row, col)
         self._sensor_widgets[name] = lblState
 
     def _create_relay_widget(self, col: int, row: int, name: str, state: str):
-        """Create compact relay widget with buttons."""
+        """Create relay widget with buttons."""
         # Container widget
         container = QFrame()
         container.setObjectName("relayBox")
+        container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         box_lay = QVBoxLayout(container)
-        box_lay.setContentsMargins(6, 4, 6, 4)
-        box_lay.setSpacing(4)
+        box_lay.setContentsMargins(10, 10, 10, 10)
+        box_lay.setSpacing(8)
 
-        # Name + state row
-        top_row = QHBoxLayout()
-        top_row.setSpacing(4)
-
+        # Name label (centered at top)
         display_name = self._get_relay_name(name)
         lblName = QLabel(display_name)
         lblName.setObjectName("relayNameCompact")
-        top_row.addWidget(lblName, 1)
+        lblName.setAlignment(Qt.AlignCenter)
+        box_lay.addWidget(lblName)
 
+        # State indicator
         is_on = state == "ON"
         lblState = QLabel("ON" if is_on else "OFF")
         lblState.setObjectName("relayStateCompact")
         lblState.setProperty("on", is_on)
         lblState.setAlignment(Qt.AlignCenter)
-        lblState.setFixedWidth(36)
+        lblState.setMinimumHeight(28)
         lblState.style().unpolish(lblState)
         lblState.style().polish(lblState)
-        top_row.addWidget(lblState)
-
-        box_lay.addLayout(top_row)
+        box_lay.addWidget(lblState)
 
         # Buttons row
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(3)
+        btn_row.setSpacing(4)
 
         btnOn = QPushButton("ON")
         btnOn.setObjectName("btn_relay_on_sm")
-        btnOn.setFixedHeight(26)
+        btnOn.setMinimumHeight(32)
         btnOn.clicked.connect(lambda _, n=name: self._relay_cmd(n, "on"))
         btn_row.addWidget(btnOn)
 
         btnOff = QPushButton("OFF")
         btnOff.setObjectName("btn_relay_off_sm")
-        btnOff.setFixedHeight(26)
+        btnOff.setMinimumHeight(32)
         btnOff.clicked.connect(lambda _, n=name: self._relay_cmd(n, "off"))
         btn_row.addWidget(btnOff)
 
         btnPulse = QPushButton("P")
         btnPulse.setObjectName("btn_relay_pulse_sm")
-        btnPulse.setFixedSize(26, 26)
+        btnPulse.setMinimumSize(32, 32)
+        btnPulse.setMaximumWidth(40)
         btnPulse.clicked.connect(lambda _, n=name: self._relay_cmd(n, "pulse", 0.2))
         btn_row.addWidget(btnPulse)
 
@@ -1739,7 +1748,7 @@ class ServiceTab(QWidget):
             self._update_ip()
 
         # Update API status
-        self.lblApiStatus.setText("Онлайн")
+        self.lblApiStatus.setText("● Онлайн")
 
         # Update sensors - grid layout (4 columns)
         sensor_names = list(sensors.keys())
@@ -2701,47 +2710,47 @@ QLabel {{
 }}
 
 /* Service tab styles */
-#serviceLabel {{
-    font-size: 16px;
+#serviceLabelLarge {{
+    font-size: 18px;
     font-weight: 500;
     color: {COLORS['text_secondary']};
 }}
-#serviceValueHighlight {{
-    font-size: 18px;
+#serviceIpValue {{
+    font-size: 22px;
     font-weight: 600;
     color: {COLORS['blue']};
 }}
-#serviceValueGreen {{
-    font-size: 16px;
+#serviceStatusOnline {{
+    font-size: 18px;
     font-weight: 600;
     color: {COLORS['green']};
 }}
 
-/* Small button */
-#btn_small {{
-    font-size: 16px;
+/* Refresh button */
+#btn_refresh {{
+    font-size: 20px;
     font-weight: 500;
     background: {COLORS['bg_card']};
     color: {COLORS['text']};
     border: 1px solid {COLORS['border']};
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 0;
 }}
-#btn_small:hover {{ background: {COLORS['bg_input']}; }}
+#btn_refresh:hover {{ background: {COLORS['blue']}; color: white; }}
 
-/* Compact sensor box */
+/* Sensor box */
 #sensorBox {{
     background: {COLORS['bg_card']};
     border: 1px solid {COLORS['border']};
-    border-radius: 8px;
+    border-radius: 12px;
 }}
 #sensorNameCompact {{
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 500;
     color: {COLORS['text']};
 }}
 #sensorDot {{
-    font-size: 28px;
+    font-size: 42px;
     font-weight: bold;
 }}
 #sensorDot[active="true"] {{
@@ -2751,63 +2760,65 @@ QLabel {{
     color: {COLORS['red']};
 }}
 
-/* Compact relay box */
+/* Relay box */
 #relayBox {{
     background: {COLORS['bg_card']};
     border: 1px solid {COLORS['border']};
-    border-radius: 8px;
+    border-radius: 12px;
 }}
 #relayNameCompact {{
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 14px;
+    font-weight: 600;
     color: {COLORS['text']};
 }}
 #relayStateCompact {{
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
+    padding: 6px 12px;
+    border-radius: 6px;
 }}
 #relayStateCompact[on="true"] {{
     background: {COLORS['green_bg']};
     color: {COLORS['green']};
+    border: 1px solid {COLORS['green']};
 }}
 #relayStateCompact[on="false"] {{
     background: {COLORS['bg_input']};
     color: {COLORS['text_muted']};
+    border: 1px solid {COLORS['border']};
 }}
 
-/* Compact relay buttons */
+/* Relay buttons */
 #btn_relay_on_sm {{
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     background: {COLORS['green']};
     color: white;
     border: none;
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 6px 12px;
 }}
 #btn_relay_on_sm:hover {{ background: #5ab887; }}
 
 #btn_relay_off_sm {{
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     background: {COLORS['red']};
     color: white;
     border: none;
-    border-radius: 4px;
-    padding: 4px 8px;
+    border-radius: 6px;
+    padding: 6px 12px;
 }}
 #btn_relay_off_sm:hover {{ background: #d64545; }}
 
 #btn_relay_pulse_sm {{
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     background: {COLORS['yellow']};
     color: {COLORS['bg_primary']};
     border: none;
-    border-radius: 4px;
-    padding: 4px;
+    border-radius: 6px;
+    padding: 6px;
 }}
 #btn_relay_pulse_sm:hover {{ background: #d9b543; }}
 
