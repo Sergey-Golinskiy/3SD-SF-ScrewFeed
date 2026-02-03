@@ -1787,8 +1787,8 @@ class PlatformTab(QWidget):
     def _fetch_logs(self):
         """Fetch logs from API for XY and COMM categories."""
         try:
-            # Fetch logs filtered by XY and COMM categories
-            response = self.api._get("logs?categories=XY,COMM,GCODE&limit=50")
+            # Fetch XY-specific logs (no auth required)
+            response = self.api._get("xy/logs?limit=50")
             logs = response.get("logs", [])
 
             # Format log entries

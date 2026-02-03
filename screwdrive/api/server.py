@@ -369,15 +369,30 @@ def create_app(
     @app.route('/api/logs', methods=['GET'])
     @login_required
     def api_get_logs():
-        """Get logs with optional filters."""
+        """Get logs with optional filters. Supports multiple categories via comma-separated list."""
         level = request.args.get('level')
         category = request.args.get('category')
+        categories = request.args.get('categories')  # comma-separated list
         since_id = request.args.get('since_id', type=int)
         search = request.args.get('search')
         limit = request.args.get('limit', 500, type=int)
 
-        logs = syslog.get_logs(level, category, since_id, search, min(limit, 1000))
-        return jsonify({'logs': logs})
+        # Support multiple categories
+        if categories:
+            cat_list = [c.strip() for c in categories.split(',')]
+            all_logs = []
+            for cat in cat_list:
+                try:
+                    logs = syslog.get_logs(level, cat, since_id, search, min(limit, 1000))
+                    all_logs.extend(logs)
+                except Exception:
+                    pass  # Skip invalid categories
+            # Sort by timestamp descending and limit
+            all_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+            return jsonify({'logs': all_logs[:limit]})
+        else:
+            logs = syslog.get_logs(level, category, since_id, search, min(limit, 1000))
+            return jsonify({'logs': logs})
 
     @app.route('/api/logs/categories', methods=['GET'])
     @login_required
@@ -872,9 +887,13 @@ def create_app(
     def xy_connect():
         """Connect to XY table."""
         if not app.xy_table:
+            syslog.xy("XY table не ініціалізовано", level=LogLevel.ERROR, source="api")
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("Підключення до Slave...", source="api")
         if app.xy_table.connect():
+            syslog.xy("Підключено до Slave успішно", source="api")
             return jsonify({'status': 'connected'})
+        syslog.xy("Не вдалося підключитися до Slave", level=LogLevel.ERROR, source="api")
         return jsonify({'error': 'Connection failed'}), 500
 
     @app.route('/api/xy/disconnect', methods=['POST'])
@@ -882,6 +901,7 @@ def create_app(
         """Disconnect from XY table."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("Відключення від Slave", source="api")
         app.xy_table.disconnect()
         return jsonify({'status': 'disconnected'})
 
@@ -890,8 +910,11 @@ def create_app(
         """Restart xy_table.service on slave Raspberry Pi via SSH."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("Перезапуск сервісу Slave...", source="api")
         if app.xy_table.restart_slave_service():
+            syslog.xy("Сервіс Slave перезапущено успішно", source="api")
             return jsonify({'status': 'service restarted'})
+        syslog.xy("Не вдалося перезапустити сервіс Slave", level=LogLevel.ERROR, source="api")
         return jsonify({'error': 'Failed to restart service'}), 500
 
     @app.route('/api/xy/home', methods=['POST'])
@@ -1105,6 +1128,25 @@ def create_app(
             'status': 'cancelled',
             'position': actual_position
         })
+
+    @app.route('/api/xy/logs', methods=['GET'])
+    def xy_logs():
+        """Get XY table related logs (XY, COMM, GCODE categories). No auth required for desktop app."""
+        limit = request.args.get('limit', 50, type=int)
+        since_id = request.args.get('since_id', type=int)
+
+        # Get logs from XY, COMM, and GCODE categories
+        all_logs = []
+        for cat in ['XY', 'COMM', 'GCODE']:
+            try:
+                logs = syslog.get_logs(None, cat, since_id, None, min(limit, 200))
+                all_logs.extend(logs)
+            except Exception:
+                pass
+
+        # Sort by timestamp descending and limit
+        all_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        return jsonify({'logs': all_logs[:limit]})
 
     # === Cycle Control ===
 
