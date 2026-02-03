@@ -1705,7 +1705,9 @@ function initXYTab() {
     $$('[data-jog]').forEach(btn => {
         btn.addEventListener('click', () => {
             const dir = btn.dataset.jog;
-            const step = parseFloat($('jogStep').value);
+            const stepValue = $('jogStep').value;
+            // Free Run mode uses large step (500mm) for continuous movement
+            const step = stepValue === 'free' ? 500 : parseFloat(stepValue);
             const feed = parseFloat($('jogFeed').value);
 
             let dx = 0, dy = 0;

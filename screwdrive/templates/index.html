@@ -202,13 +202,13 @@
                         <h2>Jog Control</h2>
                         <div class="jog-grid">
                             <div></div>
-                            <button class="btn btn-jog" data-jog="y-">Y-</button>
+                            <button class="btn btn-jog btn-jog-y" data-jog="y-">Y-</button>
                             <div></div>
-                            <button class="btn btn-jog" data-jog="x-">X-</button>
-                            <button class="btn btn-jog btn-home" id="btnXYHome">HOME</button>
-                            <button class="btn btn-jog" data-jog="x+">X+</button>
+                            <button class="btn btn-jog btn-jog-x" data-jog="x+">X+</button>
+                            <button class="btn btn-jog btn-home" id="btnXYHome">⌂</button>
+                            <button class="btn btn-jog btn-jog-x" data-jog="x-">X-</button>
                             <div></div>
-                            <button class="btn btn-jog" data-jog="y+">Y+</button>
+                            <button class="btn btn-jog btn-jog-y" data-jog="y+">Y+</button>
                             <div></div>
                         </div>
                         <div class="jog-step">
@@ -221,6 +221,7 @@
                                 <option value="10" selected>10 mm</option>
                                 <option value="50">50 mm</option>
                                 <option value="100">100 mm</option>
+                                <option value="free">Free Run</option>
                             </select>
                             <label>Feed:</label>
                             <select id="jogFeed" class="input-select">
