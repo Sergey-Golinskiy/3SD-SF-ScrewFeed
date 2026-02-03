@@ -35,19 +35,23 @@ BORDER_W = 8
 
 # ================== Colors (matching web UI) ==================
 COLORS = {
-    'bg_dark': '#0f1115',
-    'bg_card': '#1a1f29',
-    'bg_input': '#1f2531',
-    'border': '#2a3140',
-    'border_light': '#3a4356',
-    'text': '#e8edf8',
-    'text_muted': '#9aa7be',
-    'green': '#1ac06b',
-    'green_bg': '#153f2c',
-    'red': '#e5484d',
-    'red_bg': '#3a1c1c',
-    'yellow': '#f0b400',
-    'blue': '#3aa0ff',
+    'bg_primary': '#121212',
+    'bg_secondary': '#1e1e1e',
+    'bg_card': '#252525',
+    'bg_input': '#2a2a2a',
+    'border': '#3a3a3a',
+    'border_light': '#4a4a4a',
+    'text': '#e0e0e0',
+    'text_secondary': '#b0b0b0',
+    'text_muted': '#808080',
+    'blue': '#5a9fd4',
+    'blue_hover': '#4a8fc4',
+    'green': '#6fcf97',
+    'green_bg': '#1a3a2a',
+    'red': '#eb5757',
+    'red_bg': '#3a1a1a',
+    'yellow': '#f2c94c',
+    'orange': '#f2994a',
 }
 
 # ================== HTTP Client ==================
@@ -1015,21 +1019,14 @@ class StartWorkTab(QWidget):
 
         right.addWidget(self.startStatusCard)
 
-        # Big INIT button
+        # Big INIT button - takes all remaining space
         self.btnInit = QPushButton("ІНІЦІАЛІЗАЦІЯ")
         self.btnInit.setObjectName("btn_init_big")
         self.btnInit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.btnInit.setMinimumHeight(200)
+        self.btnInit.setMinimumHeight(300)
         self.btnInit.clicked.connect(self.on_init)
         self.btnInit.setEnabled(False)
         right.addWidget(self.btnInit, 1)
-
-        # E-STOP at bottom
-        self.btnEstopStart = QPushButton("E-STOP")
-        self.btnEstopStart.setObjectName("btn_estop")
-        self.btnEstopStart.setMinimumHeight(80)
-        self.btnEstopStart.clicked.connect(self.on_estop)
-        right.addWidget(self.btnEstopStart)
 
         # Layout ratio 33/66
         layout.addLayout(left, 1)
@@ -2117,7 +2114,7 @@ class MainWindow(QMainWindow):
 # ================== Stylesheet ==================
 APP_QSS = f"""
 /* Main background */
-#root {{ background-color: {COLORS['bg_dark']}; }}
+#root {{ background-color: {COLORS['bg_primary']}; }}
 
 /* Border states */
 #rootFrame[state="ok"]    {{ border: {BORDER_W}px solid {COLORS['green']}; }}
@@ -2126,248 +2123,262 @@ APP_QSS = f"""
 
 /* Cards */
 #card {{
-    background: {COLORS['bg_card']};
+    background: {COLORS['bg_secondary']};
     border: 1px solid {COLORS['border']};
-    border-radius: 16px;
+    border-radius: 12px;
     color: {COLORS['text']};
 }}
 #cardTitle {{
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
     color: {COLORS['text']};
+    padding-bottom: 12px;
+    border-bottom: 1px solid {COLORS['border']};
 }}
 
-/* Tabs */
-#tabs::pane {{ border: none; }}
+/* Tabs - matching web UI style */
+#tabs::pane {{ border: none; background: transparent; }}
+QTabWidget::pane {{ background: transparent; }}
+QTabBar {{
+    background: {COLORS['bg_secondary']};
+    border-radius: 12px;
+}}
 QTabBar::tab {{
-    color: {COLORS['text_muted']};
-    background: {COLORS['bg_card']};
+    color: {COLORS['text_secondary']};
+    background: transparent;
     padding: 14px 32px;
-    margin-right: 4px;
-    border-top-left-radius: 12px;
-    border-top-right-radius: 12px;
-    font-size: 24px;
-    font-weight: 700;
-    min-height: 60px;
-    min-width: 200px;
-    border: 1px solid {COLORS['border']};
+    margin: 4px;
+    border-radius: 8px;
+    font-size: 20px;
+    font-weight: 500;
+    min-height: 50px;
+    min-width: 180px;
+}}
+QTabBar::tab:hover {{
+    background: {COLORS['bg_card']};
+    color: {COLORS['text']};
 }}
 QTabBar::tab:selected {{
-    background: {COLORS['bg_input']};
+    background: {COLORS['blue']};
     color: white;
-    border-bottom: 4px solid {COLORS['green']};
 }}
 
 /* Device buttons */
 #devButton {{
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 500;
     text-align: left;
-    padding: 12px 16px;
-    border: 2px solid {COLORS['border_light']};
-    border-radius: 12px;
+    padding: 14px 16px;
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
 }}
 #devButton:hover {{ background: {COLORS['bg_card']}; }}
 #devButton[selected="true"] {{
-    border-color: {COLORS['green']};
-    background: {COLORS['green_bg']};
-    color: #e9ffee;
+    border-color: {COLORS['blue']};
+    background: {COLORS['blue']};
+    color: white;
 }}
 
 /* Big buttons */
 #btn_primary {{
-    font-size: 32px;
-    font-weight: 700;
-    background: {COLORS['green_bg']};
-    color: #e9ffee;
-    border: 3px solid {COLORS['green']};
-    border-radius: 16px;
+    font-size: 28px;
+    font-weight: 600;
+    background: {COLORS['green']};
+    color: white;
+    border: none;
+    border-radius: 8px;
 }}
-#btn_primary:hover {{ background: #1a5235; }}
+#btn_primary:hover {{ background: #5ab887; }}
 #btn_primary:disabled {{ opacity: 0.5; }}
 
 #btn_info {{
-    font-size: 32px;
-    font-weight: 700;
-    background: {COLORS['bg_input']};
-    color: {COLORS['text']};
-    border: 3px solid {COLORS['blue']};
-    border-radius: 16px;
+    font-size: 28px;
+    font-weight: 600;
+    background: {COLORS['blue']};
+    color: white;
+    border: none;
+    border-radius: 8px;
 }}
-#btn_info:hover {{ background: #1a3050; }}
+#btn_info:hover {{ background: {COLORS['blue_hover']}; }}
 
 #btn_danger {{
-    font-size: 32px;
-    font-weight: 700;
-    background: {COLORS['red_bg']};
-    color: #ffe9e9;
-    border: 3px solid {COLORS['red']};
-    border-radius: 16px;
-}}
-#btn_danger:hover {{ background: #4a2525; }}
-
-#btn_estop {{
-    font-size: 36px;
-    font-weight: 900;
+    font-size: 28px;
+    font-weight: 600;
     background: {COLORS['red']};
     color: white;
-    border: 4px solid #ff0000;
-    border-radius: 16px;
+    border: none;
+    border-radius: 8px;
 }}
-#btn_estop:hover {{ background: #ff3333; }}
+#btn_danger:hover {{ background: #d64545; }}
+
+#btn_estop {{
+    font-size: 32px;
+    font-weight: 700;
+    background: {COLORS['red']};
+    color: white;
+    border: 3px solid #ff4444;
+    border-radius: 12px;
+}}
+#btn_estop:hover {{ background: #d64545; }}
 
 /* Big INIT button */
 #btn_init_big {{
-    font-size: 48px;
-    font-weight: 700;
-    background: {COLORS['bg_input']};
-    color: {COLORS['text']};
-    border: 4px solid {COLORS['blue']};
-    border-radius: 20px;
+    font-size: 56px;
+    font-weight: 600;
+    background: {COLORS['blue']};
+    color: white;
+    border: none;
+    border-radius: 16px;
 }}
-#btn_init_big:hover {{ background: #1a3050; }}
-#btn_init_big:disabled {{ opacity: 0.4; }}
+#btn_init_big:hover {{ background: {COLORS['blue_hover']}; }}
+#btn_init_big:disabled {{
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+}}
 
 /* WORK mode buttons */
 #btn_work_start {{
     font-size: 48px;
-    font-weight: 700;
-    background: {COLORS['green_bg']};
-    color: #e9ffee;
-    border: 4px solid {COLORS['green']};
-    border-radius: 20px;
+    font-weight: 600;
+    background: {COLORS['green']};
+    color: white;
+    border: none;
+    border-radius: 16px;
 }}
-#btn_work_start:hover {{ background: #1a5235; }}
-#btn_work_start:disabled {{ opacity: 0.4; }}
+#btn_work_start:hover {{ background: #5ab887; }}
+#btn_work_start:disabled {{
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+}}
 
 #btn_work_stop {{
     font-size: 48px;
-    font-weight: 700;
-    background: {COLORS['red_bg']};
-    color: #ffe9e9;
-    border: 4px solid {COLORS['red']};
-    border-radius: 20px;
+    font-weight: 600;
+    background: {COLORS['red']};
+    color: white;
+    border: none;
+    border-radius: 16px;
 }}
-#btn_work_stop:hover {{ background: #4a2525; }}
+#btn_work_stop:hover {{ background: #d64545; }}
 
 /* Platform tab buttons */
 #btn_home {{
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 500;
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
-    border: 2px solid {COLORS['yellow']};
-    border-radius: 12px;
+    border: 1px solid {COLORS['yellow']};
+    border-radius: 8px;
 }}
-#btn_home:hover {{ background: #2a2510; }}
+#btn_home:hover {{ background: {COLORS['bg_card']}; }}
 
 #btn_offset {{
-    font-size: 20px;
-    font-weight: 600;
-    background: {COLORS['bg_input']};
-    color: {COLORS['text']};
-    border: 2px solid {COLORS['blue']};
-    border-radius: 12px;
+    font-size: 18px;
+    font-weight: 500;
+    background: {COLORS['blue']};
+    color: white;
+    border: none;
+    border-radius: 8px;
 }}
-#btn_offset:hover {{ background: #1a3050; }}
+#btn_offset:hover {{ background: {COLORS['blue_hover']}; }}
 
 #btn_move {{
-    font-size: 24px;
-    font-weight: 600;
-    background: {COLORS['green_bg']};
-    color: #e9ffee;
-    border: 2px solid {COLORS['green']};
-    border-radius: 12px;
+    font-size: 20px;
+    font-weight: 500;
+    background: {COLORS['green']};
+    color: white;
+    border: none;
+    border-radius: 8px;
 }}
-#btn_move:hover {{ background: #1a5235; }}
+#btn_move:hover {{ background: #5ab887; }}
 
 #btn_toggle {{
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 16px;
+    font-weight: 500;
     background: {COLORS['bg_input']};
     color: {COLORS['text_muted']};
-    border: 2px solid {COLORS['border_light']};
-    border-radius: 10px;
+    border: 1px solid {COLORS['border_light']};
+    border-radius: 8px;
 }}
 #btn_toggle:checked {{
-    background: {COLORS['green_bg']};
-    color: #e9ffee;
-    border-color: {COLORS['green']};
+    background: {COLORS['green']};
+    color: white;
+    border: none;
 }}
 
 /* Work mode labels */
 #workStatusLabel {{
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 500;
     color: {COLORS['text']};
 }}
 
 #workCounterLabel {{
-    font-size: 32px;
-    font-weight: 700;
+    font-size: 28px;
+    font-weight: 600;
     color: {COLORS['green']};
 }}
 
 #workMessage {{
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 500;
     color: {COLORS['text']};
     padding: 16px;
-    background: {COLORS['bg_card']};
+    background: {COLORS['bg_secondary']};
     border: 1px solid {COLORS['border']};
     border-radius: 12px;
 }}
 
 /* Work progress bar */
 #workProgressBar {{
-    border: 2px solid {COLORS['border']};
-    border-radius: 12px;
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
     background: {COLORS['bg_input']};
-    height: 50px;
+    height: 40px;
     text-align: center;
-    font-size: 24px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 500;
 }}
 #workProgressBar::chunk {{
     background: {COLORS['green']};
-    border-radius: 10px;
+    border-radius: 6px;
 }}
 
 /* Position value */
 #positionValue {{
-    font-size: 24px;
-    font-weight: 700;
+    font-size: 22px;
+    font-weight: 600;
     color: {COLORS['green']};
 }}
 
 /* Status values */
 #statusValue {{
-    font-size: 22px;
-    font-weight: 600;
+    font-size: 20px;
+    font-weight: 500;
     color: {COLORS['text']};
 }}
 #statusMessage {{
-    font-size: 18px;
-    color: {COLORS['text_muted']};
-    padding: 10px;
+    font-size: 16px;
+    color: {COLORS['text_secondary']};
+    padding: 8px;
 }}
 
 /* Badges */
 #badge {{
-    background: {COLORS['border']};
+    background: {COLORS['bg_card']};
     color: {COLORS['text']};
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 18px;
-    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
 }}
 
 /* Sensor states */
 #sensorState {{
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
     padding: 6px 10px;
 }}
 #sensorState[active="true"] {{ color: {COLORS['green']}; }}
@@ -2375,8 +2386,8 @@ QTabBar::tab:selected {{
 
 /* Relay states */
 #relayState {{
-    font-size: 18px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
     padding: 6px 10px;
 }}
 #relayState[on="true"] {{ color: {COLORS['green']}; }}
@@ -2386,22 +2397,28 @@ QTabBar::tab:selected {{
 QPushButton {{
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
-    border: 1px solid {COLORS['border_light']};
-    border-radius: 10px;
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
     padding: 12px 20px;
-    font-size: 18px;
+    font-size: 16px;
 }}
 QPushButton:hover {{ background: {COLORS['bg_card']}; }}
-QPushButton:disabled {{ opacity: 0.5; }}
+QPushButton:disabled {{
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+}}
 
 /* Inputs */
 QSpinBox, QLineEdit, QComboBox {{
     background: {COLORS['bg_input']};
     color: {COLORS['text']};
-    border: 1px solid {COLORS['border_light']};
-    border-radius: 10px;
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
     padding: 10px 14px;
-    font-size: 18px;
+    font-size: 16px;
+}}
+QSpinBox:focus, QLineEdit:focus, QComboBox:focus {{
+    border-color: {COLORS['blue']};
 }}
 
 /* Scroll area */
@@ -2416,21 +2433,40 @@ QScrollArea > QWidget > QWidget {{
 /* Progress bar */
 QProgressBar {{
     border: 1px solid {COLORS['border']};
-    border-radius: 10px;
+    border-radius: 8px;
     background: {COLORS['bg_input']};
-    height: 28px;
+    height: 32px;
     text-align: center;
-    font-size: 16px;
+    font-size: 14px;
+    color: {COLORS['text']};
 }}
 QProgressBar::chunk {{
     background: {COLORS['green']};
-    border-radius: 8px;
+    border-radius: 6px;
 }}
 
 /* Labels */
 QLabel {{
     color: {COLORS['text']};
-    font-size: 18px;
+    font-size: 16px;
+}}
+
+/* Scrollbar */
+QScrollBar:vertical {{
+    background: {COLORS['bg_input']};
+    width: 12px;
+    border-radius: 6px;
+}}
+QScrollBar::handle:vertical {{
+    background: {COLORS['border_light']};
+    border-radius: 6px;
+    min-height: 30px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: {COLORS['text_muted']};
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0;
 }}
 """
 
