@@ -945,8 +945,10 @@ class StartWorkTab(QWidget):
         self._cycle_worker = None
         self._current_mode = self.MODE_START
         self._pedal_was_pressed = False  # Track pedal state for edge detection
+        self._state_restored = False  # Track if state was restored from server
 
         self._setup_ui()
+        self._restore_state_from_server()
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
@@ -1167,6 +1169,67 @@ class StartWorkTab(QWidget):
             btn.setProperty("selected", is_selected)
             btn.style().unpolish(btn)
             btn.style().polish(btn)
+
+    def _restore_state_from_server(self):
+        """Restore state from server on startup."""
+        try:
+            server_state = self.api.get_ui_state()
+            if not server_state:
+                return
+
+            # Get saved state
+            saved_device = server_state.get("selected_device")
+            saved_initialized = server_state.get("initialized", False)
+            saved_cycle_state = server_state.get("cycle_state", "IDLE")
+
+            # If there's a saved device and it was initialized
+            if saved_device and saved_initialized:
+                # Load devices first
+                try:
+                    self._devices = self.api.devices()
+                    self._rebuild_devices(self._devices)
+                except Exception:
+                    return
+
+                # Check if device still exists
+                device_exists = any(d.get("key") == saved_device for d in self._devices)
+                if not device_exists:
+                    return
+
+                # Restore state
+                self._selected_device = saved_device
+                self._initialized = True
+                self._cycle_state = saved_cycle_state
+                self._total_cycles = 0
+                self._holes_completed = server_state.get("holes_completed", 0)
+                self._total_holes = server_state.get("total_holes", 0)
+
+                # Update UI
+                self._update_device_styles()
+                self.lblStartDevice.setText(f"Девайс: {saved_device}")
+
+                # Switch to WORK mode if ready
+                if saved_cycle_state in ("READY", "COMPLETED", "PAUSED"):
+                    self._switch_to_work()
+                    self.lblWorkDevice.setText(f"Девайс: {saved_device}")
+                    self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+                    self.lblWorkHoles.setText(f"Гвинтів: {self._holes_completed} / {self._total_holes}")
+
+                    if saved_cycle_state == "COMPLETED":
+                        self.lblWorkMessage.setText("Готово. Натисніть СТАРТ для нового циклу.")
+                    elif saved_cycle_state == "PAUSED":
+                        self.lblWorkMessage.setText("Пауза. Натисніть СТАРТ для продовження.")
+                    else:
+                        self.lblWorkMessage.setText("Готово до запуску.")
+
+                    self.workProgressBar.setValue(server_state.get("progress_percent", 0))
+                    self.btnStartCycle.setEnabled(True)
+
+                self._state_restored = True
+                print(f"State restored: device={saved_device}, initialized={saved_initialized}, state={saved_cycle_state}")
+
+        except Exception as e:
+            print(f"Failed to restore state from server: {e}")
 
     def _select_device(self, key: str):
         """Select a device."""
