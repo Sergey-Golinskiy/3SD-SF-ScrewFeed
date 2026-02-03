@@ -2301,6 +2301,11 @@ class MainWindow(QMainWindow):
         self.tabs.setObjectName("tabs")
         root.addWidget(self.tabs)
 
+        # Hide tab bar by default - show/hide with 5s pedal hold
+        self._tabs_visible = False
+        self._pedal_hold_start = None  # Time when pedal press started
+        self.tabs.tabBar().setVisible(False)
+
         # Create tabs - new structure
         self.tabStartWork = StartWorkTab(self.api)
         self.tabPlatform = PlatformTab(self.api)
@@ -2345,6 +2350,27 @@ class MainWindow(QMainWindow):
             self.set_border("alarm")
             return
 
+        # Check pedal hold for tab visibility toggle
+        sensors = status.get("sensors", {})
+        pedal_pressed = sensors.get("ped_start") == "ACTIVE"
+
+        if pedal_pressed:
+            if self._pedal_hold_start is None:
+                # Pedal just pressed - start tracking
+                self._pedal_hold_start = time.time()
+            else:
+                # Pedal still held - check duration
+                hold_duration = time.time() - self._pedal_hold_start
+                if hold_duration >= 5.0:
+                    # Toggle tab visibility
+                    self._tabs_visible = not self._tabs_visible
+                    self.tabs.tabBar().setVisible(self._tabs_visible)
+                    # Reset timer to avoid repeated toggling
+                    self._pedal_hold_start = None
+        else:
+            # Pedal released - reset timer
+            self._pedal_hold_start = None
+
         # Update tabs
         for tab in (self.tabStartWork, self.tabPlatform, self.tabLogs, self.tabService):
             try:
@@ -2352,8 +2378,7 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 print(f"Render error: {e}")
 
-        # Border state
-        sensors = status.get("sensors", {})
+        # Border state (sensors already fetched above for pedal check)
         estop = sensors.get("emergency_stop") == "ACTIVE"
 
         if estop:
