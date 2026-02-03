@@ -1519,65 +1519,186 @@ class StartWorkTab(QWidget):
 
 # ================== Service Tab ==================
 class ServiceTab(QWidget):
-    """Service tab - sensors and relay control."""
+    """Service tab - sensors and relay control (styled like web UI)."""
+
+    # Ukrainian names for relays
+    RELAY_NAMES = {
+        'r01_pit': 'R01 Подача',
+        'r02_brake_x': 'R02 Гальмо X',
+        'r03_brake_y': 'R03 Гальмо Y',
+        'r04_c2': 'R04 Циліндр C2',
+        'r05_di4_free': 'R05 Вільний хід',
+        'r06_di1_pot': 'R06 Момент',
+        'r07_di5_tsk0': 'R07 Задача 0',
+        'r08_di6_tsk1': 'R08 Задача 1',
+        'r09_pwr_x': 'R09 Живлення X',
+        'r10_pwr_y': 'R10 Живлення Y',
+    }
+
+    # Ukrainian names for sensors
+    SENSOR_NAMES = {
+        'emergency_stop': 'Аварійна кнопка',
+        'ger_c2_up': 'Циліндр вгорі',
+        'ger_c2_down': 'Циліндр внизу',
+        'ind_scrw': 'Гвинт',
+        'do2_ok': 'Момент OK',
+        'alarm_x': 'Аларм X',
+        'alarm_y': 'Аларм Y',
+    }
 
     def __init__(self, api: ApiClient, parent=None):
         super().__init__(parent)
         self.api = api
         self._relay_widgets = {}
+        self._sensor_widgets = {}
+        self._last_ip_update = 0
 
         self._setup_ui()
 
     def _setup_ui(self):
-        root = QHBoxLayout(self)
+        root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(20)
+        root.setSpacing(16)
 
-        # Left - Sensors
-        left = QVBoxLayout()
-        left.setSpacing(12)
-
-        self.sensorsCard = make_card("Сенсори")
-        self.sensorsGrid = QGridLayout()
-        self.sensorsGrid.setSpacing(8)
-        self.sensorsCard.layout().addLayout(self.sensorsGrid)
-        left.addWidget(self.sensorsCard)
-        left.addStretch(1)
-
-        # Right - Relays
-        right = QVBoxLayout()
-        right.setSpacing(12)
-
-        self.relaysCard = make_card("Реле (ON / OFF / PULSE)")
-        self.relaysGrid = QGridLayout()
-        self.relaysGrid.setSpacing(8)
-        self.relaysCard.layout().addLayout(self.relaysGrid)
-        right.addWidget(self.relaysCard)
-
-        # Network info
+        # Top section: Network card
         self.netCard = make_card("Мережа")
         net_lay = self.netCard.layout()
-        self.lblIp = QLabel(f"IP: {get_local_ip()}")
-        self.lblIp.setObjectName("statusValue")
-        net_lay.addWidget(self.lblIp)
-        right.addWidget(self.netCard)
 
-        right.addStretch(1)
+        net_grid = QGridLayout()
+        net_grid.setSpacing(16)
+        net_grid.setColumnStretch(1, 1)
 
-        root.addLayout(left, 1)
-        root.addLayout(right, 1)
+        # IP Address
+        ip_label = QLabel("IP адреса:")
+        ip_label.setObjectName("serviceLabel")
+        net_grid.addWidget(ip_label, 0, 0)
+
+        self.lblIp = QLabel(get_local_ip())
+        self.lblIp.setObjectName("serviceValueHighlight")
+        net_grid.addWidget(self.lblIp, 0, 1)
+
+        # API Status
+        api_label = QLabel("API статус:")
+        api_label.setObjectName("serviceLabel")
+        net_grid.addWidget(api_label, 0, 2)
+
+        self.lblApiStatus = QLabel("Онлайн")
+        self.lblApiStatus.setObjectName("serviceValueGreen")
+        net_grid.addWidget(self.lblApiStatus, 0, 3)
+
+        # API Base URL
+        url_label = QLabel("API URL:")
+        url_label.setObjectName("serviceLabel")
+        net_grid.addWidget(url_label, 1, 0)
+
+        self.lblApiUrl = QLabel(API_BASE)
+        self.lblApiUrl.setObjectName("serviceValue")
+        net_grid.addWidget(self.lblApiUrl, 1, 1, 1, 3)
+
+        net_lay.addLayout(net_grid)
+        root.addWidget(self.netCard)
+
+        # Main content: Sensors and Relays side by side
+        content_row = QHBoxLayout()
+        content_row.setSpacing(16)
+
+        # Left - Sensors card
+        self.sensorsCard = make_card("Сенсори")
+        sensors_lay = self.sensorsCard.layout()
+
+        # Sensors scroll area for many sensors
+        sensors_scroll = QScrollArea()
+        sensors_scroll.setWidgetResizable(True)
+        sensors_scroll.setMinimumHeight(300)
+
+        sensors_widget = QWidget()
+        self.sensorsGrid = QGridLayout(sensors_widget)
+        self.sensorsGrid.setSpacing(10)
+        self.sensorsGrid.setColumnStretch(0, 1)
+        sensors_scroll.setWidget(sensors_widget)
+
+        sensors_lay.addWidget(sensors_scroll)
+        content_row.addWidget(self.sensorsCard, 1)
+
+        # Right - Relays card
+        self.relaysCard = make_card("Реле керування")
+        relays_lay = self.relaysCard.layout()
+
+        # Relays scroll area
+        relays_scroll = QScrollArea()
+        relays_scroll.setWidgetResizable(True)
+        relays_scroll.setMinimumHeight(300)
+
+        relays_widget = QWidget()
+        self.relaysGrid = QGridLayout(relays_widget)
+        self.relaysGrid.setSpacing(8)
+        self.relaysGrid.setColumnStretch(0, 1)
+        relays_scroll.setWidget(relays_widget)
+
+        relays_lay.addWidget(relays_scroll)
+        content_row.addWidget(self.relaysCard, 1)
+
+        root.addLayout(content_row, 1)
+
+    def _get_relay_name(self, key: str) -> str:
+        """Get Ukrainian name for relay."""
+        return self.RELAY_NAMES.get(key, key)
+
+    def _get_sensor_name(self, key: str) -> str:
+        """Get Ukrainian name for sensor."""
+        return self.SENSOR_NAMES.get(key, key)
+
+    def _create_sensor_row(self, row: int, name: str, value):
+        """Create sensor display row."""
+        # Name label with Ukrainian name
+        display_name = self._get_sensor_name(name)
+        lblName = QLabel(display_name)
+        lblName.setObjectName("sensorName")
+        lblName.setMinimumWidth(180)
+
+        # State indicator
+        is_active = value == "ACTIVE" or value == True
+        lblState = QLabel("АКТИВНИЙ" if is_active else "НЕАКТИВНИЙ")
+        lblState.setObjectName("sensorIndicator")
+        lblState.setProperty("active", is_active)
+        lblState.setAlignment(Qt.AlignCenter)
+        lblState.setMinimumWidth(120)
+        lblState.style().unpolish(lblState)
+        lblState.style().polish(lblState)
+
+        self.sensorsGrid.addWidget(lblName, row, 0)
+        self.sensorsGrid.addWidget(lblState, row, 1)
+
+        self._sensor_widgets[name] = lblState
 
     def _create_relay_row(self, row: int, name: str, state: str):
         """Create relay control row."""
-        # Name label
-        lblName = QLabel(name)
-        lblName.setObjectName("badge")
+        # Name label with Ukrainian name
+        display_name = self._get_relay_name(name)
+        lblName = QLabel(display_name)
+        lblName.setObjectName("relayName")
+        lblName.setMinimumWidth(160)
 
-        # State label
+        # State indicator
         is_on = state == "ON"
         lblState = QLabel("ON" if is_on else "OFF")
-        lblState.setObjectName("relayState")
+        lblState.setObjectName("relayIndicator")
         lblState.setProperty("on", is_on)
+        lblState.setAlignment(Qt.AlignCenter)
+        lblState.setMinimumWidth(60)
+        lblState.style().unpolish(lblState)
+        lblState.style().polish(lblState)
+
+        # Control buttons
+        btnOn = QPushButton("ON")
+        btnOn.setObjectName("btn_relay_on")
+        btnOn.setFixedSize(70, 36)
+        btnOn.clicked.connect(lambda _, n=name: self._relay_cmd(n, "on"))
+
+        btnOff = QPushButton("OFF")
+        btnOff.setObjectName("btn_relay_off")
+        btnOff.setFixedSize(70, 36)
+        btnOff.clicked.connect(lambda _, n=name: self._relay_cmd(n, "off"))
 
         # Duration spinner
         spin = QSpinBox()
@@ -1586,14 +1707,10 @@ class ServiceTab(QWidget):
         spin.setSuffix(" ms")
         spin.setFixedWidth(100)
 
-        # Buttons
-        btnOn = QPushButton("ON")
-        btnOff = QPushButton("OFF")
         btnPulse = QPushButton("PULSE")
-
-        btnOn.clicked.connect(lambda: self._relay_cmd(name, "on"))
-        btnOff.clicked.connect(lambda: self._relay_cmd(name, "off"))
-        btnPulse.clicked.connect(lambda: self._relay_cmd(name, "pulse", spin.value() / 1000.0))
+        btnPulse.setObjectName("btn_relay_pulse")
+        btnPulse.setFixedSize(80, 36)
+        btnPulse.clicked.connect(lambda _, n=name, s=spin: self._relay_cmd(n, "pulse", s.value() / 1000.0))
 
         self.relaysGrid.addWidget(lblName, row, 0)
         self.relaysGrid.addWidget(lblState, row, 1)
@@ -1611,36 +1728,52 @@ class ServiceTab(QWidget):
         except Exception as e:
             print(f"Relay command error: {e}")
 
+    def _update_ip(self):
+        """Update IP address."""
+        self.lblIp.setText(get_local_ip())
+
     def render(self, status: dict):
         """Update UI from status."""
         sensors = status.get("sensors", {})
         relays = status.get("relays", {})
 
-        # Update sensors grid
-        while self.sensorsGrid.count():
-            item = self.sensorsGrid.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # Update IP every 10 seconds
+        import time
+        current_time = time.time()
+        if current_time - self._last_ip_update > 10:
+            self._last_ip_update = current_time
+            self._update_ip()
 
-        row = 0
-        for name, value in sensors.items():
-            lblName = QLabel(name)
-            lblName.setObjectName("badge")
+        # Update API status
+        self.lblApiStatus.setText("Онлайн")
+        self.lblApiStatus.setObjectName("serviceValueGreen")
+        self.lblApiStatus.style().unpolish(self.lblApiStatus)
+        self.lblApiStatus.style().polish(self.lblApiStatus)
 
-            is_active = value == "ACTIVE" or value == True
-            lblValue = QLabel("ACTIVE" if is_active else "INACTIVE")
-            lblValue.setObjectName("sensorState")
-            lblValue.setProperty("active", is_active)
-            lblValue.style().unpolish(lblValue)
-            lblValue.style().polish(lblValue)
+        # Update sensors
+        sensor_names = list(sensors.keys())
+        if set(sensor_names) != set(self._sensor_widgets.keys()):
+            # Rebuild sensors grid
+            while self.sensorsGrid.count():
+                item = self.sensorsGrid.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            self._sensor_widgets.clear()
 
-            self.sensorsGrid.addWidget(lblName, row, 0)
-            self.sensorsGrid.addWidget(lblValue, row, 1)
-            row += 1
+            for i, name in enumerate(sensor_names):
+                self._create_sensor_row(i, name, sensors.get(name))
+        else:
+            # Update states
+            for name, lblState in self._sensor_widgets.items():
+                value = sensors.get(name)
+                is_active = value == "ACTIVE" or value == True
+                lblState.setText("АКТИВНИЙ" if is_active else "НЕАКТИВНИЙ")
+                lblState.setProperty("active", is_active)
+                lblState.style().unpolish(lblState)
+                lblState.style().polish(lblState)
 
         # Update relays
         relay_names = list(relays.keys())
-
         if set(relay_names) != set(self._relay_widgets.keys()):
             # Rebuild relay grid
             while self.relaysGrid.count():
@@ -2486,6 +2619,43 @@ QSpinBox:focus, QLineEdit:focus, QComboBox:focus {{
     border-color: {COLORS['blue']};
 }}
 
+/* ComboBox dropdown styling */
+QComboBox::drop-down {{
+    border: none;
+    width: 30px;
+    background: transparent;
+}}
+QComboBox::down-arrow {{
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid {COLORS['text']};
+    margin-right: 10px;
+}}
+QComboBox QAbstractItemView {{
+    background: {COLORS['bg_secondary']};
+    color: {COLORS['text']};
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
+    padding: 4px;
+    selection-background-color: {COLORS['blue']};
+    selection-color: white;
+    outline: none;
+}}
+QComboBox QAbstractItemView::item {{
+    padding: 10px 14px;
+    min-height: 30px;
+    background: transparent;
+    color: {COLORS['text']};
+}}
+QComboBox QAbstractItemView::item:hover {{
+    background: {COLORS['bg_card']};
+}}
+QComboBox QAbstractItemView::item:selected {{
+    background: {COLORS['blue']};
+    color: white;
+}}
+
 /* Scroll area */
 QScrollArea {{
     border: none;
@@ -2534,6 +2704,116 @@ QLabel {{
     font-weight: 500;
     color: {COLORS['text']};
 }}
+
+/* Service tab styles */
+#serviceLabel {{
+    font-size: 16px;
+    font-weight: 500;
+    color: {COLORS['text_secondary']};
+}}
+#serviceValue {{
+    font-size: 16px;
+    font-weight: 500;
+    color: {COLORS['text']};
+}}
+#serviceValueHighlight {{
+    font-size: 18px;
+    font-weight: 600;
+    color: {COLORS['blue']};
+}}
+#serviceValueGreen {{
+    font-size: 16px;
+    font-weight: 600;
+    color: {COLORS['green']};
+}}
+
+/* Sensor styles */
+#sensorName {{
+    font-size: 15px;
+    font-weight: 500;
+    color: {COLORS['text']};
+    padding: 8px 12px;
+    background: {COLORS['bg_card']};
+    border-radius: 6px;
+}}
+#sensorIndicator {{
+    font-size: 14px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 6px;
+    min-width: 100px;
+}}
+#sensorIndicator[active="true"] {{
+    background: {COLORS['green_bg']};
+    color: {COLORS['green']};
+    border: 1px solid {COLORS['green']};
+}}
+#sensorIndicator[active="false"] {{
+    background: {COLORS['red_bg']};
+    color: {COLORS['red']};
+    border: 1px solid {COLORS['red']};
+}}
+
+/* Relay styles */
+#relayName {{
+    font-size: 14px;
+    font-weight: 500;
+    color: {COLORS['text']};
+    padding: 6px 10px;
+    background: {COLORS['bg_card']};
+    border-radius: 6px;
+}}
+#relayIndicator {{
+    font-size: 14px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 6px;
+    min-width: 50px;
+}}
+#relayIndicator[on="true"] {{
+    background: {COLORS['green_bg']};
+    color: {COLORS['green']};
+    border: 1px solid {COLORS['green']};
+}}
+#relayIndicator[on="false"] {{
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+    border: 1px solid {COLORS['border']};
+}}
+
+/* Relay control buttons */
+#btn_relay_on {{
+    font-size: 13px;
+    font-weight: 600;
+    background: {COLORS['green']};
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+}}
+#btn_relay_on:hover {{ background: #5ab887; }}
+
+#btn_relay_off {{
+    font-size: 13px;
+    font-weight: 600;
+    background: {COLORS['red']};
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+}}
+#btn_relay_off:hover {{ background: #d64545; }}
+
+#btn_relay_pulse {{
+    font-size: 13px;
+    font-weight: 600;
+    background: {COLORS['yellow']};
+    color: {COLORS['bg_primary']};
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+}}
+#btn_relay_pulse:hover {{ background: #d9b543; }}
 
 /* Scrollbar */
 QScrollBar:vertical {{
