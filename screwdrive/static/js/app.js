@@ -2378,6 +2378,16 @@ function initSettingsTab() {
         api.post('/xy/home/y');
     });
 
+    // Go to work zero (physical position = offset)
+    $('btnWorkZeroSettings').addEventListener('click', () => {
+        if (!checkBothBrakes()) return;
+        // Work zero = physical position where work coordinates are 0,0
+        // This means moving to the offset position
+        const x = workOffsets.x;
+        const y = workOffsets.y;
+        api.post('/xy/move', { x, y, feed: 5000 });
+    });
+
     // Brake control buttons in Settings
     $('btnBrakeXSettings').addEventListener('click', toggleBrakeX);
     $('btnBrakeYSettings').addEventListener('click', toggleBrakeY);

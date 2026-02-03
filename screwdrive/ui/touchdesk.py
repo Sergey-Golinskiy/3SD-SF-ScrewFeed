@@ -493,16 +493,8 @@ class InitWorker(QThread):
                     self.progress.emit(f"Аларм перед рухом, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
                     continue
 
-                # Load work offsets (G92-like)
-                try:
-                    offsets = self.api.get_offsets()
-                    offset_x = offsets.get("x", 0.0)
-                    offset_y = offsets.get("y", 0.0)
-                except Exception:
-                    offset_x = 0.0
-                    offset_y = 0.0
-
-                # Step 7: Move to work position (with offset applied)
+                # Step 7: Move to operator position (physical coordinates)
+                # Device's work_x/work_y are stored as physical coordinates (relative to limit switches)
                 self.progress.emit("Виїзд до оператора...", 85)
                 self._sync_progress("Виїзд до оператора...", 85)
                 work_x = self.device.get("work_x")
@@ -512,11 +504,8 @@ class InitWorker(QThread):
                 if work_x is None or work_y is None:
                     raise Exception("Робоча позиція не задана для цього девайсу")
 
-                # Apply offset: device coords are relative to work zero, add offset to get physical coords
-                physical_x = work_x + offset_x
-                physical_y = work_y + offset_y
-
-                move_resp = self.api.xy_move(physical_x, physical_y, work_feed)
+                # Use physical coordinates directly (no offset applied)
+                move_resp = self.api.xy_move(work_x, work_y, work_feed)
                 if move_resp.get("status") != "ok":
                     # Check if alarm caused the failure
                     if self._check_and_reset_alarms():

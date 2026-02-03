@@ -1255,6 +1255,21 @@ body {
     background: #f44336;
 }
 
+.btn-home-sm.btn-work-zero {
+    background: linear-gradient(145deg, #9b59b6, #8e44ad);
+}
+
+.btn-home-sm.btn-work-zero:hover {
+    background: linear-gradient(145deg, #a569bd, #9b59b6);
+}
+
+/* Label hint for form fields */
+.label-hint {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
 /* Coordinates Table - New Style */
 .coords-table {
     background: var(--bg-card);
