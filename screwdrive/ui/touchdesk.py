@@ -1081,7 +1081,7 @@ class StartWorkTab(QWidget):
         self.workProgressBar.setObjectName("workProgressBar")
         layout.addWidget(self.workProgressBar)
 
-        # Two big buttons row
+        # Two big buttons row - take all remaining space
         btn_row = QHBoxLayout()
         btn_row.setSpacing(20)
 
@@ -1089,7 +1089,7 @@ class StartWorkTab(QWidget):
         self.btnStartCycle = QPushButton("СТАРТ\nЗАКРУЧУВАННЯ")
         self.btnStartCycle.setObjectName("btn_work_start")
         self.btnStartCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.btnStartCycle.setMinimumHeight(300)
+        self.btnStartCycle.setMinimumHeight(350)
         self.btnStartCycle.clicked.connect(self.on_start)
         btn_row.addWidget(self.btnStartCycle, 1)
 
@@ -1097,18 +1097,11 @@ class StartWorkTab(QWidget):
         self.btnStopCycle = QPushButton("ЗУПИНИТИ\nЗАКРУЧУВАННЯ")
         self.btnStopCycle.setObjectName("btn_work_stop")
         self.btnStopCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.btnStopCycle.setMinimumHeight(300)
+        self.btnStopCycle.setMinimumHeight(350)
         self.btnStopCycle.clicked.connect(self.on_stop_and_return)
         btn_row.addWidget(self.btnStopCycle, 1)
 
         layout.addLayout(btn_row, 1)
-
-        # E-STOP at bottom
-        self.btnEstopWork = QPushButton("E-STOP")
-        self.btnEstopWork.setObjectName("btn_estop")
-        self.btnEstopWork.setMinimumHeight(80)
-        self.btnEstopWork.clicked.connect(self.on_estop)
-        layout.addWidget(self.btnEstopWork)
 
     def switch_to_work_mode(self):
         """Switch to WORK mode after successful initialization."""
@@ -1671,7 +1664,9 @@ class ServiceTab(QWidget):
 
 # ================== Platform Tab ==================
 class PlatformTab(QWidget):
-    """Platform (XY Table) control tab with full features."""
+    """Platform (XY Table) status and logs tab."""
+
+    MAX_LOG_LINES = 100
 
     def __init__(self, api: ApiClient, parent=None):
         super().__init__(parent)
@@ -1680,6 +1675,8 @@ class PlatformTab(QWidget):
         self._current_y = 0.0
         self._offset_x = 0.0
         self._offset_y = 0.0
+        self._log_lines = []
+        self._last_log_fetch = 0
         self._setup_ui()
 
     def _setup_ui(self):
@@ -1692,26 +1689,31 @@ class PlatformTab(QWidget):
         top_row.setSpacing(16)
 
         # Status card
-        self.statusCard = make_card("Статус XY")
+        self.statusCard = make_card("Статус XY Столу")
         status_lay = self.statusCard.layout()
 
         status_grid = QGridLayout()
-        status_grid.setSpacing(8)
+        status_grid.setSpacing(12)
 
         status_grid.addWidget(QLabel("Стан:"), 0, 0)
         self.lblState = QLabel("-")
         self.lblState.setObjectName("statusValue")
         status_grid.addWidget(self.lblState, 0, 1)
 
-        status_grid.addWidget(QLabel("Homed:"), 1, 0)
+        status_grid.addWidget(QLabel("Підключення:"), 1, 0)
+        self.lblConnection = QLabel("-")
+        self.lblConnection.setObjectName("statusValue")
+        status_grid.addWidget(self.lblConnection, 1, 1)
+
+        status_grid.addWidget(QLabel("Homed:"), 2, 0)
         self.lblHomed = QLabel("X: ? Y: ?")
         self.lblHomed.setObjectName("statusValue")
-        status_grid.addWidget(self.lblHomed, 1, 1)
+        status_grid.addWidget(self.lblHomed, 2, 1)
 
-        status_grid.addWidget(QLabel("Endstops:"), 2, 0)
+        status_grid.addWidget(QLabel("Endstops:"), 3, 0)
         self.lblEndstops = QLabel("-")
         self.lblEndstops.setObjectName("statusValue")
-        status_grid.addWidget(self.lblEndstops, 2, 1)
+        status_grid.addWidget(self.lblEndstops, 3, 1)
 
         status_lay.addLayout(status_grid)
         top_row.addWidget(self.statusCard, 1)
@@ -1721,7 +1723,7 @@ class PlatformTab(QWidget):
         pos_lay = self.posCard.layout()
 
         pos_grid = QGridLayout()
-        pos_grid.setSpacing(8)
+        pos_grid.setSpacing(12)
 
         pos_grid.addWidget(QLabel("Фізична:"), 0, 0)
         self.lblPhysPos = QLabel("X: ?.??  Y: ?.??")
@@ -1741,221 +1743,86 @@ class PlatformTab(QWidget):
         pos_lay.addLayout(pos_grid)
         top_row.addWidget(self.posCard, 1)
 
+        # Slave Raspberry Pi status card
+        self.slaveCard = make_card("Slave Raspberry Pi")
+        slave_lay = self.slaveCard.layout()
+
+        slave_grid = QGridLayout()
+        slave_grid.setSpacing(12)
+
+        slave_grid.addWidget(QLabel("Статус:"), 0, 0)
+        self.lblSlaveStatus = QLabel("-")
+        self.lblSlaveStatus.setObjectName("statusValue")
+        slave_grid.addWidget(self.lblSlaveStatus, 0, 1)
+
+        slave_grid.addWidget(QLabel("Останній зв'язок:"), 1, 0)
+        self.lblSlaveLastComm = QLabel("-")
+        self.lblSlaveLastComm.setObjectName("statusValue")
+        slave_grid.addWidget(self.lblSlaveLastComm, 1, 1)
+
+        slave_grid.addWidget(QLabel("Помилка:"), 2, 0)
+        self.lblSlaveError = QLabel("-")
+        self.lblSlaveError.setObjectName("statusValue")
+        slave_grid.addWidget(self.lblSlaveError, 2, 1)
+
+        slave_lay.addLayout(slave_grid)
+        top_row.addWidget(self.slaveCard, 1)
+
         root.addLayout(top_row)
 
-        # Middle row: Homing + Offset + Brakes/Power
-        middle_row = QHBoxLayout()
-        middle_row.setSpacing(16)
+        # Log card - takes remaining space
+        self.logCard = make_card("Лог XY Столу та Slave")
+        log_lay = self.logCard.layout()
 
-        # Homing card
-        self.homeCard = make_card("Хомінг")
-        home_lay = self.homeCard.layout()
+        # Log text area
+        from PyQt5.QtWidgets import QTextEdit
+        self.logText = QTextEdit()
+        self.logText.setReadOnly(True)
+        self.logText.setObjectName("logTextArea")
+        self.logText.setMinimumHeight(300)
+        log_lay.addWidget(self.logText)
 
-        home_btns = QHBoxLayout()
-        home_btns.setSpacing(12)
+        root.addWidget(self.logCard, 1)
 
-        self.btnHomeAll = QPushButton("HOME ALL")
-        self.btnHomeAll.setObjectName("btn_home")
-        self.btnHomeAll.setMinimumHeight(60)
-        self.btnHomeAll.clicked.connect(lambda: self._do_home(None))
-        home_btns.addWidget(self.btnHomeAll)
-
-        self.btnHomeX = QPushButton("HOME X")
-        self.btnHomeX.setObjectName("btn_home")
-        self.btnHomeX.setMinimumHeight(60)
-        self.btnHomeX.clicked.connect(lambda: self._do_home("X"))
-        home_btns.addWidget(self.btnHomeX)
-
-        self.btnHomeY = QPushButton("HOME Y")
-        self.btnHomeY.setObjectName("btn_home")
-        self.btnHomeY.setMinimumHeight(60)
-        self.btnHomeY.clicked.connect(lambda: self._do_home("Y"))
-        home_btns.addWidget(self.btnHomeY)
-
-        home_lay.addLayout(home_btns)
-        middle_row.addWidget(self.homeCard, 1)
-
-        # Offset card
-        self.offsetCard = make_card("Work Offset (G92)")
-        offset_lay = self.offsetCard.layout()
-
-        offset_btns = QHBoxLayout()
-        offset_btns.setSpacing(12)
-
-        self.btnSetZero = QPushButton("SET ZERO")
-        self.btnSetZero.setObjectName("btn_offset")
-        self.btnSetZero.setMinimumHeight(60)
-        self.btnSetZero.clicked.connect(self._set_zero)
-        offset_btns.addWidget(self.btnSetZero)
-
-        self.btnResetOffset = QPushButton("RESET")
-        self.btnResetOffset.setObjectName("btn_offset")
-        self.btnResetOffset.setMinimumHeight(60)
-        self.btnResetOffset.clicked.connect(self._reset_offset)
-        offset_btns.addWidget(self.btnResetOffset)
-
-        offset_lay.addLayout(offset_btns)
-        middle_row.addWidget(self.offsetCard, 1)
-
-        root.addLayout(middle_row)
-
-        # Movement card
-        self.moveCard = make_card("Переміщення")
-        move_lay = self.moveCard.layout()
-
-        move_grid = QGridLayout()
-        move_grid.setSpacing(12)
-
-        # X input
-        move_grid.addWidget(QLabel("X (мм):"), 0, 0)
-        self.spinMoveX = QSpinBox()
-        self.spinMoveX.setRange(0, 1000)
-        self.spinMoveX.setValue(0)
-        self.spinMoveX.setMinimumHeight(50)
-        move_grid.addWidget(self.spinMoveX, 0, 1)
-
-        # Y input
-        move_grid.addWidget(QLabel("Y (мм):"), 0, 2)
-        self.spinMoveY = QSpinBox()
-        self.spinMoveY.setRange(0, 1000)
-        self.spinMoveY.setValue(0)
-        self.spinMoveY.setMinimumHeight(50)
-        move_grid.addWidget(self.spinMoveY, 0, 3)
-
-        # Feed input
-        move_grid.addWidget(QLabel("Feed:"), 0, 4)
-        self.spinFeed = QSpinBox()
-        self.spinFeed.setRange(100, 100000)
-        self.spinFeed.setValue(5000)
-        self.spinFeed.setSingleStep(1000)
-        self.spinFeed.setMinimumHeight(50)
-        move_grid.addWidget(self.spinFeed, 0, 5)
-
-        # Move/Stop buttons
-        self.btnMove = QPushButton("MOVE")
-        self.btnMove.setObjectName("btn_move")
-        self.btnMove.setMinimumHeight(60)
-        self.btnMove.clicked.connect(self._do_move)
-        move_grid.addWidget(self.btnMove, 1, 0, 1, 3)
-
-        self.btnStop = QPushButton("STOP")
-        self.btnStop.setObjectName("btn_danger")
-        self.btnStop.setMinimumHeight(60)
-        self.btnStop.clicked.connect(self._do_stop)
-        move_grid.addWidget(self.btnStop, 1, 3, 1, 3)
-
-        move_lay.addLayout(move_grid)
-        root.addWidget(self.moveCard)
-
-        # Brakes and Power card
-        self.brakePowerCard = make_card("Гальма та Живлення")
-        bp_lay = self.brakePowerCard.layout()
-
-        bp_grid = QGridLayout()
-        bp_grid.setSpacing(12)
-
-        # Brakes
-        bp_grid.addWidget(QLabel("Гальмо X:"), 0, 0)
-        self.btnBrakeX = QPushButton("ON")
-        self.btnBrakeX.setObjectName("btn_toggle")
-        self.btnBrakeX.setCheckable(True)
-        self.btnBrakeX.setMinimumHeight(50)
-        self.btnBrakeX.clicked.connect(lambda: self._toggle_relay("r02_brake_x", self.btnBrakeX))
-        bp_grid.addWidget(self.btnBrakeX, 0, 1)
-
-        bp_grid.addWidget(QLabel("Гальмо Y:"), 0, 2)
-        self.btnBrakeY = QPushButton("ON")
-        self.btnBrakeY.setObjectName("btn_toggle")
-        self.btnBrakeY.setCheckable(True)
-        self.btnBrakeY.setMinimumHeight(50)
-        self.btnBrakeY.clicked.connect(lambda: self._toggle_relay("r03_brake_y", self.btnBrakeY))
-        bp_grid.addWidget(self.btnBrakeY, 0, 3)
-
-        # Power (inverted logic - relay ON = power OFF)
-        bp_grid.addWidget(QLabel("Живлення X:"), 1, 0)
-        self.btnPowerX = QPushButton("ON")
-        self.btnPowerX.setObjectName("btn_toggle")
-        self.btnPowerX.setCheckable(True)
-        self.btnPowerX.setMinimumHeight(50)
-        self.btnPowerX.clicked.connect(lambda: self._toggle_power("r09_pwr_x", self.btnPowerX))
-        bp_grid.addWidget(self.btnPowerX, 1, 1)
-
-        bp_grid.addWidget(QLabel("Живлення Y:"), 1, 2)
-        self.btnPowerY = QPushButton("ON")
-        self.btnPowerY.setObjectName("btn_toggle")
-        self.btnPowerY.setCheckable(True)
-        self.btnPowerY.setMinimumHeight(50)
-        self.btnPowerY.clicked.connect(lambda: self._toggle_power("r10_pwr_y", self.btnPowerY))
-        bp_grid.addWidget(self.btnPowerY, 1, 3)
-
-        bp_lay.addLayout(bp_grid)
-        root.addWidget(self.brakePowerCard)
-
-    def _do_home(self, axis: str = None):
-        """Execute homing."""
+    def _fetch_logs(self):
+        """Fetch logs from API for XY and COMM categories."""
         try:
-            self.api.xy_home(axis)
-        except Exception as e:
-            print(f"Home error: {e}")
+            # Fetch logs filtered by XY and COMM categories
+            response = self.api._get("logs?categories=XY,COMM,GCODE&limit=50")
+            logs = response.get("logs", [])
 
-    def _do_stop(self):
-        """Stop XY table."""
-        try:
-            self.api.xy_stop()
-        except Exception as e:
-            print(f"Stop error: {e}")
+            # Format log entries
+            new_lines = []
+            for log in logs:
+                timestamp = log.get("timestamp", "")[:19]  # Trim to seconds
+                level = log.get("level", "INFO")
+                category = log.get("category", "")
+                message = log.get("message", "")
+                new_lines.append(f"[{timestamp}] [{level}] [{category}] {message}")
 
-    def _do_move(self):
-        """Move to specified position."""
-        x = self.spinMoveX.value()
-        y = self.spinMoveY.value()
-        feed = self.spinFeed.value()
-        try:
-            self.api.xy_move(x, y, feed)
-        except Exception as e:
-            print(f"Move error: {e}")
+            # Update log display if changed
+            if new_lines != self._log_lines:
+                self._log_lines = new_lines
+                self.logText.setPlainText("\n".join(reversed(new_lines)))
+                # Scroll to bottom
+                scrollbar = self.logText.verticalScrollBar()
+                scrollbar.setValue(scrollbar.maximum())
 
-    def _set_zero(self):
-        """Set current position as work zero."""
-        try:
-            # Set offset to current physical position
-            self.api.set_offsets(self._current_x, self._current_y)
         except Exception as e:
-            print(f"Set zero error: {e}")
-
-    def _reset_offset(self):
-        """Reset work offset to zero."""
-        try:
-            self.api.set_offsets(0.0, 0.0)
-        except Exception as e:
-            print(f"Reset offset error: {e}")
-
-    def _toggle_relay(self, relay: str, btn: QPushButton):
-        """Toggle brake relay."""
-        try:
-            state = "on" if btn.isChecked() else "off"
-            self.api.relay_set(relay, state)
-        except Exception as e:
-            print(f"Relay error: {e}")
-
-    def _toggle_power(self, relay: str, btn: QPushButton):
-        """Toggle power relay (inverted logic)."""
-        try:
-            # Inverted: button checked = power ON = relay OFF
-            state = "off" if btn.isChecked() else "on"
-            self.api.relay_set(relay, state)
-        except Exception as e:
-            print(f"Power relay error: {e}")
+            pass  # Silently fail if logs endpoint not available
 
     def render(self, status: dict):
         """Update UI from status."""
         xy = status.get("xy_table", {})
         sensors = status.get("sensors", {})
-        relays = status.get("relays", {})
 
         # State
         state = xy.get("state", "DISCONNECTED")
         self.lblState.setText(state)
+
+        # Connection status
+        connected = xy.get("connected", False)
+        self.lblConnection.setText("Підключено" if connected else "Відключено")
 
         # Position
         x_homed = xy.get("x_homed", False)
@@ -2005,21 +1872,25 @@ class PlatformTab(QWidget):
         y_min = "TRIG" if endstops.get("y_min") else "open"
         self.lblEndstops.setText(f"X_MIN: {x_min}  Y_MIN: {y_min}")
 
-        # Update brake buttons
-        brake_x_on = relays.get("r02_brake_x") == "ON"
-        brake_y_on = relays.get("r03_brake_y") == "ON"
-        self.btnBrakeX.setChecked(brake_x_on)
-        self.btnBrakeX.setText("ON" if brake_x_on else "OFF")
-        self.btnBrakeY.setChecked(brake_y_on)
-        self.btnBrakeY.setText("ON" if brake_y_on else "OFF")
+        # Slave Raspberry Pi status
+        slave_connected = xy.get("connected", False)
+        self.lblSlaveStatus.setText("Онлайн" if slave_connected else "Офлайн")
 
-        # Update power buttons (inverted logic)
-        power_x_off = relays.get("r09_pwr_x") == "ON"  # relay ON = power OFF
-        power_y_off = relays.get("r10_pwr_y") == "ON"
-        self.btnPowerX.setChecked(not power_x_off)
-        self.btnPowerX.setText("ON" if not power_x_off else "OFF")
-        self.btnPowerY.setChecked(not power_y_off)
-        self.btnPowerY.setText("ON" if not power_y_off else "OFF")
+        last_error = xy.get("last_error", "")
+        self.lblSlaveError.setText(last_error if last_error else "Немає")
+
+        # Update last communication time
+        if slave_connected:
+            self.lblSlaveLastComm.setText("Зараз")
+        else:
+            self.lblSlaveLastComm.setText("-")
+
+        # Fetch logs periodically (every 2 seconds)
+        import time
+        current_time = time.time()
+        if current_time - self._last_log_fetch > 2:
+            self._last_log_fetch = current_time
+            self._fetch_logs()
 
 
 # ================== Main Window ==================
@@ -2449,6 +2320,18 @@ QProgressBar::chunk {{
 QLabel {{
     color: {COLORS['text']};
     font-size: 16px;
+}}
+
+/* Log text area */
+#logTextArea {{
+    background: {COLORS['bg_primary']};
+    color: {COLORS['text']};
+    border: 1px solid {COLORS['border']};
+    border-radius: 8px;
+    padding: 12px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    line-height: 1.4;
 }}
 
 /* Scrollbar */
