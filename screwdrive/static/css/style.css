@@ -199,8 +199,33 @@ body {
     gap: 16px;
 }
 
+.grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.grid-3 .card {
+    margin-bottom: 0;
+}
+
+.grid-3 .card h2 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+}
+
+@media (max-width: 1200px) {
+    .grid-3 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
 @media (max-width: 768px) {
     .grid-2 {
+        grid-template-columns: 1fr;
+    }
+    .grid-3 {
         grid-template-columns: 1fr;
     }
 }
@@ -713,6 +738,123 @@ body {
 .input-group label {
     font-size: 13px;
     color: var(--text-secondary);
+}
+
+/* Compact Move Form for 3-column grid */
+.move-form-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.move-form-compact .form-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.move-form-compact .input-group {
+    gap: 4px;
+}
+
+.move-form-compact .input-group label {
+    font-size: 11px;
+}
+
+.move-form-compact .input-number {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.move-form-compact .btn {
+    width: 100%;
+    padding: 10px;
+}
+
+/* Offset Form Compact */
+.offset-form-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.offset-form-compact .form-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.offset-form-compact .input-group {
+    gap: 4px;
+}
+
+.offset-form-compact .input-group label {
+    font-size: 11px;
+}
+
+.offset-form-compact .input-number {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.offset-form-compact .btn-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.offset-form-compact .btn {
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 12px;
+}
+
+/* Quick Actions Compact */
+.quick-actions-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.quick-actions-compact .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.quick-actions-compact .btn {
+    padding: 10px 8px;
+    font-size: 11px;
+}
+
+.quick-actions-compact .brake-controls-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.quick-actions-compact .brake-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.quick-actions-compact .brake-label {
+    font-size: 10px;
+    min-width: auto;
+}
+
+.quick-actions-compact .btn-brake {
+    min-width: auto;
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 11px;
 }
 
 /* Settings Layout */

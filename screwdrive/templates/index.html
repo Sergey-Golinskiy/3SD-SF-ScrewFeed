@@ -233,66 +233,80 @@
                     </div>
                 </div>
 
-                <div class="card">
-                    <h2>Move To Position</h2>
-                    <div class="move-form">
-                        <div class="input-group">
-                            <label>X:</label>
-                            <input type="number" id="moveX" class="input-number" value="0" step="0.1">
+                <!-- 3-column grid: Move To, Offset, Quick Actions -->
+                <div class="grid-3">
+                    <!-- Move To Position -->
+                    <div class="card">
+                        <h2>Move To Position</h2>
+                        <div class="move-form-compact">
+                            <div class="form-inputs">
+                                <div class="input-group">
+                                    <label>X (мм):</label>
+                                    <input type="number" id="moveX" class="input-number" value="0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <label>Y (мм):</label>
+                                    <input type="number" id="moveY" class="input-number" value="0" step="0.1">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Feed (мм/хв):</label>
+                                <input type="number" id="moveFeed" class="input-number" value="10000">
+                            </div>
+                            <button class="btn btn-primary" id="btnMoveTo">GO</button>
                         </div>
-                        <div class="input-group">
-                            <label>Y:</label>
-                            <input type="number" id="moveY" class="input-number" value="0" step="0.1">
-                        </div>
-                        <div class="input-group">
-                            <label>Feed:</label>
-                            <input type="number" id="moveFeed" class="input-number" value="10000">
-                        </div>
-                        <button class="btn btn-primary" id="btnMoveTo">GO</button>
                     </div>
-                </div>
 
-                <!-- Work Offset (G92-like) -->
-                <div class="card">
-                    <h2>Робочий офсет (центр каретки)</h2>
-                    <p class="card-hint">Офсет визначає "робочий нуль" відносно фізичного нуля. Всі координати девайсів відносні цього офсету.</p>
-                    <div class="move-form">
-                        <div class="input-group">
-                            <label>Офсет X:</label>
-                            <input type="number" id="offsetX" class="input-number" value="0" step="0.1">
-                            <span class="unit">мм</span>
+                    <!-- Work Offset (G92-like) -->
+                    <div class="card">
+                        <h2>Робочий офсет</h2>
+                        <div class="offset-form-compact">
+                            <div class="form-inputs">
+                                <div class="input-group">
+                                    <label>Офсет X:</label>
+                                    <input type="number" id="offsetX" class="input-number" value="0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <label>Офсет Y:</label>
+                                    <input type="number" id="offsetY" class="input-number" value="0" step="0.1">
+                                </div>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-primary" id="btnSaveOffset">Зберегти офсет</button>
+                                <button class="btn btn-secondary" id="btnSetCurrentAsOffset">Поточну → нуль</button>
+                            </div>
                         </div>
-                        <div class="input-group">
-                            <label>Офсет Y:</label>
-                            <input type="number" id="offsetY" class="input-number" value="0" step="0.1">
-                            <span class="unit">мм</span>
-                        </div>
-                        <button class="btn btn-primary" id="btnSaveOffset">Зберегти</button>
-                        <button class="btn btn-secondary" id="btnSetCurrentAsOffset">Поточну позицію як нуль</button>
                     </div>
-                </div>
 
-                <div class="card">
-                    <h2>Quick Actions</h2>
-                    <div class="control-row">
-                        <button class="btn btn-secondary" id="btnHomeX">Home X</button>
-                        <button class="btn btn-secondary" id="btnHomeY">Home Y</button>
-                        <button class="btn btn-secondary" id="btnZero">Go to Zero</button>
-                        <button class="btn btn-secondary" id="btnEnableMotors">Enable Motors</button>
-                        <button class="btn btn-secondary" id="btnDisableMotors">Disable Motors</button>
-                    </div>
-                    <div class="control-row brake-controls">
-                        <div class="brake-control">
-                            <span class="brake-label">Гальмо X:</span>
-                            <button class="btn btn-brake" id="btnBrakeX" data-brake="x">
-                                <span class="brake-status" id="brakeXStatus">--</span>
-                            </button>
-                        </div>
-                        <div class="brake-control">
-                            <span class="brake-label">Гальмо Y:</span>
-                            <button class="btn btn-brake" id="btnBrakeY" data-brake="y">
-                                <span class="brake-status" id="brakeYStatus">--</span>
-                            </button>
+                    <!-- Quick Actions -->
+                    <div class="card">
+                        <h2>Quick Actions</h2>
+                        <div class="quick-actions-compact">
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnHomeX">Home X</button>
+                                <button class="btn btn-secondary" id="btnHomeY">Home Y</button>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnZero">Go to Zero</button>
+                                <button class="btn btn-secondary" id="btnEnableMotors">Enable</button>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnDisableMotors">Disable</button>
+                            </div>
+                            <div class="brake-controls-compact">
+                                <div class="brake-item">
+                                    <span class="brake-label">Гальмо X</span>
+                                    <button class="btn btn-brake" id="btnBrakeX" data-brake="x">
+                                        <span class="brake-status" id="brakeXStatus">--</span>
+                                    </button>
+                                </div>
+                                <div class="brake-item">
+                                    <span class="brake-label">Гальмо Y</span>
+                                    <button class="btn btn-brake" id="btnBrakeY" data-brake="y">
+                                        <span class="brake-status" id="brakeYStatus">--</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
