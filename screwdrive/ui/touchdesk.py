@@ -195,55 +195,38 @@ class InitWorker(QThread):
         except Exception:
             pass  # Don't fail init if sync fails
 
-    def _check_and_reset_alarms(self) -> list:
+    def _check_driver_alarms_init(self) -> str:
         """
-        Check motor driver alarms and reset if needed.
-        Returns list of warning messages for operator.
+        Check if any motor driver alarm is active during initialization.
+        Returns alarm message if alarm is active, empty string if OK.
 
-        If alarm is active on X or Y axis:
-        - Pulse corresponding power relay for 700ms to reset driver
-        - Driver will restart when power is cycled
+        During initialization: if alarm detected, STOP and notify operator.
+        Operator must restart initialization after checking the machine.
         """
-        warnings = []
         try:
             sensors = self.api.sensors()
 
-            # Check X axis alarm (GPIO 2)
-            alarm_x = sensors.get("alarm_x")
-            if alarm_x == "ACTIVE":
-                self.progress.emit("⚠️ Аларм драйвера X! Скидання...", 3)
-                self._sync_progress("⚠️ Аларм драйвера X! Скидання...", 3)
-                # Pulse R09 (X driver power) for 700ms to reset
-                # Relay ON = power OFF, then OFF = power ON
-                self.api.relay_set("r09_pwr_x", "on")  # Power OFF
-                time.sleep(0.7)  # 700ms
-                self.api.relay_set("r09_pwr_x", "off")  # Power ON
-                time.sleep(0.5)  # Wait for driver to initialize
-                warnings.append("Драйвер X було скинуто через аларм")
+            # Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
+            if sensors.get("alarm_x") == "ACTIVE":
+                return "АВАРІЯ: Аларм драйвера осі X!"
 
-            # Check Y axis alarm (GPIO 3)
-            alarm_y = sensors.get("alarm_y")
-            if alarm_y == "ACTIVE":
-                self.progress.emit("⚠️ Аларм драйвера Y! Скидання...", 3)
-                self._sync_progress("⚠️ Аларм драйвера Y! Скидання...", 3)
-                # Pulse R10 (Y driver power) for 700ms to reset
-                self.api.relay_set("r10_pwr_y", "on")  # Power OFF
-                time.sleep(0.7)  # 700ms
-                self.api.relay_set("r10_pwr_y", "off")  # Power ON
-                time.sleep(0.5)  # Wait for driver to initialize
-                warnings.append("Драйвер Y було скинуто через аларм")
+            # Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
+            if sensors.get("alarm_y") == "ACTIVE":
+                return "АВАРІЯ: Аларм драйвера осі Y!"
 
         except Exception as e:
-            warnings.append(f"Не вдалося перевірити аларми: {e}")
+            print(f"WARNING: Failed to check driver alarms: {e}")
 
-        return warnings
+        return ""
 
     def run(self):
         try:
-            # Step 0: Check and reset motor driver alarms
+            # Step 0: Check motor driver alarms - STOP if any alarm active
             self.progress.emit("Перевірка алармів драйверів...", 2)
             self._sync_progress("Перевірка алармів драйверів...", 2)
-            alarm_warnings = self._check_and_reset_alarms()
+            alarm = self._check_driver_alarms_init()
+            if alarm:
+                raise Exception(f"{alarm}\n\nПерезапустіть ініціалізацію після перевірки машини.")
 
             # Step 0.1: Check E-STOP
             self.progress.emit("Перевірка аварійної кнопки...", 5)
@@ -403,14 +386,8 @@ class InitWorker(QThread):
             # Wait for move to complete
             time.sleep(0.5)
 
-            # Build final message with warnings if any
-            if alarm_warnings:
-                final_msg = "Ініціалізація завершена з попередженнями:\n" + "\n".join(alarm_warnings)
-            else:
-                final_msg = ""
-
             self.progress.emit("Ініціалізація завершена!", 100)
-            self.finished_ok.emit(final_msg)
+            self.finished_ok.emit("")  # No warnings - alarms now stop init
 
         except Exception as e:
             # Safety: turn off cylinder relay

@@ -595,45 +595,30 @@ async function waitForHoming(timeout = 10000) {
 }
 
 /**
- * Check and reset motor driver alarms.
- * If alarm is active on X or Y axis, pulse corresponding power relay for 700ms to reset.
- * @returns {Promise<string[]>} Array of warning messages (empty if no alarms)
+ * Check motor driver alarms during initialization.
+ * If alarm is active, throws an error to stop initialization.
+ * Operator must restart initialization after checking the machine.
+ * @returns {Promise<string>} Alarm message if active, empty string if OK
  */
-async function checkAndResetDriverAlarms() {
-    const warnings = [];
-
+async function checkDriverAlarmsForInit() {
     try {
         const sensors = await api.get('/sensors');
 
         // Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
         if (sensors.alarm_x === 'ACTIVE') {
-            updateInitStatus('⚠️ Аларм драйвера X! Скидання...', 3);
-            // Pulse R09 (X driver power) for 700ms to reset
-            // Relay ON = power OFF, wait 700ms, then OFF = power ON
-            await api.post('/relays/r09_pwr_x', { state: 'on' });  // Power OFF
-            await new Promise(resolve => setTimeout(resolve, 700));  // Wait 700ms
-            await api.post('/relays/r09_pwr_x', { state: 'off' }); // Power ON
-            await new Promise(resolve => setTimeout(resolve, 500));  // Wait for driver init
-            warnings.push('Драйвер X було скинуто через аларм');
+            return 'АВАРІЯ: Аларм драйвера осі X!';
         }
 
         // Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
         if (sensors.alarm_y === 'ACTIVE') {
-            updateInitStatus('⚠️ Аларм драйвера Y! Скидання...', 3);
-            // Pulse R10 (Y driver power) for 700ms to reset
-            await api.post('/relays/r10_pwr_y', { state: 'on' });  // Power OFF
-            await new Promise(resolve => setTimeout(resolve, 700));  // Wait 700ms
-            await api.post('/relays/r10_pwr_y', { state: 'off' }); // Power ON
-            await new Promise(resolve => setTimeout(resolve, 500));  // Wait for driver init
-            warnings.push('Драйвер Y було скинуто через аларм');
+            return 'АВАРІЯ: Аларм драйвера осі Y!';
         }
 
     } catch (e) {
         console.error('Failed to check driver alarms:', e);
-        warnings.push('Не вдалося перевірити аларми драйверів');
     }
 
-    return warnings;
+    return '';
 }
 
 /**
@@ -731,14 +716,14 @@ async function runInitialization() {
         syncUIStateToServer('INITIALIZING', msg, pct, msg);
     };
 
-    // Store alarm warnings to show at the end
-    let alarmWarnings = [];
-
     try {
-        // Step 0: Check and reset motor driver alarms
+        // Step 0: Check motor driver alarms - STOP if any alarm active
         updateInitStatus('Перевірка алармів драйверів...', 2);
         syncProgress('Перевірка алармів драйверів...', 2);
-        alarmWarnings = await checkAndResetDriverAlarms();
+        const initAlarm = await checkDriverAlarmsForInit();
+        if (initAlarm) {
+            throw new Error(initAlarm + '\n\nПерезапустіть ініціалізацію після перевірки машини.');
+        }
 
         // Step 0.1: Check E-STOP
         updateInitStatus('Перевірка аварійної кнопки...', 5);
@@ -870,15 +855,9 @@ async function runInitialization() {
         // Wait a bit for the move to start
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Success! Show warnings if any driver alarms were reset
-        if (alarmWarnings.length > 0) {
-            const warningMsg = 'Ініціалізація завершена з попередженнями:\n' + alarmWarnings.join('\n');
-            updateInitStatus(warningMsg, 100, 'success');
-            syncUIStateToServer('READY', warningMsg, 100, 'Ініціалізація завершена з попередженнями');
-        } else {
-            updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
-            syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
-        }
+        // Success! Alarms now stop init, so no warnings possible here
+        updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+        syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
         updateCycleStatusPanel('READY', deviceKey, 0, 0);
 
         // Enable START button
