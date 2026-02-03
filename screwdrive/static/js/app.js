@@ -594,6 +594,79 @@ async function waitForHoming(timeout = 10000) {
     return false;
 }
 
+/**
+ * Check and reset motor driver alarms.
+ * If alarm is active on X or Y axis, pulse corresponding power relay for 700ms to reset.
+ * @returns {Promise<string[]>} Array of warning messages (empty if no alarms)
+ */
+async function checkAndResetDriverAlarms() {
+    const warnings = [];
+
+    try {
+        const sensors = await api.get('/sensors');
+
+        // Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
+        if (sensors.alarm_x === 'ACTIVE') {
+            updateInitStatus('⚠️ Аларм драйвера X! Скидання...', 3);
+            // Pulse R09 (X driver power) for 700ms to reset
+            // Relay ON = power OFF, wait 700ms, then OFF = power ON
+            await api.post('/relays/r09_pwr_x', { state: 'on' });  // Power OFF
+            await new Promise(resolve => setTimeout(resolve, 700));  // Wait 700ms
+            await api.post('/relays/r09_pwr_x', { state: 'off' }); // Power ON
+            await new Promise(resolve => setTimeout(resolve, 500));  // Wait for driver init
+            warnings.push('Драйвер X було скинуто через аларм');
+        }
+
+        // Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
+        if (sensors.alarm_y === 'ACTIVE') {
+            updateInitStatus('⚠️ Аларм драйвера Y! Скидання...', 3);
+            // Pulse R10 (Y driver power) for 700ms to reset
+            await api.post('/relays/r10_pwr_y', { state: 'on' });  // Power OFF
+            await new Promise(resolve => setTimeout(resolve, 700));  // Wait 700ms
+            await api.post('/relays/r10_pwr_y', { state: 'off' }); // Power ON
+            await new Promise(resolve => setTimeout(resolve, 500));  // Wait for driver init
+            warnings.push('Драйвер Y було скинуто через аларм');
+        }
+
+    } catch (e) {
+        console.error('Failed to check driver alarms:', e);
+        warnings.push('Не вдалося перевірити аларми драйверів');
+    }
+
+    return warnings;
+}
+
+/**
+ * Check if any driver alarm is active during cycle.
+ * @returns {Promise<string>} Alarm message if active, empty string if OK
+ */
+async function checkDriverAlarmsDuringCycle() {
+    try {
+        const sensors = await api.get('/sensors');
+
+        if (sensors.alarm_x === 'ACTIVE') {
+            return 'АВАРІЯ: Аларм драйвера осі X!';
+        }
+        if (sensors.alarm_y === 'ACTIVE') {
+            return 'АВАРІЯ: Аларм драйвера осі Y!';
+        }
+    } catch (e) {
+        // If we can't check, continue operation
+    }
+    return '';
+}
+
+/**
+ * Emergency stop XY table - cancels all commands on Slave Pi.
+ */
+async function emergencyStopXY() {
+    try {
+        await api.post('/xy/estop', {});
+    } catch (e) {
+        console.error('Failed to emergency stop XY:', e);
+    }
+}
+
 async function runInitialization() {
     if (initializationInProgress) {
         alert('Ініціалізація вже виконується');
@@ -631,8 +704,16 @@ async function runInitialization() {
         syncUIStateToServer('INITIALIZING', msg, pct, msg);
     };
 
+    // Store alarm warnings to show at the end
+    let alarmWarnings = [];
+
     try {
-        // Step 0: Check E-STOP
+        // Step 0: Check and reset motor driver alarms
+        updateInitStatus('Перевірка алармів драйверів...', 2);
+        syncProgress('Перевірка алармів драйверів...', 2);
+        alarmWarnings = await checkAndResetDriverAlarms();
+
+        // Step 0.1: Check E-STOP
         updateInitStatus('Перевірка аварійної кнопки...', 5);
         syncProgress('Перевірка аварійної кнопки...', 5);
         const safety = await api.get('/sensors/safety');
@@ -640,7 +721,7 @@ async function runInitialization() {
             throw new Error('Аварійна кнопка натиснута! Відпустіть її перед ініціалізацією.');
         }
 
-        // Step 0.1: Check Slave Pi connection
+        // Step 0.2: Check Slave Pi connection
         updateInitStatus('Перевірка підключення XY столу...', 10);
         syncProgress('Перевірка підключення XY столу...', 10);
         const xyStatus = await api.get('/xy/status');
@@ -762,10 +843,16 @@ async function runInitialization() {
         // Wait a bit for the move to start
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Success!
-        updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+        // Success! Show warnings if any driver alarms were reset
+        if (alarmWarnings.length > 0) {
+            const warningMsg = 'Ініціалізація завершена з попередженнями:\n' + alarmWarnings.join('\n');
+            updateInitStatus(warningMsg, 100, 'success');
+            syncUIStateToServer('READY', warningMsg, 100, 'Ініціалізація завершена з попередженнями');
+        } else {
+            updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+            syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
+        }
         updateCycleStatusPanel('READY', deviceKey, 0, 0);
-        syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
 
         // Enable START button
         $('btnCycleStart').disabled = false;
@@ -826,9 +913,20 @@ async function checkAreaSensor() {
 }
 
 async function waitForSensorWithAreaCheck(sensorName, expectedState, timeout = 10000, pollInterval = 100) {
+    // Wait for sensor to reach expected state
+    // Also checks for driver alarms and area sensor during wait
     const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
-        // Check area sensor first
+        // Check for driver alarms during sensor wait
+        const alarm = await checkDriverAlarmsDuringCycle();
+        if (alarm) {
+            // Emergency stop XY table and turn off dangerous relays
+            await emergencyStopXY();
+            await safetyShutdown();
+            throw new Error('DRIVER_ALARM:' + alarm);
+        }
+
+        // Check area sensor
         if (!await checkAreaSensor()) {
             throw new Error('AREA_BLOCKED');
         }
@@ -844,8 +942,18 @@ async function waitForSensorWithAreaCheck(sensorName, expectedState, timeout = 1
 
 async function waitForMove(timeout = 30000) {
     // Wait for XY table to finish moving
+    // Also checks for driver alarms and area sensor during movement
     const startTime = Date.now();
     while (Date.now() - startTime < timeout) {
+        // Check for driver alarms during movement
+        const alarm = await checkDriverAlarmsDuringCycle();
+        if (alarm) {
+            // Emergency stop XY table and turn off dangerous relays
+            await emergencyStopXY();
+            await safetyShutdown();
+            throw new Error('DRIVER_ALARM:' + alarm);
+        }
+
         // Check area sensor
         if (!await checkAreaSensor()) {
             throw new Error('AREA_BLOCKED');
@@ -1010,6 +1118,13 @@ async function runCycle() {
             throw new Error('Аварійна кнопка натиснута!');
         }
 
+        // Check for driver alarms before starting cycle
+        // If alarm is active, stop immediately - device must be removed and machine reinitialized
+        const alarmBeforeStart = await checkDriverAlarmsDuringCycle();
+        if (alarmBeforeStart) {
+            throw new Error('DRIVER_ALARM:' + alarmBeforeStart + '\nВийміть деталь та виконайте переініціалізацію машини.');
+        }
+
         updateCycleStatus(`Цикл запущено. Винтів: 0 / ${totalHoles}`);
         updateCycleStatusPanel('RUNNING', deviceKey, 0, totalHoles);
         syncCycleProgress(`Цикл запущено. Винтів: 0 / ${totalHoles}`, 0);
@@ -1144,6 +1259,20 @@ async function runCycle() {
             updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
             syncUIStateToServer('PAUSED', 'Момент не досягнуто. Перевірте гвинт.', 0, 'Пауза');
             $('btnCycleStart').disabled = false;
+        } else if (error.message.startsWith('DRIVER_ALARM:')) {
+            // Motor driver alarm - critical error requiring device removal and reinit
+            const alarmMsg = error.message.replace('DRIVER_ALARM:', '');
+            const fullMsg = '🚨 АВАРІЯ ДРАЙВЕРА МОТОРА!\n' + alarmMsg +
+                '\n\nДії оператора:\n1. Вийміть деталь з робочої зони\n2. Перевірте стан машини\n3. Виконайте переініціалізацію';
+
+            updateCycleStatus(fullMsg, 'error');
+            updateCycleStatusPanel('DRIVER_ALARM', deviceKey, holesCompleted, totalHoles);
+            syncUIStateToServer('DRIVER_ALARM', alarmMsg, 0, 'Аварія драйвера');
+
+            // Do NOT re-enable buttons - machine requires reinit
+            // Keep START disabled, only Init should be available
+            $('btnInit').disabled = false;
+            $('btnCycleStart').disabled = true;
         } else {
             updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
             updateCycleStatusPanel('ERROR', deviceKey, holesCompleted, totalHoles);

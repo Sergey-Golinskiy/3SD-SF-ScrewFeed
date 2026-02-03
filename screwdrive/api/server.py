@@ -321,6 +321,81 @@ def create_app(
         app.relays.all_off()
         return jsonify({'status': 'ok'})
 
+    # === Motor Driver Alarm Reset ===
+
+    @app.route('/api/drivers/reset', methods=['POST'])
+    def reset_driver_alarms():
+        """
+        Reset motor driver alarms by power cycling the drivers.
+
+        If axis is specified ('x' or 'y'), reset only that axis.
+        If no axis specified, reset both.
+
+        Power cycle: turn relay ON (power OFF) for 700ms, then OFF (power ON).
+        """
+        if not app.relays:
+            return jsonify({'error': 'Relays not initialized'}), 503
+
+        data = request.get_json() or {}
+        axis = data.get('axis')  # 'x', 'y', or None for both
+        reset_results = []
+
+        import time
+
+        if axis in (None, 'x', 'X'):
+            # Reset X axis driver - R09_PWR_X
+            # Relay ON = power OFF, wait 700ms, Relay OFF = power ON
+            app.relays.on('r09_pwr_x')  # Power OFF
+            time.sleep(0.7)              # Wait 700ms
+            app.relays.off('r09_pwr_x') # Power ON
+            reset_results.append({'axis': 'x', 'status': 'reset', 'relay': 'r09_pwr_x'})
+
+        if axis in (None, 'y', 'Y'):
+            # Reset Y axis driver - R10_PWR_Y
+            app.relays.on('r10_pwr_y')  # Power OFF
+            time.sleep(0.7)              # Wait 700ms
+            app.relays.off('r10_pwr_y') # Power ON
+            reset_results.append({'axis': 'y', 'status': 'reset', 'relay': 'r10_pwr_y'})
+
+        # Wait for drivers to initialize
+        time.sleep(0.5)
+
+        return jsonify({
+            'status': 'ok',
+            'message': 'Driver alarms reset by power cycle',
+            'reset': reset_results
+        })
+
+    @app.route('/api/drivers/status', methods=['GET'])
+    def get_driver_status():
+        """
+        Get motor driver alarm status.
+
+        Returns:
+            alarm_x: True if X driver alarm is active
+            alarm_y: True if Y driver alarm is active
+            power_x: True if X driver has power (relay OFF)
+            power_y: True if Y driver has power (relay OFF)
+        """
+        result = {
+            'alarm_x': False,
+            'alarm_y': False,
+            'power_x': True,
+            'power_y': True
+        }
+
+        if app.sensors:
+            sensors_state = app.sensors.get_all_states()
+            result['alarm_x'] = sensors_state.get('alarm_x') == 'ACTIVE'
+            result['alarm_y'] = sensors_state.get('alarm_y') == 'ACTIVE'
+
+        if app.relays:
+            # Relay OFF = power ON (inverted logic)
+            result['power_x'] = app.relays.get_state('r09_pwr_x').name == 'OFF'
+            result['power_y'] = app.relays.get_state('r10_pwr_y').name == 'OFF'
+
+        return jsonify(result)
+
     # === Legacy API Compatibility (for old touchdesk.py) ===
 
     # Shared UI state (synchronized between Web UI and Desktop UI)

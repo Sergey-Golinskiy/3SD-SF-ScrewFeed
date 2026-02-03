@@ -171,7 +171,7 @@ def big_button(text: str, style: str = "primary") -> QPushButton:
 class InitWorker(QThread):
     """Worker thread for initialization sequence."""
     progress = pyqtSignal(str, int)  # message, progress percent
-    finished_ok = pyqtSignal()
+    finished_ok = pyqtSignal(str)  # warnings string (empty if none)
     finished_error = pyqtSignal(str)
 
     def __init__(self, api: ApiClient, device: dict):
@@ -195,9 +195,57 @@ class InitWorker(QThread):
         except Exception:
             pass  # Don't fail init if sync fails
 
+    def _check_and_reset_alarms(self) -> list:
+        """
+        Check motor driver alarms and reset if needed.
+        Returns list of warning messages for operator.
+
+        If alarm is active on X or Y axis:
+        - Pulse corresponding power relay for 700ms to reset driver
+        - Driver will restart when power is cycled
+        """
+        warnings = []
+        try:
+            sensors = self.api.sensors()
+
+            # Check X axis alarm (GPIO 2)
+            alarm_x = sensors.get("alarm_x")
+            if alarm_x == "ACTIVE":
+                self.progress.emit("⚠️ Аларм драйвера X! Скидання...", 3)
+                self._sync_progress("⚠️ Аларм драйвера X! Скидання...", 3)
+                # Pulse R09 (X driver power) for 700ms to reset
+                # Relay ON = power OFF, then OFF = power ON
+                self.api.relay_set("r09_pwr_x", "on")  # Power OFF
+                time.sleep(0.7)  # 700ms
+                self.api.relay_set("r09_pwr_x", "off")  # Power ON
+                time.sleep(0.5)  # Wait for driver to initialize
+                warnings.append("Драйвер X було скинуто через аларм")
+
+            # Check Y axis alarm (GPIO 3)
+            alarm_y = sensors.get("alarm_y")
+            if alarm_y == "ACTIVE":
+                self.progress.emit("⚠️ Аларм драйвера Y! Скидання...", 3)
+                self._sync_progress("⚠️ Аларм драйвера Y! Скидання...", 3)
+                # Pulse R10 (Y driver power) for 700ms to reset
+                self.api.relay_set("r10_pwr_y", "on")  # Power OFF
+                time.sleep(0.7)  # 700ms
+                self.api.relay_set("r10_pwr_y", "off")  # Power ON
+                time.sleep(0.5)  # Wait for driver to initialize
+                warnings.append("Драйвер Y було скинуто через аларм")
+
+        except Exception as e:
+            warnings.append(f"Не вдалося перевірити аларми: {e}")
+
+        return warnings
+
     def run(self):
         try:
-            # Step 0: Check E-STOP
+            # Step 0: Check and reset motor driver alarms
+            self.progress.emit("Перевірка алармів драйверів...", 2)
+            self._sync_progress("Перевірка алармів драйверів...", 2)
+            alarm_warnings = self._check_and_reset_alarms()
+
+            # Step 0.1: Check E-STOP
             self.progress.emit("Перевірка аварійної кнопки...", 5)
             self._sync_progress("Перевірка аварійної кнопки...", 5)
             safety = self.api.sensors_safety()
@@ -207,7 +255,7 @@ class InitWorker(QThread):
             if self._abort:
                 return
 
-            # Step 0.1: Check XY connection
+            # Step 0.2: Check XY connection
             self.progress.emit("Перевірка підключення XY столу...", 10)
             self._sync_progress("Перевірка підключення XY столу...", 10)
             xy_status = self.api.xy_status()
@@ -355,8 +403,14 @@ class InitWorker(QThread):
             # Wait for move to complete
             time.sleep(0.5)
 
+            # Build final message with warnings if any
+            if alarm_warnings:
+                final_msg = "Ініціалізація завершена з попередженнями:\n" + "\n".join(alarm_warnings)
+            else:
+                final_msg = ""
+
             self.progress.emit("Ініціалізація завершена!", 100)
-            self.finished_ok.emit()
+            self.finished_ok.emit(final_msg)
 
         except Exception as e:
             # Safety: turn off cylinder relay
@@ -374,6 +428,9 @@ class CycleWorker(QThread):
     finished_ok = pyqtSignal(int)  # holes_completed
     finished_error = pyqtSignal(str)
 
+    # Special error for driver alarm - requires device removal and reinit
+    DRIVER_ALARM_ERROR = "DRIVER_ALARM"
+
     def __init__(self, api: ApiClient, device: dict):
         super().__init__()
         self.api = api
@@ -382,6 +439,57 @@ class CycleWorker(QThread):
 
     def abort(self):
         self._abort = True
+
+    def _check_driver_alarms(self) -> str:
+        """
+        Check if any motor driver alarm is active.
+        Returns alarm message if alarm is active, empty string if OK.
+
+        Called during cycle execution to detect driver failures.
+        """
+        try:
+            sensors = self.api.sensors()
+
+            # Check X axis alarm (GPIO 2)
+            if sensors.get("alarm_x") == "ACTIVE":
+                return "АВАРІЯ: Аларм драйвера осі X!"
+
+            # Check Y axis alarm (GPIO 3)
+            if sensors.get("alarm_y") == "ACTIVE":
+                return "АВАРІЯ: Аларм драйвера осі Y!"
+
+        except Exception:
+            pass  # If we can't check, continue operation
+
+        return ""
+
+    def _emergency_stop_xy(self):
+        """
+        Emergency stop for XY table.
+        Cancels all commands on Raspberry Pi Slave.
+        """
+        try:
+            # Send E-STOP to XY table (Slave Pi)
+            self.api._post("/api/xy/estop", {})
+        except Exception:
+            pass
+
+    def _full_emergency_shutdown(self, alarm_msg: str):
+        """
+        Full emergency shutdown when driver alarm detected.
+
+        1. Stop XY table (cancel all commands on Slave Pi)
+        2. Turn off all dangerous relays
+        3. Set error state
+        """
+        # 1. Stop XY table immediately
+        self._emergency_stop_xy()
+
+        # 2. Safety shutdown - turn off dangerous relays
+        self._safety_shutdown()
+
+        # 3. Notify about alarm
+        self._sync_progress(alarm_msg, 0, 0)
 
     def _sync_progress(self, message: str, holes: int, total: int):
         """Sync progress to server."""
@@ -399,11 +507,21 @@ class CycleWorker(QThread):
             pass
 
     def _wait_for_move(self, timeout: float = 30.0) -> bool:
-        """Wait for XY table to finish moving."""
+        """
+        Wait for XY table to finish moving.
+        Also checks for driver alarms during movement.
+        """
         start = time.time()
         while time.time() - start < timeout:
             if self._abort:
                 return False
+
+            # Check for driver alarms during movement
+            alarm = self._check_driver_alarms()
+            if alarm:
+                self._full_emergency_shutdown(alarm)
+                raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}")
+
             try:
                 status = self.api.xy_status()
                 state = (status.get("state") or "").lower()
@@ -418,11 +536,21 @@ class CycleWorker(QThread):
         return False
 
     def _wait_for_sensor(self, sensor: str, expected: str, timeout: float = 10.0) -> bool:
-        """Wait for sensor to reach expected state."""
+        """
+        Wait for sensor to reach expected state.
+        Also checks for driver alarms while waiting.
+        """
         start = time.time()
         while time.time() - start < timeout:
             if self._abort:
                 return False
+
+            # Check for driver alarms while waiting
+            alarm = self._check_driver_alarms()
+            if alarm:
+                self._full_emergency_shutdown(alarm)
+                raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}")
+
             try:
                 resp = self.api.sensor(sensor)
                 if resp.get("state") == expected:
@@ -508,6 +636,13 @@ class CycleWorker(QThread):
             if safety.get("estop_pressed"):
                 raise Exception("Аварійна кнопка натиснута!")
 
+            # Check for driver alarms before starting cycle
+            # If alarm is active, stop immediately - device must be removed and machine reinitialized
+            alarm = self._check_driver_alarms()
+            if alarm:
+                raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}\n"
+                               "Вийміть деталь та виконайте переініціалізацію машини.")
+
             self.progress.emit(f"Цикл запущено. Винтів: 0 / {total_holes}", 0, total_holes, 0)
             self._sync_progress(f"Цикл запущено. Винтів: 0 / {total_holes}", 0, total_holes)
 
@@ -569,8 +704,24 @@ class CycleWorker(QThread):
             self.finished_ok.emit(holes_completed)
 
         except Exception as e:
-            self._safety_shutdown()
-            self.finished_error.emit(str(e))
+            error_str = str(e)
+
+            # Special handling for driver alarm errors
+            if self.DRIVER_ALARM_ERROR in error_str:
+                # Full emergency shutdown already done in _check_driver_alarms
+                # Add instruction for operator
+                error_msg = (
+                    "🚨 АВАРІЯ ДРАЙВЕРА МОТОРА!\n"
+                    f"{error_str.split(':', 1)[-1] if ':' in error_str else error_str}\n\n"
+                    "Дії оператора:\n"
+                    "1. Вийміть деталь з робочої зони\n"
+                    "2. Перевірте стан машини\n"
+                    "3. Виконайте переініціалізацію"
+                )
+                self.finished_error.emit(error_msg)
+            else:
+                self._safety_shutdown()
+                self.finished_error.emit(error_str)
 
 
 # ================== Control Tab ==================
@@ -825,12 +976,18 @@ class ControlTab(QWidget):
         self.lblMessage.setText(message)
         self.progressBar.setValue(progress)
 
-    def _on_init_success(self):
+    def _on_init_success(self, warnings: str):
         """Called when initialization completes successfully."""
         self._initialized = True
         self._cycle_state = "READY"
         self.lblState.setText("READY")
-        self.lblMessage.setText("Ініціалізація завершена. Натисніть START для запуску циклу.")
+
+        # Show warnings if any driver alarms were reset
+        if warnings:
+            self.lblMessage.setText(warnings)
+        else:
+            self.lblMessage.setText("Ініціалізація завершена. Натисніть START для запуску циклу.")
+
         self.progressBar.setValue(100)
         self.btnInit.setEnabled(True)
         self.btnStart.setEnabled(True)
