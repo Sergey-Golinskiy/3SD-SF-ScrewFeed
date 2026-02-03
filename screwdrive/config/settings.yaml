@@ -32,6 +32,16 @@ work_position:
   feed_mm_min: 10000.0
 
 # =========================
+# Work Offset (G92-like)
+# =========================
+# These offsets define the "work zero" position relative to physical zero (home position).
+# After homing, the machine moves to this offset position which becomes the new (0,0).
+# All device coordinates are then relative to this work zero.
+work_offset:
+  x_mm: 0.0
+  y_mm: 0.0
+
+# =========================
 # Timing Parameters
 # =========================
 timing:

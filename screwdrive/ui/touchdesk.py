@@ -142,6 +142,20 @@ class ApiClient:
     def cycle_clear_estop(self):
         return self._post("cycle/clear_estop")
 
+    # Work Offsets (G92-like)
+    def get_offsets(self):
+        """Get current work offsets."""
+        return self._get("offsets")
+
+    def set_offsets(self, x: float = None, y: float = None):
+        """Set work offsets."""
+        data = {}
+        if x is not None:
+            data["x"] = x
+        if y is not None:
+            data["y"] = y
+        return self._post("offsets", data)
+
     # UI State Sync
     def get_ui_state(self):
         return self._get("ui/state")
@@ -479,7 +493,16 @@ class InitWorker(QThread):
                     self.progress.emit(f"Аларм перед рухом, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
                     continue
 
-                # Step 7: Move to work position
+                # Load work offsets (G92-like)
+                try:
+                    offsets = self.api.get_offsets()
+                    offset_x = offsets.get("x", 0.0)
+                    offset_y = offsets.get("y", 0.0)
+                except Exception:
+                    offset_x = 0.0
+                    offset_y = 0.0
+
+                # Step 7: Move to work position (with offset applied)
                 self.progress.emit("Виїзд до оператора...", 85)
                 self._sync_progress("Виїзд до оператора...", 85)
                 work_x = self.device.get("work_x")
@@ -489,7 +512,11 @@ class InitWorker(QThread):
                 if work_x is None or work_y is None:
                     raise Exception("Робоча позиція не задана для цього девайсу")
 
-                move_resp = self.api.xy_move(work_x, work_y, work_feed)
+                # Apply offset: device coords are relative to work zero, add offset to get physical coords
+                physical_x = work_x + offset_x
+                physical_y = work_y + offset_y
+
+                move_resp = self.api.xy_move(physical_x, physical_y, work_feed)
                 if move_resp.get("status") != "ok":
                     # Check if alarm caused the failure
                     if self._check_and_reset_alarms():
@@ -782,6 +809,15 @@ class CycleWorker(QThread):
             total_holes = len(work_steps)
             holes_completed = 0
 
+            # Load work offsets (G92-like) - device coordinates are relative to work zero
+            try:
+                offsets = self.api.get_offsets()
+                offset_x = offsets.get("x", 0.0)
+                offset_y = offsets.get("y", 0.0)
+            except Exception:
+                offset_x = 0.0
+                offset_y = 0.0
+
             # Check E-STOP before starting
             safety = self.api.sensors_safety()
             if safety.get("estop_pressed"):
@@ -810,6 +846,10 @@ class CycleWorker(QThread):
                 step_y = float(step.get("y", 0))
                 step_feed = float(step.get("feed", 5000))
 
+                # Apply offset: device coords are relative to work zero
+                physical_x = step_x + offset_x
+                physical_y = step_y + offset_y
+
                 if step_type == "free":
                     # Free movement - just move
                     self.progress.emit(f"Переміщення X:{step_x:.1f} Y:{step_y:.1f}", holes_completed, total_holes,
@@ -818,7 +858,7 @@ class CycleWorker(QThread):
                     # Check alarm before sending move command
                     self._check_alarm_and_raise()
 
-                    resp = self.api.xy_move(step_x, step_y, step_feed)
+                    resp = self.api.xy_move(physical_x, physical_y, step_feed)
                     if resp.get("status") != "ok":
                         raise Exception("Помилка переміщення")
 
@@ -835,8 +875,8 @@ class CycleWorker(QThread):
                     # Check alarm before move
                     self._check_alarm_and_raise()
 
-                    # Move to position
-                    resp = self.api.xy_move(step_x, step_y, step_feed)
+                    # Move to position (with offset)
+                    resp = self.api.xy_move(physical_x, physical_y, step_feed)
                     if resp.get("status") != "ok":
                         raise Exception("Помилка переміщення")
 

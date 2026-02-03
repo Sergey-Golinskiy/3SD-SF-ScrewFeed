@@ -502,6 +502,55 @@ def create_app(
             'selected': app.selected_device
         })
 
+    # === Work Offset API (G92-like) ===
+
+    @app.route('/api/offsets', methods=['GET'])
+    def get_offsets():
+        """Get current work offsets."""
+        offsets = _load_offsets()
+        return jsonify(offsets)
+
+    @app.route('/api/offsets', methods=['POST'])
+    def set_offsets():
+        """Set work offsets."""
+        data = request.get_json() or {}
+        x = data.get('x')
+        y = data.get('y')
+
+        if x is None and y is None:
+            return jsonify({'error': 'x or y required'}), 400
+
+        try:
+            offsets = _load_offsets()
+            if x is not None:
+                offsets['x'] = float(x)
+            if y is not None:
+                offsets['y'] = float(y)
+            _save_offsets(offsets)
+            return jsonify({'success': True, 'offsets': offsets})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/offsets/set-current', methods=['POST'])
+    def set_current_position_as_offset():
+        """Set current XY position as work offset (like G92)."""
+        if not app.xy_table:
+            return jsonify({'error': 'XY table not initialized'}), 503
+
+        try:
+            # Get current physical position
+            x = app.xy_table.x
+            y = app.xy_table.y
+
+            if x is None or y is None:
+                return jsonify({'error': 'Position unknown - home first'}), 400
+
+            offsets = {'x': float(x), 'y': float(y)}
+            _save_offsets(offsets)
+            return jsonify({'success': True, 'offsets': offsets})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     @app.route('/api/select', methods=['POST'])
     def select_device():
         """Legacy: Select a device."""
@@ -1100,6 +1149,55 @@ def create_app(
         return jsonify({'success': True, 'deleted': key})
 
     return app
+
+
+def _load_offsets() -> dict:
+    """Load work offsets from settings.yaml."""
+    settings_path = Path(__file__).parent.parent / 'config' / 'settings.yaml'
+
+    try:
+        if settings_path.exists():
+            with open(settings_path, 'r') as f:
+                data = yaml.safe_load(f) or {}
+            work_offset = data.get('work_offset', {})
+            return {
+                'x': float(work_offset.get('x_mm', 0.0)),
+                'y': float(work_offset.get('y_mm', 0.0))
+            }
+    except Exception as e:
+        print(f"WARNING: Failed to load offsets: {e}")
+
+    return {'x': 0.0, 'y': 0.0}
+
+
+def _save_offsets(offsets: dict) -> None:
+    """Save work offsets to settings.yaml."""
+    settings_path = Path(__file__).parent.parent / 'config' / 'settings.yaml'
+
+    try:
+        # Load existing settings
+        if settings_path.exists():
+            with open(settings_path, 'r') as f:
+                data = yaml.safe_load(f) or {}
+        else:
+            data = {}
+
+        # Update work_offset section
+        if 'work_offset' not in data:
+            data['work_offset'] = {}
+
+        data['work_offset']['x_mm'] = float(offsets.get('x', 0.0))
+        data['work_offset']['y_mm'] = float(offsets.get('y', 0.0))
+
+        # Save back to file
+        with open(settings_path, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+        print(f"Work offsets saved: X={offsets.get('x', 0)}, Y={offsets.get('y', 0)}")
+
+    except Exception as e:
+        print(f"ERROR: Failed to save offsets: {e}")
+        raise
 
 
 def _save_devices(app: Flask) -> None:

@@ -927,7 +927,17 @@ async function runInitialization() {
                 continue;
             }
 
-            // Step 6: Move to work position
+            // Load work offsets (G92-like)
+            let offsetX = 0, offsetY = 0;
+            try {
+                const offsets = await api.get('/offsets');
+                offsetX = offsets.x || 0;
+                offsetY = offsets.y || 0;
+            } catch (e) {
+                console.warn('Failed to load offsets, using 0,0');
+            }
+
+            // Step 6: Move to work position (with offset applied)
             updateInitStatus('Виїзд до оператора...', 85);
             syncProgress('Виїзд до оператора...', 85);
 
@@ -939,7 +949,11 @@ async function runInitialization() {
                 throw new Error('Робоча позиція не задана для цього девайсу. Вкажіть Робоча X та Робоча Y в налаштуваннях.');
             }
 
-            const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
+            // Apply offset: device coords are relative to work zero, add offset to get physical coords
+            const physicalX = workX + offsetX;
+            const physicalY = workY + offsetY;
+
+            const moveResponse = await api.post('/xy/move', { x: physicalX, y: physicalY, feed: workFeed });
             if (moveResponse.status !== 'ok') {
                 // Check if alarm caused the failure
                 if (await checkAndResetAlarms()) {
@@ -1270,6 +1284,17 @@ async function runCycle() {
             throw new Error('DRIVER_ALARM:' + alarmBeforeStart + '\nВийміть деталь та виконайте переініціалізацію машини.');
         }
 
+        // Load work offsets (G92-like) - device coordinates are relative to work zero
+        let cycleOffsetX = 0, cycleOffsetY = 0;
+        try {
+            const offsets = await api.get('/offsets');
+            cycleOffsetX = offsets.x || 0;
+            cycleOffsetY = offsets.y || 0;
+            console.log('Cycle offsets loaded:', cycleOffsetX, cycleOffsetY);
+        } catch (e) {
+            console.warn('Failed to load offsets for cycle, using 0,0');
+        }
+
         updateCycleStatus(`Цикл запущено. Винтів: 0 / ${totalHoles}`);
         updateCycleStatusPanel('RUNNING', deviceKey, 0, totalHoles);
         syncCycleProgress(`Цикл запущено. Винтів: 0 / ${totalHoles}`, 0);
@@ -1292,17 +1317,21 @@ async function runCycle() {
             const stepY = parseFloat(step.y);
             const stepFeed = parseFloat(step.feed) || 5000;
 
-            console.log(`Step ${stepNum}: type=${stepType}, x=${stepX}, y=${stepY}, feed=${stepFeed}, raw=`, step);
+            // Apply offset: device coords are relative to work zero, add offset to get physical coords
+            const physicalX = stepX + cycleOffsetX;
+            const physicalY = stepY + cycleOffsetY;
 
-            // Validate coordinates are within machine limits
+            console.log(`Step ${stepNum}: type=${stepType}, x=${stepX}, y=${stepY}, physical=(${physicalX}, ${physicalY}), feed=${stepFeed}`);
+
+            // Validate coordinates are within machine limits (check physical coords)
             if (isNaN(stepX) || isNaN(stepY)) {
                 throw new Error(`Крок ${stepNum}: некоректні координати (X=${step.x}, Y=${step.y})`);
             }
-            if (stepX < 0 || stepX > 220) {
-                throw new Error(`Крок ${stepNum}: X=${stepX} за межами (0-220 мм)`);
+            if (physicalX < 0 || physicalX > 220) {
+                throw new Error(`Крок ${stepNum}: X=${physicalX} (з офсетом) за межами (0-220 мм)`);
             }
-            if (stepY < 0 || stepY > 500) {
-                throw new Error(`Крок ${stepNum}: Y=${stepY} за межами (0-500 мм)`);
+            if (physicalY < 0 || physicalY > 500) {
+                throw new Error(`Крок ${stepNum}: Y=${physicalY} (з офсетом) за межами (0-500 мм)`);
             }
 
             if (stepType === 'free') {
@@ -1312,7 +1341,7 @@ async function runCycle() {
                 // Check alarm before sending move command
                 await checkAlarmAndThrow();
 
-                const moveResp = await api.post('/xy/move', { x: stepX, y: stepY, feed: stepFeed });
+                const moveResp = await api.post('/xy/move', { x: physicalX, y: physicalY, feed: stepFeed });
                 if (moveResp.status !== 'ok') {
                     throw new Error('Помилка переміщення');
                 }
@@ -1340,8 +1369,8 @@ async function runCycle() {
 
                 updateCycleStatus(`Крок ${stepNum}: Закручування X:${stepX} Y:${stepY} (${holesCompleted + 1}/${totalHoles})`);
 
-                // Move to position (use parsed values)
-                const moveResp = await api.post('/xy/move', { x: stepX, y: stepY, feed: stepFeed });
+                // Move to position (with offset applied)
+                const moveResp = await api.post('/xy/move', { x: physicalX, y: physicalY, feed: stepFeed });
                 if (moveResp.status !== 'ok') {
                     throw new Error('Помилка переміщення');
                 }
@@ -1729,6 +1758,77 @@ function initXYTab() {
     // Brake control buttons
     $('btnBrakeX').addEventListener('click', toggleBrakeX);
     $('btnBrakeY').addEventListener('click', toggleBrakeY);
+
+    // Work Offset controls
+    $('btnSaveOffset').addEventListener('click', saveWorkOffset);
+    $('btnSetCurrentAsOffset').addEventListener('click', setCurrentPositionAsOffset);
+
+    // Load offsets on startup
+    loadWorkOffsets();
+}
+
+// ========== WORK OFFSET FUNCTIONS ==========
+
+// Global variable to store current offsets
+let workOffsets = { x: 0, y: 0 };
+
+/**
+ * Load work offsets from server and populate input fields.
+ */
+async function loadWorkOffsets() {
+    try {
+        const offsets = await api.get('/offsets');
+        workOffsets.x = offsets.x || 0;
+        workOffsets.y = offsets.y || 0;
+
+        // Update input fields
+        $('offsetX').value = workOffsets.x;
+        $('offsetY').value = workOffsets.y;
+
+        console.log('Work offsets loaded:', workOffsets);
+    } catch (error) {
+        console.error('Failed to load work offsets:', error);
+    }
+}
+
+/**
+ * Save work offsets to server.
+ */
+async function saveWorkOffset() {
+    const x = parseFloat($('offsetX').value) || 0;
+    const y = parseFloat($('offsetY').value) || 0;
+
+    try {
+        await api.post('/offsets', { x, y });
+        workOffsets.x = x;
+        workOffsets.y = y;
+        alert(`Офсет збережено: X=${x}, Y=${y}`);
+    } catch (error) {
+        console.error('Failed to save work offset:', error);
+        alert('Помилка збереження офсету: ' + error.message);
+    }
+}
+
+/**
+ * Set current XY position as work offset.
+ */
+async function setCurrentPositionAsOffset() {
+    try {
+        const result = await api.post('/offsets/set-current');
+        if (result.success && result.offsets) {
+            workOffsets.x = result.offsets.x;
+            workOffsets.y = result.offsets.y;
+
+            // Update input fields
+            $('offsetX').value = workOffsets.x;
+            $('offsetY').value = workOffsets.y;
+
+            alert(`Поточну позицію встановлено як офсет: X=${workOffsets.x}, Y=${workOffsets.y}`);
+        }
+    } catch (error) {
+        console.error('Failed to set current position as offset:', error);
+        alert('Помилка: ' + error.message);
+    }
 }
 
 // Brake toggle functions

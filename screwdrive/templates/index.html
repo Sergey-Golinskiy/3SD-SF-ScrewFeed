@@ -247,6 +247,26 @@
                     </div>
                 </div>
 
+                <!-- Work Offset (G92-like) -->
+                <div class="card">
+                    <h2>Робочий офсет (центр каретки)</h2>
+                    <p class="card-hint">Офсет визначає "робочий нуль" відносно фізичного нуля. Всі координати девайсів відносні цього офсету.</p>
+                    <div class="move-form">
+                        <div class="input-group">
+                            <label>Офсет X:</label>
+                            <input type="number" id="offsetX" class="input-number" value="0" step="0.1">
+                            <span class="unit">мм</span>
+                        </div>
+                        <div class="input-group">
+                            <label>Офсет Y:</label>
+                            <input type="number" id="offsetY" class="input-number" value="0" step="0.1">
+                            <span class="unit">мм</span>
+                        </div>
+                        <button class="btn btn-primary" id="btnSaveOffset">Зберегти</button>
+                        <button class="btn btn-secondary" id="btnSetCurrentAsOffset">Поточну позицію як нуль</button>
+                    </div>
+                </div>
+
                 <div class="card">
                     <h2>Quick Actions</h2>
                     <div class="control-row">
