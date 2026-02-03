@@ -1705,9 +1705,7 @@ function initXYTab() {
     $$('[data-jog]').forEach(btn => {
         btn.addEventListener('click', () => {
             const dir = btn.dataset.jog;
-            const stepValue = $('jogStep').value;
-            // Free Run mode uses large step (500mm) for continuous movement
-            const step = stepValue === 'free' ? 500 : parseFloat(stepValue);
+            const step = parseFloat($('jogStep').value);
             const feed = parseFloat($('jogFeed').value);
 
             let dx = 0, dy = 0;
@@ -2347,9 +2345,7 @@ function initSettingsTab() {
     $$('[data-jog-settings]').forEach(btn => {
         btn.addEventListener('click', () => {
             const dir = btn.dataset.jogSettings;
-            const stepValue = $('jogStepSettings').value;
-            // Free Run mode uses large step (500mm) for continuous movement
-            const step = stepValue === 'free' ? 500 : parseFloat(stepValue);
+            const step = parseFloat($('jogStepSettings').value);
             const feed = parseFloat($('jogFeedSettings').value);
 
             let dx = 0, dy = 0;
