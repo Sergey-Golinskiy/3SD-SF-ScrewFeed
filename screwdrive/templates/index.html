@@ -38,22 +38,22 @@
                 <div class="grid-2">
                     <!-- Cycle Status -->
                     <div class="card">
-                        <h2>Cycle Status</h2>
+                        <h2>Стан циклу</h2>
                         <div class="status-grid">
                             <div class="status-item">
-                                <span class="label">State</span>
+                                <span class="label">Стан</span>
                                 <span class="value" id="cycleState">-</span>
                             </div>
                             <div class="status-item">
-                                <span class="label">Device</span>
+                                <span class="label">Девайс</span>
                                 <span class="value" id="currentDevice">-</span>
                             </div>
                             <div class="status-item">
-                                <span class="label">Progress</span>
+                                <span class="label">Прогрес</span>
                                 <span class="value" id="cycleProgress">0 / 0</span>
                             </div>
                             <div class="status-item">
-                                <span class="label">Cycles</span>
+                                <span class="label">Цикли</span>
                                 <span class="value" id="cycleCount">0</span>
                             </div>
                         </div>
@@ -61,31 +61,31 @@
 
                     <!-- XY Table Status -->
                     <div class="card">
-                        <h2>XY Table</h2>
+                        <h2>XY Стіл</h2>
                         <div class="status-grid">
                             <div class="status-item">
-                                <span class="label">Status</span>
+                                <span class="label">Стан</span>
                                 <span class="value" id="xyState">-</span>
                             </div>
                             <div class="status-item">
-                                <span class="label">Position</span>
+                                <span class="label">Позиція</span>
                                 <span class="value" id="xyPosition">X: 0.00 Y: 0.00</span>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Sensors -->
+                <!-- Датчики -->
                 <div class="card">
-                    <h2>Sensors</h2>
+                    <h2>Датчики</h2>
                     <div class="sensor-grid" id="sensorGrid">
                         <!-- Populated by JS -->
                     </div>
                 </div>
 
-                <!-- Relays -->
+                <!-- Реле -->
                 <div class="card">
-                    <h2>Relays</h2>
+                    <h2>Стан реле</h2>
                     <div class="relay-grid" id="relayGrid">
                         <!-- Populated by JS -->
                     </div>
@@ -95,15 +95,15 @@
             <!-- Control Tab -->
             <section id="control" class="tab-panel">
                 <div class="card">
-                    <h2>Cycle Control</h2>
+                    <h2>Керування циклом</h2>
                     <div class="control-row">
                         <select id="deviceSelect" class="input-select">
-                            <option value="">-- Select Device --</option>
+                            <option value="">-- Виберіть девайс --</option>
                         </select>
                         <button class="btn btn-info" id="btnInit">ІНІЦІАЛІЗАЦІЯ</button>
-                        <button class="btn btn-primary" id="btnCycleStart" disabled>START</button>
-                        <button class="btn btn-danger" id="btnCycleStop">STOP</button>
-                        <button class="btn btn-warning" id="btnCyclePause">PAUSE</button>
+                        <button class="btn btn-primary" id="btnCycleStart" disabled>СТАРТ</button>
+                        <button class="btn btn-danger" id="btnCycleStop">СТОП</button>
+                        <button class="btn btn-warning" id="btnCyclePause">ПАУЗА</button>
                     </div>
                 </div>
 
@@ -117,15 +117,15 @@
                 </div>
 
                 <div class="card">
-                    <h2>Emergency</h2>
+                    <h2>Аварійне керування</h2>
                     <div class="control-row">
-                        <button class="btn btn-danger btn-large" id="btnEstop">E-STOP</button>
-                        <button class="btn btn-secondary" id="btnClearEstop">Clear E-STOP</button>
+                        <button class="btn btn-danger btn-large" id="btnEstop">АВАРІЯ</button>
+                        <button class="btn btn-secondary" id="btnClearEstop">Скинути аварію</button>
                     </div>
                 </div>
 
                 <div class="card">
-                    <h2>Relay Manual Control</h2>
+                    <h2>Ручне керування реле</h2>
                     <div class="relay-control-grid" id="relayControlGrid">
                         <!-- Populated by JS -->
                     </div>
@@ -199,7 +199,7 @@
                     </div>
 
                     <div class="card">
-                        <h2>Jog Control</h2>
+                        <h2>Крокове переміщення</h2>
                         <div class="jog-grid">
                             <div></div>
                             <button class="btn btn-jog btn-jog-y" data-jog="y-">Y-</button>
@@ -212,22 +212,22 @@
                             <div></div>
                         </div>
                         <div class="jog-step">
-                            <label>Step:</label>
+                            <label>Крок:</label>
                             <select id="jogStep" class="input-select">
-                                <option value="0.1">0.1 mm</option>
-                                <option value="0.5">0.5 mm</option>
-                                <option value="1">1 mm</option>
-                                <option value="5">5 mm</option>
-                                <option value="10" selected>10 mm</option>
-                                <option value="50">50 mm</option>
-                                <option value="100">100 mm</option>
+                                <option value="0.1">0.1 мм</option>
+                                <option value="0.5">0.5 мм</option>
+                                <option value="1">1 мм</option>
+                                <option value="5">5 мм</option>
+                                <option value="10" selected>10 мм</option>
+                                <option value="50">50 мм</option>
+                                <option value="100">100 мм</option>
                             </select>
-                            <label>Feed:</label>
+                            <label>Швидкість:</label>
                             <select id="jogFeed" class="input-select">
-                                <option value="1000">1000 mm/min</option>
-                                <option value="3000">3000 mm/min</option>
-                                <option value="5000" selected>5000 mm/min</option>
-                                <option value="10000">10000 mm/min</option>
+                                <option value="1000">1000 мм/хв</option>
+                                <option value="3000">3000 мм/хв</option>
+                                <option value="5000" selected>5000 мм/хв</option>
+                                <option value="10000">10000 мм/хв</option>
                             </select>
                         </div>
                     </div>
@@ -237,7 +237,7 @@
                 <div class="grid-3">
                     <!-- Move To Position -->
                     <div class="card">
-                        <h2>Move To Position</h2>
+                        <h2>Перейти до позиції</h2>
                         <div class="move-form-compact">
                             <div class="input-group">
                                 <label>Координати:</label>
@@ -257,10 +257,10 @@
                                 </div>
                             </div>
                             <div class="input-group">
-                                <label>Feed (мм/хв):</label>
+                                <label>Швидкість (мм/хв):</label>
                                 <input type="number" id="moveFeed" class="input-number" value="10000">
                             </div>
-                            <button class="btn btn-primary" id="btnMoveTo">GO</button>
+                            <button class="btn btn-primary" id="btnMoveTo">ЇХАТИ</button>
                         </div>
                     </div>
 
@@ -287,18 +287,18 @@
 
                     <!-- Quick Actions -->
                     <div class="card">
-                        <h2>Quick Actions</h2>
+                        <h2>Швидкі дії</h2>
                         <div class="quick-actions-compact">
                             <div class="btn-row">
-                                <button class="btn btn-secondary" id="btnHomeX">Home X</button>
-                                <button class="btn btn-secondary" id="btnHomeY">Home Y</button>
+                                <button class="btn btn-secondary" id="btnHomeX">Хомінг X</button>
+                                <button class="btn btn-secondary" id="btnHomeY">Хомінг Y</button>
                             </div>
                             <div class="btn-row">
-                                <button class="btn btn-secondary" id="btnZero">Go to Zero</button>
-                                <button class="btn btn-secondary" id="btnEnableMotors">Enable</button>
+                                <button class="btn btn-secondary" id="btnZero">В нуль</button>
+                                <button class="btn btn-secondary" id="btnEnableMotors">Увімкн.</button>
                             </div>
                             <div class="btn-row">
-                                <button class="btn btn-secondary" id="btnDisableMotors">Disable</button>
+                                <button class="btn btn-secondary" id="btnDisableMotors">Вимкн.</button>
                             </div>
                             <div class="brake-controls-compact">
                                 <div class="brake-item">
@@ -337,7 +337,7 @@
 
                         <!-- XY Table Control -->
                         <div class="card">
-                            <h2>XY TABLE CONTROL</h2>
+                            <h2>КЕРУВАННЯ XY СТОЛОМ</h2>
                             <div class="xy-control-compact">
                                 <div class="xy-pos-display xy-pos-work-settings" id="settingsXYPos">X: 0.00  Y: 0.00</div>
                                 <div class="xy-pos-label-settings">робочі координати</div>
@@ -359,7 +359,7 @@
                                         <option value="10" selected>10</option>
                                         <option value="50">50</option>
                                     </select>
-                                    <label>Feed</label>
+                                    <label>Швидк.</label>
                                     <select id="jogFeedSettings" class="input-select-sm">
                                         <option value="1000">1000</option>
                                         <option value="3000">3000</option>
@@ -371,9 +371,9 @@
                                     </select>
                                 </div>
                                 <div class="home-buttons">
-                                    <button class="btn btn-home-sm" id="btnHomeSettings">HOME</button>
-                                    <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">HOME Y</button>
-                                    <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">HOME X</button>
+                                    <button class="btn btn-home-sm" id="btnHomeSettings">ХОМІНГ</button>
+                                    <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">ХОМ Y</button>
+                                    <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">ХОМ X</button>
                                     <button class="btn btn-home-sm btn-work-zero" id="btnWorkZeroSettings">В роб. 0</button>
                                 </div>
                                 <div class="brake-grid-settings">
