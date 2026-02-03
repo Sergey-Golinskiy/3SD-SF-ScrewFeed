@@ -2465,7 +2465,8 @@ function updateTabVisibility() {
         { tab: 'control', btn: null },
         { tab: 'xy', btn: null },
         { tab: 'settings', btn: null },
-        { tab: 'admin', btn: $('tabAdmin') }
+        { tab: 'admin', btn: $('tabAdmin') },
+        { tab: 'logs', btn: $('tabLogs') }
     ];
 
     tabConfigs.forEach(({ tab, btn }) => {
@@ -2512,7 +2513,8 @@ function renderUsersList(users) {
         'control': 'Керування',
         'xy': 'XY Стіл',
         'settings': 'Налаштування',
-        'admin': 'Адмін'
+        'admin': 'Адмін',
+        'logs': 'Логи'
     };
 
     let html = '<div class="users-table">';
@@ -2669,6 +2671,195 @@ function initAdminTab() {
     });
 }
 
+// ========== LOGS PANEL ==========
+
+let logsLastId = 0;
+let logsRefreshInterval = null;
+let logsData = [];
+
+const LOG_LEVEL_COLORS = {
+    'DEBUG': 'log-debug',
+    'INFO': 'log-info',
+    'WARNING': 'log-warning',
+    'ERROR': 'log-error',
+    'CRITICAL': 'log-critical'
+};
+
+const LOG_CATEGORY_LABELS = {
+    'SYSTEM': 'Система',
+    'AUTH': 'Авторизація',
+    'XY': 'XY Стіл',
+    'CYCLE': 'Цикл',
+    'RELAY': 'Реле',
+    'SENSOR': 'Датчики',
+    'API': 'API',
+    'DEVICE': 'Девайси',
+    'GCODE': 'G-Code',
+    'COMM': 'Комунікація',
+    'ERROR': 'Помилки'
+};
+
+async function loadLogs(reset = false) {
+    try {
+        const level = $('logLevelFilter').value;
+        const category = $('logCategoryFilter').value;
+        const search = $('logSearchFilter').value;
+
+        let url = '/api/logs?limit=500';
+        if (level) url += `&level=${level}`;
+        if (category) url += `&category=${category}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (!reset && logsLastId > 0) url += `&since_id=${logsLastId}`;
+
+        const response = await api.get(url.replace('/api', ''));
+        const newLogs = response.logs || [];
+
+        if (reset) {
+            logsData = newLogs;
+            logsLastId = 0;
+        } else {
+            logsData = [...logsData, ...newLogs];
+        }
+
+        // Update last ID
+        if (logsData.length > 0) {
+            logsLastId = Math.max(...logsData.map(l => l.id));
+        }
+
+        renderLogs();
+        updateLogStats();
+    } catch (e) {
+        console.error('Failed to load logs:', e);
+    }
+}
+
+function renderLogs() {
+    const container = $('logsContainer');
+    if (!container) return;
+
+    if (logsData.length === 0) {
+        container.innerHTML = '<div class="logs-empty">Немає логів для відображення</div>';
+        return;
+    }
+
+    // Sort by ID descending (newest first at top? No, let's keep chronological with newest at bottom)
+    const sortedLogs = [...logsData].sort((a, b) => a.id - b.id);
+
+    let html = '<div class="logs-list">';
+    for (const log of sortedLogs) {
+        const levelClass = LOG_LEVEL_COLORS[log.level] || 'log-info';
+        const categoryLabel = LOG_CATEGORY_LABELS[log.category] || log.category;
+        const source = log.source ? `[${log.source}]` : '';
+
+        html += `<div class="log-entry ${levelClass}">`;
+        html += `<span class="log-time">${log.timestamp_display}</span>`;
+        html += `<span class="log-level">${log.level}</span>`;
+        html += `<span class="log-category">${categoryLabel}</span>`;
+        if (source) {
+            html += `<span class="log-source">${source}</span>`;
+        }
+        html += `<span class="log-message">${escapeHtml(log.message)}</span>`;
+        if (log.details && Object.keys(log.details).length > 0) {
+            html += `<span class="log-details" title="${escapeHtml(JSON.stringify(log.details))}">📋</span>`;
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    // Auto-scroll to bottom
+    if ($('logAutoScroll').checked) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function updateLogStats() {
+    try {
+        const response = await api.get('/logs/stats');
+
+        $('logStatTotal').textContent = response.total || 0;
+        $('logStatInfo').textContent = response.by_level?.INFO || 0;
+        $('logStatWarning').textContent = response.by_level?.WARNING || 0;
+        $('logStatError').textContent = response.by_level?.ERROR || 0;
+        $('logStatCritical').textContent = response.by_level?.CRITICAL || 0;
+    } catch (e) {
+        console.error('Failed to load log stats:', e);
+    }
+}
+
+async function clearLogs() {
+    if (!confirm('Очистити буфер логів?')) return;
+
+    try {
+        await api.post('/logs/clear');
+        logsData = [];
+        logsLastId = 0;
+        loadLogs(true);
+    } catch (e) {
+        alert('Помилка: ' + e.message);
+    }
+}
+
+function startLogsAutoRefresh() {
+    if (logsRefreshInterval) return;
+
+    logsRefreshInterval = setInterval(() => {
+        if ($('logAutoRefresh').checked) {
+            loadLogs(false);
+        }
+    }, 2000); // Refresh every 2 seconds
+}
+
+function stopLogsAutoRefresh() {
+    if (logsRefreshInterval) {
+        clearInterval(logsRefreshInterval);
+        logsRefreshInterval = null;
+    }
+}
+
+function initLogsTab() {
+    // Filter change handlers
+    $('logLevelFilter').addEventListener('change', () => loadLogs(true));
+    $('logCategoryFilter').addEventListener('change', () => loadLogs(true));
+
+    // Search with debounce
+    let searchTimeout;
+    $('logSearchFilter').addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => loadLogs(true), 300);
+    });
+
+    // Button handlers
+    $('btnRefreshLogs').addEventListener('click', () => loadLogs(true));
+    $('btnClearLogs').addEventListener('click', clearLogs);
+
+    // Auto-refresh toggle
+    $('logAutoRefresh').addEventListener('change', (e) => {
+        if (e.target.checked) {
+            startLogsAutoRefresh();
+        }
+    });
+
+    // Load logs when switching to logs tab
+    $$('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.dataset.tab === 'logs') {
+                loadLogs(true);
+                startLogsAutoRefresh();
+            } else {
+                // Don't stop refresh - keep updating in background
+            }
+        });
+    });
+}
+
 // Initialize Application
 async function init() {
     // Check auth status first
@@ -2683,6 +2874,7 @@ async function init() {
     initXYTab();
     initSettingsTab();
     initAdminTab();
+    initLogsTab();
 
     // Setup logout button
     $('btnLogout').addEventListener('click', handleLogout);

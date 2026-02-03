@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Панель керування відкруткою</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=1.0.17">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.18">
 </head>
 <body>
     <div class="app">
@@ -15,7 +15,7 @@
         <header class="header">
             <h1>Панель керування відкруткою</h1>
             <div class="header-right">
-                <span class="version">v1.0.17</span>
+                <span class="version">v1.0.18</span>
                 <div class="status-indicator" id="connectionStatus">
                     <span class="dot"></span>
                     <span class="text">Підключення...</span>
@@ -34,6 +34,7 @@
             <button class="tab-btn" data-tab="xy">XY Стіл</button>
             <button class="tab-btn" data-tab="settings">Налаштування</button>
             <button class="tab-btn" data-tab="admin" id="tabAdmin" style="display: none;">Адмін</button>
+            <button class="tab-btn" data-tab="logs" id="tabLogs" style="display: none;">Логи</button>
         </nav>
 
         <!-- Tab Content -->
@@ -562,6 +563,10 @@
                                             <input type="checkbox" value="admin">
                                             <span>Адмін</span>
                                         </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="logs">
+                                            <span>Логи</span>
+                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -575,9 +580,95 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Logs Tab -->
+            <section id="logs" class="tab-panel">
+                <!-- Logs Controls -->
+                <div class="card logs-controls-card">
+                    <div class="logs-controls">
+                        <div class="logs-filters">
+                            <div class="filter-group">
+                                <label>Рівень:</label>
+                                <select id="logLevelFilter" class="input-select">
+                                    <option value="">Всі</option>
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                    <option value="CRITICAL">CRITICAL</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>Категорія:</label>
+                                <select id="logCategoryFilter" class="input-select">
+                                    <option value="">Всі</option>
+                                    <option value="SYSTEM">Система</option>
+                                    <option value="AUTH">Авторизація</option>
+                                    <option value="XY">XY Стіл</option>
+                                    <option value="CYCLE">Цикл</option>
+                                    <option value="RELAY">Реле</option>
+                                    <option value="SENSOR">Датчики</option>
+                                    <option value="API">API</option>
+                                    <option value="DEVICE">Девайси</option>
+                                    <option value="GCODE">G-Code</option>
+                                    <option value="COMM">Комунікація</option>
+                                    <option value="ERROR">Помилки</option>
+                                </select>
+                            </div>
+                            <div class="filter-group filter-search">
+                                <label>Пошук:</label>
+                                <input type="text" id="logSearchFilter" class="input-text" placeholder="Введіть текст...">
+                            </div>
+                        </div>
+                        <div class="logs-actions">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="logAutoScroll" checked>
+                                <span>Авто-прокрутка</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="logAutoRefresh" checked>
+                                <span>Авто-оновлення</span>
+                            </label>
+                            <button class="btn btn-secondary" id="btnRefreshLogs">Оновити</button>
+                            <button class="btn btn-danger" id="btnClearLogs">Очистити</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Stats -->
+                <div class="logs-stats-row">
+                    <div class="log-stat">
+                        <span class="stat-label">Всього:</span>
+                        <span class="stat-value" id="logStatTotal">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-info">INFO:</span>
+                        <span class="stat-value" id="logStatInfo">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-warning">WARNING:</span>
+                        <span class="stat-value" id="logStatWarning">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-error">ERROR:</span>
+                        <span class="stat-value" id="logStatError">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-critical">CRITICAL:</span>
+                        <span class="stat-value" id="logStatCritical">0</span>
+                    </div>
+                </div>
+
+                <!-- Logs Display -->
+                <div class="card logs-card">
+                    <div class="logs-container" id="logsContainer">
+                        <div class="logs-empty">Завантаження логів...</div>
+                    </div>
+                </div>
+            </section>
         </main>
     </div>
 
-    <script src="/static/js/app.js?v=1.0.17"></script>
+    <script src="/static/js/app.js?v=1.0.18"></script>
 </body>
 </html>

@@ -16,6 +16,7 @@ available_tabs:
   - xy
   - settings
   - admin
+  - logs
 
 # Users list
 # Default admin password: admin (change immediately!)
@@ -30,3 +31,4 @@ users:
       - xy
       - settings
       - admin
+      - logs

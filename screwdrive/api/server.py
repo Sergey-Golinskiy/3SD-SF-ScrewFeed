@@ -36,6 +36,12 @@ from api.auth import (
     get_available_tabs, load_auth_config
 )
 
+# Import logging module
+from api.logger import (
+    get_logger, LogCategory, LogLevel, log_exception,
+    get_log_categories, get_log_levels
+)
+
 
 class EstopMonitor:
     """
@@ -98,10 +104,12 @@ class EstopMonitor:
 
                 # Check if state changed
                 if self._last_state is not None and self._last_state != estop_pressed:
+                    syslog = get_logger()
                     if estop_pressed:
                         # Button pressed - save brake states and trigger E-STOP
                         # NOTE: XY table (Slave Pi) has its own GPIO monitoring for E-STOP
                         # so we don't send M112 here - it handles E-STOP directly via GPIO
+                        syslog.sensor("АВАРІЙНА ЗУПИНКА НАТИСНУТА", level=LogLevel.CRITICAL, source="e-stop")
                         print("E-STOP BUTTON PRESSED - Slave Pi handles via GPIO")
 
                         # Save current brake states before E-STOP
@@ -110,16 +118,18 @@ class EstopMonitor:
                                 states = self._relays.get_all_states()
                                 self._saved_brake_x = states.get('r02_brake_x') == 'ON'
                                 self._saved_brake_y = states.get('r03_brake_y') == 'ON'
-                                print(f"E-STOP: Saved brake states - X: {self._saved_brake_x}, Y: {self._saved_brake_y}")
+                                syslog.relay(f"Збережено стан гальм: X={self._saved_brake_x}, Y={self._saved_brake_y}", source="e-stop")
                             except Exception as e:
-                                print(f"E-STOP: Failed to save brake states: {e}")
+                                syslog.error(LogCategory.RELAY, f"Не вдалося зберегти стан гальм: {e}", source="e-stop")
 
                         # Only handle cycle E-STOP on Master side
                         if self._cycle:
                             self._cycle.emergency_stop()
+                            syslog.cycle("Цикл зупинено через E-STOP", level=LogLevel.WARNING, source="e-stop")
                     else:
                         # Button released - restore brake states
                         # NOTE: XY table (Slave Pi) auto-clears E-STOP when GPIO shows button released
+                        syslog.sensor("Аварійна зупинка відпущена", level=LogLevel.WARNING, source="e-stop")
                         print("E-STOP BUTTON RELEASED - Slave Pi auto-clears via GPIO")
 
                         # Only handle cycle clear on Master side
@@ -134,16 +144,16 @@ class EstopMonitor:
                                         self._relays.turn_on('r02_brake_x')
                                     else:
                                         self._relays.turn_off('r02_brake_x')
-                                    print(f"E-STOP CLEARED: Restored brake X to {'ON' if self._saved_brake_x else 'OFF'}")
+                                    syslog.relay(f"Відновлено гальмо X: {'ON' if self._saved_brake_x else 'OFF'}", source="e-stop")
 
                                 if self._saved_brake_y is not None:
                                     if self._saved_brake_y:
                                         self._relays.turn_on('r03_brake_y')
                                     else:
                                         self._relays.turn_off('r03_brake_y')
-                                    print(f"E-STOP CLEARED: Restored brake Y to {'ON' if self._saved_brake_y else 'OFF'}")
+                                    syslog.relay(f"Відновлено гальмо Y: {'ON' if self._saved_brake_y else 'OFF'}", source="e-stop")
                             except Exception as e:
-                                print(f"E-STOP CLEARED: Failed to restore brake states: {e}")
+                                syslog.error(LogCategory.RELAY, f"Не вдалося відновити стан гальм: {e}", source="e-stop")
 
                 self._last_state = estop_pressed
 
@@ -201,6 +211,10 @@ def create_app(
     app.config_data = config or {}
     app.devices = {}
 
+    # Initialize logger
+    syslog = get_logger()
+    syslog.system("Сервер запускається...", source="server")
+
     # Load devices configuration
     _load_devices(app)
 
@@ -246,6 +260,7 @@ def create_app(
         user = authenticate_user(username, password)
         if user:
             login_user(user)
+            syslog.auth(f"Успішний вхід: {username}", source="login", details={"role": user['role']})
             return jsonify({
                 'success': True,
                 'user': {
@@ -255,11 +270,15 @@ def create_app(
                 }
             })
         else:
+            syslog.auth(f"Невдала спроба входу: {username}", level=LogLevel.WARNING, source="login")
             return jsonify({'success': False, 'error': 'Невірний логін або пароль'}), 401
 
     @app.route('/api/auth/logout', methods=['POST'])
     def api_logout():
         """Logout API endpoint."""
+        user = get_current_user()
+        if user:
+            syslog.auth(f"Вихід: {user['username']}", source="logout")
         logout_user()
         return jsonify({'success': True})
 
@@ -340,9 +359,51 @@ def create_app(
             return jsonify({'success': False, 'error': 'Не можна видалити себе'}), 400
 
         if delete_user(username):
+            syslog.auth(f"Користувача '{username}' видалено", source="admin")
             return jsonify({'success': True})
         else:
             return jsonify({'success': False, 'error': 'Не вдалося видалити користувача'}), 400
+
+    # === Logging API ===
+
+    @app.route('/api/logs', methods=['GET'])
+    @login_required
+    def api_get_logs():
+        """Get logs with optional filters."""
+        level = request.args.get('level')
+        category = request.args.get('category')
+        since_id = request.args.get('since_id', type=int)
+        search = request.args.get('search')
+        limit = request.args.get('limit', 500, type=int)
+
+        logs = syslog.get_logs(level, category, since_id, search, min(limit, 1000))
+        return jsonify({'logs': logs})
+
+    @app.route('/api/logs/categories', methods=['GET'])
+    @login_required
+    def api_get_log_categories():
+        """Get available log categories."""
+        return jsonify({'categories': get_log_categories()})
+
+    @app.route('/api/logs/levels', methods=['GET'])
+    @login_required
+    def api_get_log_levels():
+        """Get available log levels."""
+        return jsonify({'levels': get_log_levels()})
+
+    @app.route('/api/logs/stats', methods=['GET'])
+    @login_required
+    def api_get_log_stats():
+        """Get logging statistics."""
+        return jsonify(syslog.get_stats())
+
+    @app.route('/api/logs/clear', methods=['POST'])
+    @admin_required
+    def api_clear_logs():
+        """Clear log buffer (admin only)."""
+        syslog.clear()
+        syslog.system("Буфер логів очищено", source="admin")
+        return jsonify({'success': True})
 
     # === Health and Status ===
 
@@ -446,8 +507,11 @@ def create_app(
             return jsonify({'error': f'Invalid state: {state}'}), 400
 
         if success:
-            return jsonify({'name': name, 'state': app.relays.get_state(name).name})
+            new_state = app.relays.get_state(name).name
+            syslog.relay(f"Реле {name}: {state} -> {new_state}", source="api", details={"relay": name, "action": state})
+            return jsonify({'name': name, 'state': new_state})
         else:
+            syslog.relay(f"Помилка керування реле {name}", level=LogLevel.ERROR, source="api")
             return jsonify({'error': f'Failed to set relay {name}'}), 500
 
     @app.route('/api/relays/all/off', methods=['POST'])
@@ -456,6 +520,7 @@ def create_app(
         if not app.relays:
             return jsonify({'error': 'Relays not initialized'}), 503
         app.relays.all_off()
+        syslog.relay("Всі реле вимкнено", source="api")
         return jsonify({'status': 'ok'})
 
     # === Motor Driver Alarm Reset ===
@@ -839,11 +904,15 @@ def create_app(
             data = request.get_json(silent=True) or {}
             axis = data.get('axis')  # None for both axes
 
+            axis_name = axis or 'all'
+            syslog.xy(f"Хомінг запущено: {axis_name}", source="api", details={"axis": axis_name})
             if app.xy_table.home(axis):
-                return jsonify({'status': 'homed', 'axis': axis or 'all'})
+                syslog.xy(f"Хомінг завершено: {axis_name}", source="api")
+                return jsonify({'status': 'homed', 'axis': axis_name})
+            syslog.xy(f"Хомінг не вдався: {axis_name}", level=LogLevel.ERROR, source="api")
             return jsonify({'error': 'Homing failed'}), 500
         except Exception as e:
-            print(f"ERROR in xy_home: {e}")
+            syslog.error(LogCategory.XY, f"Помилка хомінгу: {e}", source="api")
             import traceback
             traceback.print_exc()
             return jsonify({'error': str(e)}), 500
@@ -853,8 +922,11 @@ def create_app(
         """Home X axis only."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("Хомінг X запущено", source="api")
         if app.xy_table.home_x():
+            syslog.xy("Хомінг X завершено", source="api")
             return jsonify({'status': 'homed', 'axis': 'X'})
+        syslog.xy("Хомінг X не вдався", level=LogLevel.ERROR, source="api")
         return jsonify({'error': 'Homing X failed'}), 500
 
     @app.route('/api/xy/home/y', methods=['POST'])
@@ -862,8 +934,11 @@ def create_app(
         """Home Y axis only."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("Хомінг Y запущено", source="api")
         if app.xy_table.home_y():
+            syslog.xy("Хомінг Y завершено", source="api")
             return jsonify({'status': 'homed', 'axis': 'Y'})
+        syslog.xy("Хомінг Y не вдався", level=LogLevel.ERROR, source="api")
         return jsonify({'error': 'Homing Y failed'}), 500
 
     @app.route('/api/xy/move', methods=['POST'])
@@ -881,13 +956,17 @@ def create_app(
             return jsonify({'error': 'x or y required'}), 400
 
         try:
+            syslog.xy(f"Рух до X={x}, Y={y}, Feed={feed}", source="api", details={"x": x, "y": y, "feed": feed})
             if app.xy_table.move_to(x, y, feed):
+                syslog.xy(f"Рух завершено: X={app.xy_table.x}, Y={app.xy_table.y}", source="api")
                 return jsonify({
                     'status': 'ok',
                     'position': {'x': app.xy_table.x, 'y': app.xy_table.y}
                 })
+            syslog.xy(f"Рух не вдався: {app.xy_table._health.last_error}", level=LogLevel.ERROR, source="api")
             return jsonify({'error': 'Move failed', 'details': app.xy_table._health.last_error}), 500
         except Exception as e:
+            syslog.error(LogCategory.XY, f"Помилка руху: {e}", source="api")
             return jsonify({'error': f'Move exception: {str(e)}'}), 500
 
     @app.route('/api/xy/jog', methods=['POST'])
@@ -950,6 +1029,7 @@ def create_app(
         """Trigger XY table E-STOP."""
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
+        syslog.xy("E-STOP активовано (API)", level=LogLevel.WARNING, source="api")
         app.xy_table.estop()
         return jsonify({'status': 'estop_active'})
 
@@ -959,7 +1039,9 @@ def create_app(
         if not app.xy_table:
             return jsonify({'error': 'XY table not initialized'}), 503
         if app.xy_table.clear_estop():
+            syslog.xy("E-STOP знято", source="api")
             return jsonify({'status': 'estop_cleared'})
+        syslog.xy("Не вдалося зняти E-STOP", level=LogLevel.ERROR, source="api")
         return jsonify({'error': 'Clear ESTOP failed'}), 500
 
     @app.route('/api/xy/cancel', methods=['POST'])
