@@ -1762,9 +1762,16 @@ function initXYTab() {
 
     // Move to position
     $('btnMoveTo').addEventListener('click', () => {
-        const x = parseFloat($('moveX').value);
-        const y = parseFloat($('moveY').value);
+        let x = parseFloat($('moveX').value);
+        let y = parseFloat($('moveY').value);
         const feed = parseFloat($('moveFeed').value);
+        const coordType = $('moveCoordType').value;
+
+        // If work coordinates selected, add offset to get physical coordinates
+        if (coordType === 'work') {
+            x += workOffsets.x;
+            y += workOffsets.y;
+        }
 
         // Check brakes before moving
         if (!checkBrakesForMove(x, y)) {

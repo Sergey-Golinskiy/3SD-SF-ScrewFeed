@@ -793,6 +793,12 @@ body {
     gap: 10px;
 }
 
+.move-form-compact .input-select {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 12px;
+}
+
 .move-form-compact .form-inputs {
     display: grid;
     grid-template-columns: 1fr 1fr;
