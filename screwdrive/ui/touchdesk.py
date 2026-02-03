@@ -1470,8 +1470,9 @@ class StartWorkTab(QWidget):
         # Check pedal press (ped_start) - trigger start on rising edge
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
         if pedal_pressed and not self._pedal_was_pressed:
-            # Pedal just pressed - trigger start if in WORK mode and idle
-            if self._current_mode == self.MODE_WORK and self._cycle_state == "IDLE" and self._initialized:
+            # Pedal just pressed - trigger start if in WORK mode and ready
+            can_start = self._cycle_state in ("IDLE", "READY", "COMPLETED", "PAUSED")
+            if self._current_mode == self.MODE_WORK and can_start and self._initialized:
                 self.on_start()
         self._pedal_was_pressed = pedal_pressed
 
