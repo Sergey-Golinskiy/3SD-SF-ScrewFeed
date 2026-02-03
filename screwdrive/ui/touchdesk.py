@@ -1638,45 +1638,39 @@ class ServiceTab(QWidget):
         return self.SENSOR_NAMES.get(key, key)
 
     def _create_sensor_widget(self, col: int, row: int, name: str, value):
-        """Create sensor widget with status indicator."""
-        # Container widget
+        """Create sensor widget - entire box changes color based on state."""
+        is_active = value == "ACTIVE" or value == True
+
+        # Container widget with colored background
         container = QFrame()
-        container.setObjectName("sensorBox")
+        container.setObjectName("sensorBoxActive" if is_active else "sensorBoxInactive")
         container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         box_lay = QVBoxLayout(container)
-        box_lay.setContentsMargins(12, 16, 12, 16)
-        box_lay.setSpacing(8)
+        box_lay.setContentsMargins(12, 20, 12, 20)
+        box_lay.setSpacing(0)
 
-        # State indicator (big dot)
-        is_active = value == "ACTIVE" or value == True
-        lblState = QLabel("●")
-        lblState.setObjectName("sensorDot")
-        lblState.setProperty("active", is_active)
-        lblState.setAlignment(Qt.AlignCenter)
-        lblState.style().unpolish(lblState)
-        lblState.style().polish(lblState)
-        box_lay.addWidget(lblState)
-
-        # Name label
+        # Name label (centered)
         display_name = self._get_sensor_name(name)
         lblName = QLabel(display_name)
-        lblName.setObjectName("sensorNameCompact")
+        lblName.setObjectName("sensorNameActive" if is_active else "sensorNameInactive")
         lblName.setAlignment(Qt.AlignCenter)
         lblName.setWordWrap(True)
-        box_lay.addWidget(lblName)
+        box_lay.addWidget(lblName, 1, Qt.AlignCenter)
 
         self.sensorsGrid.addWidget(container, row, col)
-        self._sensor_widgets[name] = lblState
+        self._sensor_widgets[name] = (container, lblName)
 
     def _create_relay_widget(self, col: int, row: int, name: str, state: str):
-        """Create relay widget with buttons."""
+        """Create relay widget with single toggle button."""
+        is_on = state == "ON"
+
         # Container widget
         container = QFrame()
         container.setObjectName("relayBox")
         container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         box_lay = QVBoxLayout(container)
-        box_lay.setContentsMargins(10, 10, 10, 10)
-        box_lay.setSpacing(8)
+        box_lay.setContentsMargins(10, 12, 10, 12)
+        box_lay.setSpacing(10)
 
         # Name label (centered at top)
         display_name = self._get_relay_name(name)
@@ -1685,44 +1679,24 @@ class ServiceTab(QWidget):
         lblName.setAlignment(Qt.AlignCenter)
         box_lay.addWidget(lblName)
 
-        # State indicator
-        is_on = state == "ON"
-        lblState = QLabel("ON" if is_on else "OFF")
-        lblState.setObjectName("relayStateCompact")
-        lblState.setProperty("on", is_on)
-        lblState.setAlignment(Qt.AlignCenter)
-        lblState.setMinimumHeight(28)
-        lblState.style().unpolish(lblState)
-        lblState.style().polish(lblState)
-        box_lay.addWidget(lblState)
-
-        # Buttons row
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(4)
-
-        btnOn = QPushButton("ON")
-        btnOn.setObjectName("btn_relay_on_sm")
-        btnOn.setMinimumHeight(32)
-        btnOn.clicked.connect(lambda _, n=name: self._relay_cmd(n, "on"))
-        btn_row.addWidget(btnOn)
-
-        btnOff = QPushButton("OFF")
-        btnOff.setObjectName("btn_relay_off_sm")
-        btnOff.setMinimumHeight(32)
-        btnOff.clicked.connect(lambda _, n=name: self._relay_cmd(n, "off"))
-        btn_row.addWidget(btnOff)
-
-        btnPulse = QPushButton("P")
-        btnPulse.setObjectName("btn_relay_pulse_sm")
-        btnPulse.setMinimumSize(32, 32)
-        btnPulse.setMaximumWidth(40)
-        btnPulse.clicked.connect(lambda _, n=name: self._relay_cmd(n, "pulse", 0.2))
-        btn_row.addWidget(btnPulse)
-
-        box_lay.addLayout(btn_row)
+        # Toggle button - shows state and toggles on click
+        btnToggle = QPushButton("ON" if is_on else "OFF")
+        btnToggle.setObjectName("btn_relay_toggle_on" if is_on else "btn_relay_toggle_off")
+        btnToggle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        btnToggle.setMinimumHeight(50)
+        btnToggle.clicked.connect(lambda _, n=name: self._relay_toggle(n))
+        box_lay.addWidget(btnToggle, 1)
 
         self.relaysGrid.addWidget(container, row, col)
-        self._relay_widgets[name] = lblState
+        self._relay_widgets[name] = btnToggle
+
+    def _relay_toggle(self, name: str):
+        """Toggle relay state."""
+        btn = self._relay_widgets.get(name)
+        if btn:
+            current_state = btn.text()
+            new_state = "off" if current_state == "ON" else "on"
+            self._relay_cmd(name, new_state)
 
     def _relay_cmd(self, name: str, action: str, duration: float = None):
         """Send relay command."""
@@ -1766,13 +1740,17 @@ class ServiceTab(QWidget):
                 row = i // cols
                 self._create_sensor_widget(col, row, name, sensors.get(name))
         else:
-            # Update states
-            for name, lblState in self._sensor_widgets.items():
+            # Update states - change box and label styles
+            for name, widgets in self._sensor_widgets.items():
+                container, lblName = widgets
                 value = sensors.get(name)
                 is_active = value == "ACTIVE" or value == True
-                lblState.setProperty("active", is_active)
-                lblState.style().unpolish(lblState)
-                lblState.style().polish(lblState)
+                container.setObjectName("sensorBoxActive" if is_active else "sensorBoxInactive")
+                lblName.setObjectName("sensorNameActive" if is_active else "sensorNameInactive")
+                container.style().unpolish(container)
+                container.style().polish(container)
+                lblName.style().unpolish(lblName)
+                lblName.style().polish(lblName)
 
         # Update relays - grid layout (5 columns, 2 rows)
         relay_names = list(relays.keys())
@@ -1790,13 +1768,13 @@ class ServiceTab(QWidget):
                 row = i // cols
                 self._create_relay_widget(col, row, name, relays.get(name, "OFF"))
         else:
-            # Update states
-            for name, lblState in self._relay_widgets.items():
+            # Update states - change button text and style
+            for name, btnToggle in self._relay_widgets.items():
                 is_on = relays.get(name) == "ON"
-                lblState.setText("ON" if is_on else "OFF")
-                lblState.setProperty("on", is_on)
-                lblState.style().unpolish(lblState)
-                lblState.style().polish(lblState)
+                btnToggle.setText("ON" if is_on else "OFF")
+                btnToggle.setObjectName("btn_relay_toggle_on" if is_on else "btn_relay_toggle_off")
+                btnToggle.style().unpolish(btnToggle)
+                btnToggle.style().polish(btnToggle)
 
 
 # ================== Platform Tab ==================
@@ -2738,25 +2716,27 @@ QLabel {{
 }}
 #btn_refresh:hover {{ background: {COLORS['blue']}; color: white; }}
 
-/* Sensor box */
-#sensorBox {{
-    background: {COLORS['bg_card']};
-    border: 1px solid {COLORS['border']};
+/* Sensor box - Active state (green) */
+#sensorBoxActive {{
+    background: {COLORS['green_bg']};
+    border: 2px solid {COLORS['green']};
     border-radius: 12px;
 }}
-#sensorNameCompact {{
-    font-size: 14px;
-    font-weight: 500;
-    color: {COLORS['text']};
-}}
-#sensorDot {{
-    font-size: 42px;
-    font-weight: bold;
-}}
-#sensorDot[active="true"] {{
+#sensorNameActive {{
+    font-size: 16px;
+    font-weight: 600;
     color: {COLORS['green']};
 }}
-#sensorDot[active="false"] {{
+
+/* Sensor box - Inactive state (red) */
+#sensorBoxInactive {{
+    background: {COLORS['red_bg']};
+    border: 2px solid {COLORS['red']};
+    border-radius: 12px;
+}}
+#sensorNameInactive {{
+    font-size: 16px;
+    font-weight: 600;
     color: {COLORS['red']};
 }}
 
@@ -2771,56 +2751,32 @@ QLabel {{
     font-weight: 600;
     color: {COLORS['text']};
 }}
-#relayStateCompact {{
-    font-size: 14px;
-    font-weight: 700;
-    padding: 6px 12px;
-    border-radius: 6px;
-}}
-#relayStateCompact[on="true"] {{
-    background: {COLORS['green_bg']};
-    color: {COLORS['green']};
-    border: 1px solid {COLORS['green']};
-}}
-#relayStateCompact[on="false"] {{
-    background: {COLORS['bg_input']};
-    color: {COLORS['text_muted']};
-    border: 1px solid {COLORS['border']};
-}}
 
-/* Relay buttons */
-#btn_relay_on_sm {{
-    font-size: 13px;
-    font-weight: 600;
+/* Relay toggle button - ON state */
+#btn_relay_toggle_on {{
+    font-size: 18px;
+    font-weight: 700;
     background: {COLORS['green']};
     color: white;
     border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
+    border-radius: 8px;
+    padding: 10px;
 }}
-#btn_relay_on_sm:hover {{ background: #5ab887; }}
+#btn_relay_toggle_on:hover {{ background: #5ab887; }}
+#btn_relay_toggle_on:pressed {{ background: #4a9877; }}
 
-#btn_relay_off_sm {{
-    font-size: 13px;
-    font-weight: 600;
-    background: {COLORS['red']};
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
+/* Relay toggle button - OFF state */
+#btn_relay_toggle_off {{
+    font-size: 18px;
+    font-weight: 700;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+    border: 2px solid {COLORS['border']};
+    border-radius: 8px;
+    padding: 10px;
 }}
-#btn_relay_off_sm:hover {{ background: #d64545; }}
-
-#btn_relay_pulse_sm {{
-    font-size: 13px;
-    font-weight: 600;
-    background: {COLORS['yellow']};
-    color: {COLORS['bg_primary']};
-    border: none;
-    border-radius: 6px;
-    padding: 6px;
-}}
-#btn_relay_pulse_sm:hover {{ background: #d9b543; }}
+#btn_relay_toggle_off:hover {{ background: {COLORS['red']}; color: white; border-color: {COLORS['red']}; }}
+#btn_relay_toggle_off:pressed {{ background: #d64545; }}
 
 /* Scrollbar */
 QScrollBar:vertical {{
