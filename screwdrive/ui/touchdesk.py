@@ -2351,12 +2351,14 @@ class MainWindow(QMainWindow):
             return
 
         # Check pedal hold for tab visibility toggle
+        # Condition: curtain (area_sensor) must be ACTIVE + pedal held for 5 seconds
         sensors = status.get("sensors", {})
+        curtain_active = sensors.get("area_sensor") == "ACTIVE"
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
 
-        if pedal_pressed:
+        if curtain_active and pedal_pressed:
             if self._pedal_hold_start is None:
-                # Pedal just pressed - start tracking
+                # Pedal just pressed while curtain active - start tracking
                 self._pedal_hold_start = time.time()
             else:
                 # Pedal still held - check duration
@@ -2368,7 +2370,7 @@ class MainWindow(QMainWindow):
                     # Reset timer to avoid repeated toggling
                     self._pedal_hold_start = None
         else:
-            # Pedal released - reset timer
+            # Curtain not active or pedal released - reset timer
             self._pedal_hold_start = None
 
         # Update tabs
