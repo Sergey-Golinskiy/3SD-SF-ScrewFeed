@@ -1210,7 +1210,7 @@ class StartWorkTab(QWidget):
 
                 # Switch to WORK mode if ready
                 if saved_cycle_state in ("READY", "COMPLETED", "PAUSED"):
-                    self._switch_to_work()
+                    self.switch_to_work_mode()
                     self.lblWorkDevice.setText(f"Девайс: {saved_device}")
                     self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
                     self.lblWorkHoles.setText(f"Гвинтів: {self._holes_completed} / {self._total_holes}")
