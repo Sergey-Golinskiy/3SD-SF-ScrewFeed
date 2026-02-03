@@ -595,30 +595,74 @@ async function waitForHoming(timeout = 10000) {
 }
 
 /**
- * Check motor driver alarms during initialization.
- * If alarm is active, throws an error to stop initialization.
- * Operator must restart initialization after checking the machine.
- * @returns {Promise<string>} Alarm message if active, empty string if OK
+ * Check driver alarms.
+ * @returns {Promise<{alarm_x: boolean, alarm_y: boolean}>} Alarm status
  */
-async function checkDriverAlarmsForInit() {
+async function checkDriverAlarms() {
     try {
         const sensors = await api.get('/sensors');
-
-        // Check X axis alarm (GPIO 2) - ACTIVE means alarm triggered
-        if (sensors.alarm_x === 'ACTIVE') {
-            return 'АВАРІЯ: Аларм драйвера осі X!';
-        }
-
-        // Check Y axis alarm (GPIO 3) - ACTIVE means alarm triggered
-        if (sensors.alarm_y === 'ACTIVE') {
-            return 'АВАРІЯ: Аларм драйвера осі Y!';
-        }
-
+        return {
+            alarm_x: sensors.alarm_x === 'ACTIVE',
+            alarm_y: sensors.alarm_y === 'ACTIVE'
+        };
     } catch (e) {
         console.error('Failed to check driver alarms:', e);
+        return { alarm_x: false, alarm_y: false };
     }
+}
 
-    return '';
+/**
+ * Power cycle motor drivers by toggling power relays.
+ * Turns power OFF for 1 second, then back ON.
+ * @param {boolean} resetX - Reset X axis driver
+ * @param {boolean} resetY - Reset Y axis driver
+ */
+async function powerCycleDrivers(resetX = true, resetY = true) {
+    const axisParts = [];
+    if (resetX) axisParts.push('X');
+    if (resetY) axisParts.push('Y');
+
+    if (axisParts.length === 0) return;
+
+    const axisStr = axisParts.join(' та ');
+    updateInitStatus(`Перезапуск драйвера ${axisStr}...`, 0);
+
+    try {
+        // Turn power OFF by turning relay ON (inverted logic)
+        if (resetX) {
+            await api.post('/relays/r09_pwr_x', { state: 'on' });
+        }
+        if (resetY) {
+            await api.post('/relays/r10_pwr_y', { state: 'on' });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+
+        // Turn power ON by turning relay OFF
+        if (resetX) {
+            await api.post('/relays/r09_pwr_x', { state: 'off' });
+        }
+        if (resetY) {
+            await api.post('/relays/r10_pwr_y', { state: 'off' });
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for stabilization
+    } catch (e) {
+        console.error('Failed to power cycle drivers:', e);
+    }
+}
+
+/**
+ * Check for driver alarms and reset them by power cycling.
+ * @returns {Promise<boolean>} True if alarm was found and reset attempted
+ */
+async function checkAndResetAlarms() {
+    const { alarm_x, alarm_y } = await checkDriverAlarms();
+    if (alarm_x || alarm_y) {
+        await powerCycleDrivers(alarm_x, alarm_y);
+        return true;
+    }
+    return false;
 }
 
 /**
@@ -716,167 +760,243 @@ async function runInitialization() {
         syncUIStateToServer('INITIALIZING', msg, pct, msg);
     };
 
-    try {
-        // Step 0: Check motor driver alarms - STOP if any alarm active
-        updateInitStatus('Перевірка алармів драйверів...', 2);
-        syncProgress('Перевірка алармів драйверів...', 2);
-        const initAlarm = await checkDriverAlarmsForInit();
-        if (initAlarm) {
-            throw new Error(initAlarm + '\n\nПерезапустіть ініціалізацію після перевірки машини.');
-        }
+    const MAX_RETRIES = 3;
+    let retryCount = 0;
 
-        // Step 0.1: Check E-STOP
-        updateInitStatus('Перевірка аварійної кнопки...', 5);
-        syncProgress('Перевірка аварійної кнопки...', 5);
-        const safety = await api.get('/sensors/safety');
-        if (safety.estop_pressed) {
-            throw new Error('Аварійна кнопка натиснута! Відпустіть її перед ініціалізацією.');
-        }
-
-        // Step 0.2: Check Slave Pi connection
-        updateInitStatus('Перевірка підключення XY столу...', 10);
-        syncProgress('Перевірка підключення XY столу...', 10);
-        const xyStatus = await api.get('/xy/status');
-        if (!xyStatus.connected) {
-            throw new Error('XY стіл не підключено! Перевірте з\'єднання з Raspberry Pi.');
-        }
-
-        // Step 1: Check and release brakes
-        updateInitStatus('Перевірка та відпускання гальм...', 15);
-        syncProgress('Перевірка та відпускання гальм...', 15);
-        const relays = await api.get('/relays');
-
-        // Release brake X if engaged (relay OFF = brake engaged)
-        if (relays.r02_brake_x !== 'ON') {
-            await api.post('/relays/r02_brake_x', { state: 'on' });
-            await new Promise(resolve => setTimeout(resolve, 300));
-        }
-
-        // Release brake Y if engaged
-        if (relays.r03_brake_y !== 'ON') {
-            await api.post('/relays/r03_brake_y', { state: 'on' });
-            await new Promise(resolve => setTimeout(resolve, 300));
-        }
-
-        // Step 1.1: Homing
-        updateInitStatus('Виконується хомінг XY столу...', 25);
-        syncProgress('Виконується хомінг XY столу...', 25);
-        const homeResponse = await api.post('/xy/home');
-        if (homeResponse.status !== 'homed') {
-            throw new Error('Не вдалося запустити хомінг');
-        }
-
-        // Wait for homing to complete with 15 second timeout
-        const homingComplete = await waitForHoming(15000);
-        if (!homingComplete) {
-            throw new Error('Хомінг не завершено за 15 секунд. Перевірте датчики.');
-        }
-
-        // Step 2: Check cylinder sensors
-        updateInitStatus('Перевірка датчиків циліндра...', 40);
-        syncProgress('Перевірка датчиків циліндра...', 40);
-        const gerUp = await api.get('/sensors/ger_c2_up');
-        const gerDown = await api.get('/sensors/ger_c2_down');
-
-        // GER_C2_UP should be ACTIVE (cylinder is up), GER_C2_DOWN should be INACTIVE
-        if (gerUp.state !== 'ACTIVE') {
-            throw new Error('Датчик GER_C2_UP не активний. Циліндр не у верхньому положенні.');
-        }
-        if (gerDown.state === 'ACTIVE') {
-            throw new Error('Датчик GER_C2_DOWN активний. Можливо проблема з пневматикою.');
-        }
-
-        // Step 3: Lower cylinder (turn on R04_C2) and wait for GER_C2_DOWN
-        updateInitStatus('Опускання циліндра...', 50);
-        syncProgress('Опускання циліндра...', 50);
-        await api.post('/relays/r04_c2', { state: 'on' });
-
-        const cylinderLowered = await waitForSensor('ger_c2_down', 'ACTIVE', 5000);
-        if (!cylinderLowered) {
-            await api.post('/relays/r04_c2', { state: 'off' });
-            throw new Error('Циліндр не опустився за 5 секунд. Перевірте пневматику.');
-        }
-
-        // Step 4: Raise cylinder (turn off R04_C2) and wait for GER_C2_UP
-        updateInitStatus('Піднімання циліндра...', 60);
-        syncProgress('Піднімання циліндра...', 60);
-        await api.post('/relays/r04_c2', { state: 'off' });
-
-        const cylinderRaised = await waitForSensor('ger_c2_up', 'ACTIVE', 5000);
-        if (!cylinderRaised) {
-            throw new Error('Циліндр не піднявся за 5 секунд. Перевірте пневматику.');
-        }
-
-        // Step 5: Select task by setting R07 and R08 relays
-        // Task 0: R07 OFF, R08 OFF
-        // Task 1: R07 ON, R08 OFF
-        // Task 2: R07 OFF, R08 ON
-        // Task 3: R07 ON, R08 ON
-        updateInitStatus('Вибір задачі для закручування...', 75);
-        syncProgress('Вибір задачі для закручування...', 75);
-        const task = device.task;
-
-        if (task === '0') {
-            // Task 0: Both OFF
-            await api.post('/relays/r07_di5_tsk0', { state: 'off' });
-            await api.post('/relays/r08_di6_tsk1', { state: 'off' });
-        } else if (task === '1') {
-            // Task 1: R07 ON, R08 OFF
-            await api.post('/relays/r08_di6_tsk1', { state: 'off' });
-            await api.post('/relays/r07_di5_tsk0', { state: 'on' });
-        } else if (task === '2') {
-            // Task 2: R07 OFF, R08 ON
-            await api.post('/relays/r07_di5_tsk0', { state: 'off' });
-            await api.post('/relays/r08_di6_tsk1', { state: 'on' });
-        } else if (task === '3') {
-            // Task 3: Both ON
-            await api.post('/relays/r07_di5_tsk0', { state: 'on' });
-            await api.post('/relays/r08_di6_tsk1', { state: 'on' });
-        }
-        await new Promise(resolve => setTimeout(resolve, 300)); // Small delay after relay changes
-
-        // Step 6: Move to work position
-        updateInitStatus('Виїзд до оператора...', 85);
-        syncProgress('Виїзд до оператора...', 85);
-
-        const workX = device.work_x;
-        const workY = device.work_y;
-        const workFeed = device.work_feed || 5000;
-
-        if (workX === null || workX === undefined || workY === null || workY === undefined) {
-            throw new Error('Робоча позиція не задана для цього девайсу. Вкажіть Робоча X та Робоча Y в налаштуваннях.');
-        }
-
-        const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
-        if (moveResponse.status !== 'ok') {
-            throw new Error('Не вдалося виїхати до робочої позиції');
-        }
-
-        // Wait a bit for the move to start
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Success! Alarms now stop init, so no warnings possible here
-        updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
-        syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
-        updateCycleStatusPanel('READY', deviceKey, 0, 0);
-
-        // Enable START button
-        $('btnCycleStart').disabled = false;
-
-    } catch (error) {
-        console.error('Initialization error:', error);
-        updateInitStatus('ПОМИЛКА: ' + error.message, 100, 'error');
-        updateCycleStatusPanel('INIT_ERROR', deviceKey, 0, 0);
-        syncUIStateToServer('INIT_ERROR', error.message, 0, 'Помилка ініціалізації');
-
-        // Turn off cylinder relay for safety
+    // Retry loop for automatic alarm recovery
+    while (retryCount < MAX_RETRIES) {
         try {
+            // Step 0: Check and reset driver alarms if needed
+            updateInitStatus('Перевірка алармів драйверів...', 2);
+            syncProgress('Перевірка алармів драйверів...', 2);
+
+            if (await checkAndResetAlarms()) {
+                // Alarm was reset, notify and continue
+                updateInitStatus('Аларм скинуто, продовжуємо...', 3);
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // Step 0.1: Check E-STOP
+            updateInitStatus('Перевірка аварійної кнопки...', 5);
+            syncProgress('Перевірка аварійної кнопки...', 5);
+            const safety = await api.get('/sensors/safety');
+            if (safety.estop_pressed) {
+                throw new Error('Аварійна кнопка натиснута! Відпустіть її перед ініціалізацією.');
+            }
+
+            // Step 0.2: Check Slave Pi connection
+            updateInitStatus('Перевірка підключення XY столу...', 10);
+            syncProgress('Перевірка підключення XY столу...', 10);
+            const xyStatus = await api.get('/xy/status');
+            if (!xyStatus.connected) {
+                throw new Error('XY стіл не підключено! Перевірте з\'єднання з Raspberry Pi.');
+            }
+
+            // Step 1: Check and release brakes
+            updateInitStatus('Перевірка та відпускання гальм...', 15);
+            syncProgress('Перевірка та відпускання гальм...', 15);
+            const relays = await api.get('/relays');
+
+            // Release brake X if engaged (relay OFF = brake engaged)
+            if (relays.r02_brake_x !== 'ON') {
+                await api.post('/relays/r02_brake_x', { state: 'on' });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Release brake Y if engaged
+            if (relays.r03_brake_y !== 'ON') {
+                await api.post('/relays/r03_brake_y', { state: 'on' });
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Check alarms before homing
+            if (await checkAndResetAlarms()) {
+                retryCount++;
+                updateInitStatus(`Аларм виявлено, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                continue;
+            }
+
+            // Step 1.1: Homing
+            updateInitStatus('Виконується хомінг XY столу...', 25);
+            syncProgress('Виконується хомінг XY столу...', 25);
+            const homeResponse = await api.post('/xy/home');
+            if (homeResponse.status !== 'homed') {
+                throw new Error('Не вдалося запустити хомінг');
+            }
+
+            // Wait for homing to complete with 15 second timeout, checking alarms
+            let homingAlarm = false;
+            const homingStart = Date.now();
+            while (Date.now() - homingStart < 15000) {
+                // Check for alarms during homing
+                const { alarm_x, alarm_y } = await checkDriverAlarms();
+                if (alarm_x || alarm_y) {
+                    await powerCycleDrivers(alarm_x, alarm_y);
+                    homingAlarm = true;
+                    break;
+                }
+
+                const xyStatus = await api.get('/xy/status');
+                const pos = xyStatus.position || xyStatus;
+                if (pos.x_homed && pos.y_homed) {
+                    break;
+                }
+                const state = (xyStatus.state || '').toLowerCase();
+                if (state === 'error' || state === 'estop') {
+                    throw new Error('Помилка хомінгу: ' + (xyStatus.last_error || state));
+                }
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            // If alarm during homing, restart
+            if (homingAlarm) {
+                retryCount++;
+                updateInitStatus(`Аларм під час хомінгу, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                continue;
+            }
+
+            // Short delay after homing
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Check alarms after homing
+            if (await checkAndResetAlarms()) {
+                retryCount++;
+                updateInitStatus(`Аларм після хомінгу, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                continue;
+            }
+
+            // Step 2: Check cylinder sensors
+            updateInitStatus('Перевірка датчиків циліндра...', 40);
+            syncProgress('Перевірка датчиків циліндра...', 40);
+            const gerUp = await api.get('/sensors/ger_c2_up');
+            const gerDown = await api.get('/sensors/ger_c2_down');
+
+            // GER_C2_UP should be ACTIVE (cylinder is up), GER_C2_DOWN should be INACTIVE
+            if (gerUp.state !== 'ACTIVE') {
+                throw new Error('Датчик GER_C2_UP не активний. Циліндр не у верхньому положенні.');
+            }
+            if (gerDown.state === 'ACTIVE') {
+                throw new Error('Датчик GER_C2_DOWN активний. Можливо проблема з пневматикою.');
+            }
+
+            // Step 3: Lower cylinder (turn on R04_C2) and wait for GER_C2_DOWN
+            updateInitStatus('Опускання циліндра...', 50);
+            syncProgress('Опускання циліндра...', 50);
+            await api.post('/relays/r04_c2', { state: 'on' });
+
+            const cylinderLowered = await waitForSensor('ger_c2_down', 'ACTIVE', 5000);
+            if (!cylinderLowered) {
+                await api.post('/relays/r04_c2', { state: 'off' });
+                throw new Error('Циліндр не опустився за 5 секунд. Перевірте пневматику.');
+            }
+
+            // Step 4: Raise cylinder (turn off R04_C2) and wait for GER_C2_UP
+            updateInitStatus('Піднімання циліндра...', 60);
+            syncProgress('Піднімання циліндра...', 60);
             await api.post('/relays/r04_c2', { state: 'off' });
-        } catch (e) {}
-    } finally {
-        initializationInProgress = false;
-        $('btnInit').disabled = false;
+
+            const cylinderRaised = await waitForSensor('ger_c2_up', 'ACTIVE', 5000);
+            if (!cylinderRaised) {
+                throw new Error('Циліндр не піднявся за 5 секунд. Перевірте пневматику.');
+            }
+
+            // Step 5: Select task by setting R07 and R08 relays
+            updateInitStatus('Вибір задачі для закручування...', 75);
+            syncProgress('Вибір задачі для закручування...', 75);
+            const task = device.task;
+
+            if (task === '0') {
+                await api.post('/relays/r07_di5_tsk0', { state: 'off' });
+                await api.post('/relays/r08_di6_tsk1', { state: 'off' });
+            } else if (task === '1') {
+                await api.post('/relays/r08_di6_tsk1', { state: 'off' });
+                await api.post('/relays/r07_di5_tsk0', { state: 'on' });
+            } else if (task === '2') {
+                await api.post('/relays/r07_di5_tsk0', { state: 'off' });
+                await api.post('/relays/r08_di6_tsk1', { state: 'on' });
+            } else if (task === '3') {
+                await api.post('/relays/r07_di5_tsk0', { state: 'on' });
+                await api.post('/relays/r08_di6_tsk1', { state: 'on' });
+            }
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            // Check alarms before move
+            if (await checkAndResetAlarms()) {
+                retryCount++;
+                updateInitStatus(`Аларм перед рухом, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                continue;
+            }
+
+            // Step 6: Move to work position
+            updateInitStatus('Виїзд до оператора...', 85);
+            syncProgress('Виїзд до оператора...', 85);
+
+            const workX = device.work_x;
+            const workY = device.work_y;
+            const workFeed = device.work_feed || 5000;
+
+            if (workX === null || workX === undefined || workY === null || workY === undefined) {
+                throw new Error('Робоча позиція не задана для цього девайсу. Вкажіть Робоча X та Робоча Y в налаштуваннях.');
+            }
+
+            const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
+            if (moveResponse.status !== 'ok') {
+                // Check if alarm caused the failure
+                if (await checkAndResetAlarms()) {
+                    retryCount++;
+                    updateInitStatus(`Аларм під час руху, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                    continue;
+                }
+                throw new Error('Не вдалося виїхати до робочої позиції');
+            }
+
+            // Wait a bit for the move to complete
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Final alarm check
+            if (await checkAndResetAlarms()) {
+                retryCount++;
+                updateInitStatus(`Аларм після руху, перезапуск (спроба ${retryCount}/${MAX_RETRIES})...`, 0);
+                continue;
+            }
+
+            // Success!
+            updateInitStatus('Ініціалізація завершена. Очікування натискання START...', 100, 'success');
+            syncUIStateToServer('READY', 'Готово до запуску', 100, 'Ініціалізація завершена');
+            updateCycleStatusPanel('READY', deviceKey, 0, 0);
+
+            // Enable START button
+            $('btnCycleStart').disabled = false;
+
+            // Exit the retry loop on success
+            initializationInProgress = false;
+            $('btnInit').disabled = false;
+            return;
+
+        } catch (error) {
+            console.error('Initialization error:', error);
+            updateInitStatus('ПОМИЛКА: ' + error.message, 100, 'error');
+            updateCycleStatusPanel('INIT_ERROR', deviceKey, 0, 0);
+            syncUIStateToServer('INIT_ERROR', error.message, 0, 'Помилка ініціалізації');
+
+            // Turn off cylinder relay for safety
+            try {
+                await api.post('/relays/r04_c2', { state: 'off' });
+            } catch (e) {}
+
+            // Exit on non-alarm errors
+            initializationInProgress = false;
+            $('btnInit').disabled = false;
+            return;
+        }
     }
+
+    // Max retries exceeded
+    updateInitStatus(`Не вдалося завершити ініціалізацію після ${MAX_RETRIES} спроб скидання алармів.`, 100, 'error');
+    updateCycleStatusPanel('INIT_ERROR', deviceKey, 0, 0);
+    syncUIStateToServer('INIT_ERROR', 'Перевищено ліміт спроб', 0, 'Помилка ініціалізації');
+    initializationInProgress = false;
+    $('btnInit').disabled = false;
 }
 
 // ========== CYCLE (SCREWING) ==========
