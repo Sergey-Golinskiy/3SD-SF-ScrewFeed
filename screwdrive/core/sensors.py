@@ -46,6 +46,15 @@ class SensorController:
     # Default sensor configuration
     # Pin assignments based on actual hardware connections
     DEFAULT_SENSORS = {
+        # Motor driver alarms (with pull-up, active LOW = alarm triggered)
+        'alarm_x': SensorConfig(
+            gpio=2, active_low=True, pull_up=True,
+            description="Аларм драйвера X", debounce_ms=10
+        ),
+        'alarm_y': SensorConfig(
+            gpio=3, active_low=True, pull_up=True,
+            description="Аларм драйвера Y", debounce_ms=10
+        ),
         # Світлова завіса - HIGH=вільно, LOW=заблоковано
         'area_sensor': SensorConfig(
             gpio=17, active_low=True, pull_up=True,
@@ -286,7 +295,8 @@ class SensorController:
         area_ok = self.is_inactive('area_sensor')  # Area should be clear (no obstruction)
         cylinder_emergency_ok = self.is_inactive('ger_c2_down')  # Cylinder not at emergency position
         emergency_ok = self.is_inactive('emergency_stop')  # Emergency button not pressed
-        return area_ok and cylinder_emergency_ok and emergency_ok
+        drivers_ok = self.is_drivers_ok()  # No motor driver alarms
+        return area_ok and cylinder_emergency_ok and emergency_ok and drivers_ok
 
     def is_area_blocked(self) -> bool:
         """Check if safety area is blocked (obstruction detected)."""
@@ -338,6 +348,22 @@ class SensorController:
     def is_emergency_stop_released(self) -> bool:
         """Check if emergency stop button is released (normal state)."""
         return self.is_inactive('emergency_stop')
+
+    def is_alarm_x_active(self) -> bool:
+        """Check if X axis motor driver alarm is active."""
+        return self.is_active('alarm_x')
+
+    def is_alarm_y_active(self) -> bool:
+        """Check if Y axis motor driver alarm is active."""
+        return self.is_active('alarm_y')
+
+    def is_any_alarm_active(self) -> bool:
+        """Check if any motor driver alarm is active."""
+        return self.is_alarm_x_active() or self.is_alarm_y_active()
+
+    def is_drivers_ok(self) -> bool:
+        """Check if both motor drivers have no alarms."""
+        return not self.is_any_alarm_active()
 
     def wait_for(self, name: str, state: SensorState,
                  timeout_s: float = 10.0) -> bool:
