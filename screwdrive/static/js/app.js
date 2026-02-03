@@ -2124,9 +2124,9 @@ function newDevice() {
     $('editScrewSize').value = '';    // Placeholder: Виберіть...
     $('editTask').value = '';         // Placeholder: Виберіть...
 
-    // Work position defaults
-    $('editWorkX').value = '';
-    $('editWorkY').value = '';
+    // Work position defaults (physical coordinates)
+    $('editWorkX').value = '110';
+    $('editWorkY').value = '500';
     $('editWorkFeed').value = '5000';
 
     clearCoordRows();
@@ -2347,8 +2347,10 @@ function initSettingsTab() {
     $$('[data-jog-settings]').forEach(btn => {
         btn.addEventListener('click', () => {
             const dir = btn.dataset.jogSettings;
-            const step = parseFloat($('jogStepSettings').value);
-            const feed = 5000;
+            const stepValue = $('jogStepSettings').value;
+            // Free Run mode uses large step (500mm) for continuous movement
+            const step = stepValue === 'free' ? 500 : parseFloat(stepValue);
+            const feed = parseFloat($('jogFeedSettings').value);
 
             let dx = 0, dy = 0;
             if (dir === 'x+') dx = step;
