@@ -1531,8 +1531,10 @@ class StartWorkTab(QWidget):
             self.on_estop()
 
         # Check pedal press (ped_start) - trigger start on rising edge
+        # Skip if curtain is active (used for tab toggle mode)
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
-        if pedal_pressed and not self._pedal_was_pressed:
+        curtain_active = sensors.get("area_sensor") == "ACTIVE"
+        if pedal_pressed and not self._pedal_was_pressed and not curtain_active:
             # Pedal just pressed - trigger start if in WORK mode and ready
             can_start = self._cycle_state in ("IDLE", "READY", "COMPLETED", "PAUSED")
             if self._current_mode == self.MODE_WORK and can_start and self._initialized:
