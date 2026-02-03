@@ -256,11 +256,23 @@ body {
     color: var(--text-primary);
 }
 
-/* Sensor Grid */
+/* Sensor Grid - 5 columns, 2 rows */
 .sensor-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 1200px) {
+    .sensor-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .sensor-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .sensor-item {
@@ -290,11 +302,23 @@ body {
     color: var(--text-secondary);
 }
 
-/* Relay Grid */
+/* Relay Grid - 5 columns, 2 rows */
 .relay-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 1200px) {
+    .relay-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .relay-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .relay-item {
@@ -324,11 +348,23 @@ body {
     color: var(--text-secondary);
 }
 
-/* Relay Control Grid */
+/* Relay Control Grid - 5 columns, 2 rows */
 .relay-control-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+@media (max-width: 1400px) {
+    .relay-control-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 900px) {
+    .relay-control-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .relay-control {
@@ -1462,23 +1498,7 @@ body {
 
 /* ========== RELAY CONTROL NEW STYLES ========== */
 
-.relay-control-grid {
-    display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    gap: 6px;
-}
-
-@media (max-width: 1400px) {
-    .relay-control-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
-
-@media (max-width: 900px) {
-    .relay-control-grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
+/* Grid now defined above with 5 columns */
 
 .relay-control-new {
     background: var(--bg-secondary);

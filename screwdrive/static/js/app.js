@@ -355,7 +355,7 @@ const SENSOR_NAMES = {
     'emergency_stop': { active: '🛑 АВАРІЯ!', inactive: '✓ Аварійна OK' }
 };
 
-// Relay names mapping with state-dependent labels
+// Relay names mapping with state-dependent labels (for Status tab)
 const RELAY_NAMES = {
     'r01_pit': { on: '● Живильник ВКЛ', off: '○ Живильник ВИКЛ' },
     'r02_brake_x': { on: '● Гальмо X відпущено', off: '○ Гальмо X затиснуто' },
@@ -368,6 +368,24 @@ const RELAY_NAMES = {
     'r09_pwr_x': { on: '🔴 Живлення X ВИКЛ', off: '🟢 Живлення X ВКЛ' },
     'r10_pwr_y': { on: '🔴 Живлення Y ВИКЛ', off: '🟢 Живлення Y ВКЛ' }
 };
+
+// Relay control names (compact, for Control tab)
+const RELAY_CONTROL_NAMES = {
+    'r01_pit': 'Живильник',
+    'r02_brake_x': 'Гальмо X',
+    'r03_brake_y': 'Гальмо Y',
+    'r04_c2': 'Циліндр',
+    'r05_di4_free': 'Вільний хід',
+    'r06_di1_pot': 'Режим моменту',
+    'r07_di5_tsk0': 'Задача 0',
+    'r08_di6_tsk1': 'Задача 1',
+    'r09_pwr_x': 'Живлення X',
+    'r10_pwr_y': 'Живлення Y'
+};
+
+function getRelayControlName(name) {
+    return RELAY_CONTROL_NAMES[name] || formatName(name);
+}
 
 function getSensorLabel(name, isActive) {
     const mapping = SENSOR_NAMES[name];
@@ -431,10 +449,11 @@ function updateControlTab(status) {
         // Initial render with compact card layout
         for (const [name, value] of Object.entries(relays)) {
             const isOn = value === 'ON' || value === true;
+            const displayName = getRelayControlName(name);
             grid.innerHTML += `
                 <div class="relay-control-new" data-relay-name="${name}">
                     <div class="relay-header">
-                        <span class="relay-name">${formatName(name)}</span>
+                        <span class="relay-name">${displayName}</span>
                         <span class="relay-status ${isOn ? 'on' : 'off'}">${isOn ? 'ON' : 'OFF'}</span>
                     </div>
                     <div class="relay-buttons">
