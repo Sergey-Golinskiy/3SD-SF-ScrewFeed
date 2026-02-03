@@ -755,6 +755,7 @@ class XYTableController:
             # Parse limit warnings from response
             limit_warning = self._parse_limit_warnings(response)
             self._health.last_limit_warning = limit_warning
+            self._health.last_error = None  # Clear error on success
 
             # Update position to clamped values
             if x is not None:
@@ -766,9 +767,18 @@ class XYTableController:
             self._notify_position_change()
             return True
         else:
+            # Set detailed error for diagnostics
+            if response is None:
+                self._health.last_error = f"Move command timeout (no response for cmd: {cmd})"
+            elif "err" in response.lower():
+                self._health.last_error = f"Move error from XY table: {response}"
+            else:
+                self._health.last_error = f"Move failed, unexpected response: {response!r}"
+
             self._health.last_limit_warning = None
             self._state = XYTableState.ERROR
             self._notify_state_change()
+            print(f"ERROR: move_to failed - {self._health.last_error}")
             return False
 
     def move_relative(self, dx: float = 0, dy: float = 0, feed: float = 10000.0) -> bool:

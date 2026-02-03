@@ -73,7 +73,18 @@ class ApiClient:
     def _post(self, path: str, payload=None, timeout: int = 10):
         url = f"{API_BASE}/{path.lstrip('/')}"
         r = requests.post(url, json=payload or {}, timeout=timeout)
-        r.raise_for_status()
+        # Better error handling - include API error details in exception
+        if not r.ok:
+            try:
+                error_data = r.json()
+                error_msg = error_data.get('error', 'Unknown error')
+                details = error_data.get('details', '')
+                if details:
+                    raise requests.HTTPError(f"{error_msg}: {details}", response=r)
+                raise requests.HTTPError(error_msg, response=r)
+            except ValueError:
+                # JSON parsing failed, use standard error
+                r.raise_for_status()
         return r.json()
 
     # Status
@@ -286,6 +297,10 @@ class InitWorker(QThread):
                 time.sleep(0.2)
             else:
                 raise Exception("Хомінг не завершено за 15 секунд")
+
+            # Short delay after homing for motor driver stabilization
+            # This ensures drivers are ready before subsequent move commands
+            time.sleep(0.5)
 
             if self._abort:
                 return
