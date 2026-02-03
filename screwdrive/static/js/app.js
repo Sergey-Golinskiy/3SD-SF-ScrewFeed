@@ -342,16 +342,60 @@ function updateStatusTab(status) {
     updateRelays(status.relays || {});
 }
 
+// Sensor names mapping with state-dependent labels
+const SENSOR_NAMES = {
+    'alarm_x': { active: '⚠️ Аларм драйвера X', inactive: '✓ Драйвер X OK' },
+    'alarm_y': { active: '⚠️ Аларм драйвера Y', inactive: '✓ Драйвер Y OK' },
+    'area_sensor': { active: '🚫 Завіса заблокована', inactive: '✓ Завіса вільна' },
+    'ped_start': { active: '⏺ Педаль натиснута', inactive: '○ Педаль вільна' },
+    'ger_c2_up': { active: '▲ Циліндр вгорі', inactive: '▼ Циліндр внизу' },
+    'ger_c2_down': { active: '🛑 Циліндр внизу!', inactive: '✓ Циліндр не внизу' },
+    'ind_scrw': { active: '● Гвинт є', inactive: '○ Гвинта немає' },
+    'do2_ok': { active: '✓ Момент OK', inactive: '○ Момент не досягнуто' },
+    'emergency_stop': { active: '🛑 АВАРІЯ!', inactive: '✓ Аварійна OK' }
+};
+
+// Relay names mapping with state-dependent labels
+const RELAY_NAMES = {
+    'r01_pit': { on: '● Живильник ВКЛ', off: '○ Живильник ВИКЛ' },
+    'r02_brake_x': { on: '● Гальмо X відпущено', off: '○ Гальмо X затиснуто' },
+    'r03_brake_y': { on: '● Гальмо Y відпущено', off: '○ Гальмо Y затиснуто' },
+    'r04_c2': { on: '▼ Циліндр опускається', off: '▲ Циліндр піднято' },
+    'r05_di4_free': { on: '● Вільний хід ВКЛ', off: '○ Вільний хід ВИКЛ' },
+    'r06_di1_pot': { on: '● Режим моменту', off: '○ Режим швидкості' },
+    'r07_di5_tsk0': { on: '● Задача біт 0', off: '○ Задача біт 0' },
+    'r08_di6_tsk1': { on: '● Задача біт 1', off: '○ Задача біт 1' },
+    'r09_pwr_x': { on: '🔴 Живлення X ВИКЛ', off: '🟢 Живлення X ВКЛ' },
+    'r10_pwr_y': { on: '🔴 Живлення Y ВИКЛ', off: '🟢 Живлення Y ВКЛ' }
+};
+
+function getSensorLabel(name, isActive) {
+    const mapping = SENSOR_NAMES[name];
+    if (mapping) {
+        return isActive ? mapping.active : mapping.inactive;
+    }
+    return formatName(name);
+}
+
+function getRelayLabel(name, isOn) {
+    const mapping = RELAY_NAMES[name];
+    if (mapping) {
+        return isOn ? mapping.on : mapping.off;
+    }
+    return formatName(name);
+}
+
 function updateSensors(sensors) {
     const grid = $('sensorGrid');
     grid.innerHTML = '';
 
     for (const [name, value] of Object.entries(sensors)) {
         const isActive = value === 'ACTIVE' || value === true;
+        const label = getSensorLabel(name, isActive);
         grid.innerHTML += `
             <div class="sensor-item">
                 <span class="indicator ${isActive ? 'active' : ''}"></span>
-                <span class="name">${formatName(name)}</span>
+                <span class="name">${label}</span>
             </div>
         `;
     }
@@ -363,10 +407,11 @@ function updateRelays(relays) {
 
     for (const [name, value] of Object.entries(relays)) {
         const isOn = value === 'ON' || value === true;
+        const label = getRelayLabel(name, isOn);
         grid.innerHTML += `
             <div class="relay-item">
                 <span class="indicator ${isOn ? 'on' : ''}"></span>
-                <span class="name">${formatName(name)}</span>
+                <span class="name">${label}</span>
             </div>
         `;
     }
