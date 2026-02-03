@@ -59,6 +59,9 @@ class RelayController:
         'r06_di1_pot': RelayConfig(gpio=20, active_high=False, description="Режим по моменту"),
         'r07_di5_tsk0': RelayConfig(gpio=21, active_high=False, description="Вибір задачі 0"),
         'r08_di6_tsk1': RelayConfig(gpio=26, active_high=False, description="Вибір задачі 1"),
+        # Motor driver power relays (OFF=power ON, ON=power OFF - inverted logic)
+        'r09_pwr_y': RelayConfig(gpio=4, active_high=False, description="Живлення драйвера Y"),
+        'r10_pwr_x': RelayConfig(gpio=24, active_high=False, description="Живлення драйвера X"),
     }
 
     # Pulse durations in seconds
@@ -320,3 +323,52 @@ class RelayController:
     def brakes_engage(self) -> bool:
         """Engage both X and Y motor brakes."""
         return self.brake_x_engage() and self.brake_y_engage()
+
+    # ==========================================
+    # Motor driver power control
+    # Note: Inverted logic - relay OFF = power ON, relay ON = power OFF
+    # ==========================================
+
+    def driver_x_power_on(self) -> bool:
+        """
+        Turn ON power to X axis motor driver.
+        R10_PWR_X OFF = power ON (inverted logic).
+        """
+        return self.off('r10_pwr_x')
+
+    def driver_x_power_off(self) -> bool:
+        """
+        Turn OFF power to X axis motor driver.
+        R10_PWR_X ON = power OFF (inverted logic).
+        """
+        return self.on('r10_pwr_x')
+
+    def driver_y_power_on(self) -> bool:
+        """
+        Turn ON power to Y axis motor driver.
+        R09_PWR_Y OFF = power ON (inverted logic).
+        """
+        return self.off('r09_pwr_y')
+
+    def driver_y_power_off(self) -> bool:
+        """
+        Turn OFF power to Y axis motor driver.
+        R09_PWR_Y ON = power OFF (inverted logic).
+        """
+        return self.on('r09_pwr_y')
+
+    def drivers_power_on(self) -> bool:
+        """Turn ON power to both X and Y motor drivers."""
+        return self.driver_x_power_on() and self.driver_y_power_on()
+
+    def drivers_power_off(self) -> bool:
+        """Turn OFF power to both X and Y motor drivers."""
+        return self.driver_x_power_off() and self.driver_y_power_off()
+
+    def is_driver_x_powered(self) -> bool:
+        """Check if X axis motor driver has power (relay OFF = power ON)."""
+        return not self.is_on('r10_pwr_x')
+
+    def is_driver_y_powered(self) -> bool:
+        """Check if Y axis motor driver has power (relay OFF = power ON)."""
+        return not self.is_on('r09_pwr_y')
