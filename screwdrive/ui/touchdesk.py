@@ -19,6 +19,7 @@ if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
     os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
 from PyQt5.QtCore import Qt, QTimer, QCoreApplication, QThread, pyqtSignal
+from PyQt5.QtWidgets import QStackedWidget
 QCoreApplication.setAttribute(Qt.AA_DisableHighDpiScaling, True)
 from PyQt5.QtGui import QFont, QCursor
 from PyQt5.QtWidgets import (
@@ -915,9 +916,15 @@ class CycleWorker(QThread):
                 self.finished_error.emit(error_str)
 
 
-# ================== Control Tab ==================
-class ControlTab(QWidget):
-    """Main control tab - device selection, init, start, stop."""
+# ================== Start/Work Tab ==================
+class StartWorkTab(QWidget):
+    """Combined Start/Work tab - switches between modes after initialization."""
+
+    MODE_START = 0
+    MODE_WORK = 1
+
+    # Signal to notify MainWindow to change tab name
+    tabNameChanged = pyqtSignal(str)
 
     def __init__(self, api: ApiClient, parent=None):
         super().__init__(parent)
@@ -928,27 +935,48 @@ class ControlTab(QWidget):
         self._initialized = False
         self._last_server_state_time = 0
         self._total_cycles = 0
+        self._holes_completed = 0
+        self._total_holes = 0
         self._init_worker = None
         self._cycle_worker = None
+        self._current_mode = self.MODE_START
 
         self._setup_ui()
 
     def _setup_ui(self):
-        root = QHBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(20)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        # Left column - Device selection
+        # Stacked widget for mode switching
+        self.stack = QStackedWidget()
+        root.addWidget(self.stack)
+
+        # Create both mode widgets
+        self._setup_start_mode()
+        self._setup_work_mode()
+
+        self.stack.addWidget(self.start_widget)
+        self.stack.addWidget(self.work_widget)
+        self.stack.setCurrentIndex(self.MODE_START)
+
+    def _setup_start_mode(self):
+        """Setup START mode - device selection + init button."""
+        self.start_widget = QWidget()
+        layout = QHBoxLayout(self.start_widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(20)
+
+        # Left column (33%) - Device list
         left = QVBoxLayout()
         left.setSpacing(12)
 
-        # Device card
         self.devCard = make_card("Вибір девайсу")
         dev_lay = self.devCard.layout()
 
         self.devScroll = QScrollArea()
         self.devScroll.setWidgetResizable(True)
-        self.devScroll.setMinimumWidth(280)
+        self.devScroll.setMinimumWidth(250)
         self.devList = QWidget()
         self.devListLay = QVBoxLayout(self.devList)
         self.devListLay.setContentsMargins(0, 0, 0, 0)
@@ -958,81 +986,160 @@ class ControlTab(QWidget):
 
         left.addWidget(self.devCard)
 
-        # Right column - Controls
+        # Right column (66%) - Init button and status
         right = QVBoxLayout()
-        right.setSpacing(12)
+        right.setSpacing(16)
 
-        # Status card
-        self.statusCard = make_card("Статус циклу")
-        status_lay = self.statusCard.layout()
+        # Status area at top
+        self.startStatusCard = make_card("Статус")
+        status_lay = self.startStatusCard.layout()
 
-        status_grid = QGridLayout()
-        status_grid.setSpacing(12)
+        self.lblStartDevice = QLabel("Девайс: не вибрано")
+        self.lblStartDevice.setObjectName("statusValue")
+        self.lblStartDevice.setAlignment(Qt.AlignCenter)
+        status_lay.addWidget(self.lblStartDevice)
 
-        status_grid.addWidget(QLabel("Стан:"), 0, 0)
-        self.lblState = QLabel("IDLE")
-        self.lblState.setObjectName("statusValue")
-        status_grid.addWidget(self.lblState, 0, 1)
-
-        status_grid.addWidget(QLabel("Девайс:"), 1, 0)
-        self.lblDevice = QLabel("-")
-        self.lblDevice.setObjectName("statusValue")
-        status_grid.addWidget(self.lblDevice, 1, 1)
-
-        status_grid.addWidget(QLabel("Прогрес:"), 2, 0)
-        self.lblProgress = QLabel("0 / 0")
-        self.lblProgress.setObjectName("statusValue")
-        status_grid.addWidget(self.lblProgress, 2, 1)
-
-        status_lay.addLayout(status_grid)
+        self.lblStartMessage = QLabel("Виберіть девайс зі списку зліва")
+        self.lblStartMessage.setObjectName("statusMessage")
+        self.lblStartMessage.setWordWrap(True)
+        self.lblStartMessage.setAlignment(Qt.AlignCenter)
+        status_lay.addWidget(self.lblStartMessage)
 
         # Progress bar
-        self.progressBar = QProgressBar()
-        self.progressBar.setMinimum(0)
-        self.progressBar.setMaximum(100)
-        self.progressBar.setValue(0)
-        status_lay.addWidget(self.progressBar)
+        self.startProgressBar = QProgressBar()
+        self.startProgressBar.setMinimum(0)
+        self.startProgressBar.setMaximum(100)
+        self.startProgressBar.setValue(0)
+        self.startProgressBar.setMinimumHeight(40)
+        status_lay.addWidget(self.startProgressBar)
 
-        # Status message
-        self.lblMessage = QLabel("Виберіть девайс для початку роботи")
-        self.lblMessage.setObjectName("statusMessage")
-        self.lblMessage.setWordWrap(True)
-        status_lay.addWidget(self.lblMessage)
+        right.addWidget(self.startStatusCard)
 
-        right.addWidget(self.statusCard)
-
-        # Control buttons
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(16)
-
-        self.btnInit = big_button("ІНІЦІАЛІЗАЦІЯ", "info")
-        self.btnStart = big_button("START", "primary")
-        self.btnStop = big_button("STOP", "danger")
-
+        # Big INIT button
+        self.btnInit = QPushButton("ІНІЦІАЛІЗАЦІЯ")
+        self.btnInit.setObjectName("btn_init_big")
+        self.btnInit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.btnInit.setMinimumHeight(200)
         self.btnInit.clicked.connect(self.on_init)
-        self.btnStart.clicked.connect(self.on_start)
-        self.btnStop.clicked.connect(self.on_stop)
+        self.btnInit.setEnabled(False)
+        right.addWidget(self.btnInit, 1)
 
-        self.btnStart.setEnabled(False)
+        # E-STOP at bottom
+        self.btnEstopStart = QPushButton("E-STOP")
+        self.btnEstopStart.setObjectName("btn_estop")
+        self.btnEstopStart.setMinimumHeight(80)
+        self.btnEstopStart.clicked.connect(self.on_estop)
+        right.addWidget(self.btnEstopStart)
 
-        btn_row.addWidget(self.btnInit)
-        btn_row.addWidget(self.btnStart)
-        btn_row.addWidget(self.btnStop)
-
-        right.addLayout(btn_row, 1)
-
-        # E-STOP button
-        self.btnEstop = big_button("E-STOP", "estop")
-        self.btnEstop.setMinimumHeight(80)
-        self.btnEstop.clicked.connect(self.on_estop)
-        right.addWidget(self.btnEstop)
-
-        # Layout ratio
-        root.addLayout(left, 3)
-        root.addLayout(right, 7)
+        # Layout ratio 33/66
+        layout.addLayout(left, 1)
+        layout.addLayout(right, 2)
 
         # Device buttons dict
         self._device_buttons = {}
+
+    def _setup_work_mode(self):
+        """Setup WORK mode - two big buttons for start/stop cycle."""
+        self.work_widget = QWidget()
+        layout = QVBoxLayout(self.work_widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(16)
+
+        # Top status bar
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(20)
+
+        self.lblWorkDevice = QLabel("Девайс: -")
+        self.lblWorkDevice.setObjectName("workStatusLabel")
+        top_bar.addWidget(self.lblWorkDevice)
+
+        top_bar.addStretch(1)
+
+        self.lblWorkCounter = QLabel("Циклів: 0")
+        self.lblWorkCounter.setObjectName("workCounterLabel")
+        top_bar.addWidget(self.lblWorkCounter)
+
+        top_bar.addStretch(1)
+
+        self.lblWorkHoles = QLabel("Гвинтів: 0 / 0")
+        self.lblWorkHoles.setObjectName("workStatusLabel")
+        top_bar.addWidget(self.lblWorkHoles)
+
+        layout.addLayout(top_bar)
+
+        # Status message
+        self.lblWorkMessage = QLabel("Готово до роботи. Натисніть СТАРТ ЗАКРУЧУВАННЯ.")
+        self.lblWorkMessage.setObjectName("workMessage")
+        self.lblWorkMessage.setWordWrap(True)
+        self.lblWorkMessage.setAlignment(Qt.AlignCenter)
+        self.lblWorkMessage.setMinimumHeight(60)
+        layout.addWidget(self.lblWorkMessage)
+
+        # Progress bar
+        self.workProgressBar = QProgressBar()
+        self.workProgressBar.setMinimum(0)
+        self.workProgressBar.setMaximum(100)
+        self.workProgressBar.setValue(0)
+        self.workProgressBar.setMinimumHeight(50)
+        self.workProgressBar.setObjectName("workProgressBar")
+        layout.addWidget(self.workProgressBar)
+
+        # Two big buttons row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(20)
+
+        # START button (green, left)
+        self.btnStartCycle = QPushButton("СТАРТ\nЗАКРУЧУВАННЯ")
+        self.btnStartCycle.setObjectName("btn_work_start")
+        self.btnStartCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.btnStartCycle.setMinimumHeight(300)
+        self.btnStartCycle.clicked.connect(self.on_start)
+        btn_row.addWidget(self.btnStartCycle, 1)
+
+        # STOP button (red, right)
+        self.btnStopCycle = QPushButton("ЗУПИНИТИ\nЗАКРУЧУВАННЯ")
+        self.btnStopCycle.setObjectName("btn_work_stop")
+        self.btnStopCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.btnStopCycle.setMinimumHeight(300)
+        self.btnStopCycle.clicked.connect(self.on_stop_and_return)
+        btn_row.addWidget(self.btnStopCycle, 1)
+
+        layout.addLayout(btn_row, 1)
+
+        # E-STOP at bottom
+        self.btnEstopWork = QPushButton("E-STOP")
+        self.btnEstopWork.setObjectName("btn_estop")
+        self.btnEstopWork.setMinimumHeight(80)
+        self.btnEstopWork.clicked.connect(self.on_estop)
+        layout.addWidget(self.btnEstopWork)
+
+    def switch_to_work_mode(self):
+        """Switch to WORK mode after successful initialization."""
+        self._current_mode = self.MODE_WORK
+        self.stack.setCurrentIndex(self.MODE_WORK)
+        self.tabNameChanged.emit("РОБОТА")
+
+        # Update work mode labels
+        self.lblWorkDevice.setText(f"Девайс: {self._selected_device}")
+        self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+        self.lblWorkHoles.setText(f"Гвинтів: 0 / {self._total_holes}")
+        self.lblWorkMessage.setText("Готово. Натисніть СТАРТ ЗАКРУЧУВАННЯ для початку циклу.")
+        self.workProgressBar.setValue(0)
+
+        # Enable start button
+        self.btnStartCycle.setEnabled(True)
+
+    def switch_to_start_mode(self):
+        """Switch back to START mode."""
+        self._current_mode = self.MODE_START
+        self._initialized = False
+        self.stack.setCurrentIndex(self.MODE_START)
+        self.tabNameChanged.emit("СТАРТ")
+
+        # Reset start mode
+        self.btnInit.setEnabled(bool(self._selected_device))
+        self.startProgressBar.setValue(0)
+        self.lblStartMessage.setText("Виберіть девайс та натисніть ІНІЦІАЛІЗАЦІЯ")
 
     def _rebuild_devices(self, devices: list):
         """Rebuild device list buttons."""
@@ -1053,7 +1160,7 @@ class ControlTab(QWidget):
             btn = QPushButton(f"{key}\n{holes} отворів")
             btn.setObjectName("devButton")
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            btn.setMinimumHeight(70)
+            btn.setMinimumHeight(80)
             btn.clicked.connect(lambda _, k=key: self._select_device(k))
 
             self.devListLay.addWidget(btn)
@@ -1077,10 +1184,14 @@ class ControlTab(QWidget):
         self._cycle_state = "IDLE"
         self._update_device_styles()
 
-        self.lblDevice.setText(key)
-        self.lblState.setText("IDLE")
-        self.lblMessage.setText(f"Девайс {key} вибрано. Натисніть ІНІЦІАЛІЗАЦІЯ.")
-        self.btnStart.setEnabled(False)
+        # Get holes count
+        for dev in self._devices:
+            if dev.get("key") == key:
+                self._total_holes = dev.get("holes", 0)
+                break
+
+        self.lblStartDevice.setText(f"Девайс: {key}")
+        self.lblStartMessage.setText(f"Девайс {key} вибрано. Натисніть ІНІЦІАЛІЗАЦІЯ.")
         self.btnInit.setEnabled(True)
 
         # Sync to server for web UI
@@ -1092,19 +1203,12 @@ class ControlTab(QWidget):
     def _sync_state_to_server(self, cycle_state: str, message: str = "", progress_percent: int = 0, current_step: str = ""):
         """Sync current state to server for web UI."""
         try:
-            # Get total holes from selected device
-            total_holes = 0
-            for dev in self._devices:
-                if dev.get("key") == self._selected_device:
-                    total_holes = dev.get("holes", 0)
-                    break
-
             self.api.set_ui_state({
                 "selected_device": self._selected_device,
                 "cycle_state": cycle_state,
                 "initialized": self._initialized,
-                "holes_completed": 0,
-                "total_holes": total_holes,
+                "holes_completed": self._holes_completed,
+                "total_holes": self._total_holes,
                 "cycles_completed": self._total_cycles,
                 "message": message,
                 "progress_percent": progress_percent,
@@ -1116,14 +1220,14 @@ class ControlTab(QWidget):
     def on_init(self):
         """Handle initialization button."""
         if not self._selected_device:
-            self.lblMessage.setText("Спочатку виберіть девайс!")
+            self.lblStartMessage.setText("Спочатку виберіть девайс!")
             return
 
         # Check if web is already operating
         try:
             server_state = self.api.get_ui_state()
             if server_state.get("operator") == "web":
-                self.lblMessage.setText("Web UI виконує операцію. Зачекайте...")
+                self.lblStartMessage.setText("Web UI виконує операцію. Зачекайте...")
                 return
         except Exception:
             pass
@@ -1136,21 +1240,20 @@ class ControlTab(QWidget):
                 break
 
         if not device:
-            self.lblMessage.setText("Девайс не знайдено!")
+            self.lblStartMessage.setText("Девайс не знайдено!")
             return
 
         # Try to get full device data from API
         try:
             device = self.api.device(self._selected_device)
+            self._total_holes = len([s for s in device.get("steps", []) if s.get("type", "").lower() == "work"])
         except Exception as e:
             print(f"Failed to load device details: {e}")
 
         self._cycle_state = "INITIALIZING"
-        self.lblState.setText("INITIALIZING")
-        self.lblMessage.setText("Ініціалізація...")
-        self.progressBar.setValue(0)
+        self.lblStartMessage.setText("Ініціалізація...")
+        self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(False)
-        self.btnStart.setEnabled(False)
 
         # Sync state to server
         self._sync_state_to_server("INITIALIZING", "Ініціалізація...")
@@ -1164,54 +1267,51 @@ class ControlTab(QWidget):
 
     def _on_init_progress(self, message: str, progress: int):
         """Handle initialization progress updates."""
-        self.lblMessage.setText(message)
-        self.progressBar.setValue(progress)
+        self.lblStartMessage.setText(message)
+        self.startProgressBar.setValue(progress)
 
     def _on_init_success(self, warnings: str):
         """Called when initialization completes successfully."""
         self._initialized = True
         self._cycle_state = "READY"
-        self.lblState.setText("READY")
 
-        # Show warnings if any driver alarms were reset
         if warnings:
-            self.lblMessage.setText(warnings)
+            self.lblStartMessage.setText(warnings)
         else:
-            self.lblMessage.setText("Ініціалізація завершена. Натисніть START для запуску циклу.")
+            self.lblStartMessage.setText("Ініціалізація завершена!")
 
-        self.progressBar.setValue(100)
-        self.btnInit.setEnabled(True)
-        self.btnStart.setEnabled(True)
+        self.startProgressBar.setValue(100)
         self._init_worker = None
 
         # Sync state to server
         self._sync_state_to_server("READY", "Готово до запуску")
 
+        # Switch to work mode
+        self.switch_to_work_mode()
+
     def _on_init_error(self, error_msg: str):
         """Called when initialization fails."""
         self._initialized = False
         self._cycle_state = "INIT_ERROR"
-        self.lblState.setText("INIT_ERROR")
-        self.lblMessage.setText(f"ПОМИЛКА: {error_msg}")
-        self.progressBar.setValue(0)
+        self.lblStartMessage.setText(f"ПОМИЛКА: {error_msg}")
+        self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
-        self.btnStart.setEnabled(False)
         self._init_worker = None
 
         # Sync state to server
         self._sync_state_to_server("INIT_ERROR", f"Помилка: {error_msg}")
 
     def on_start(self):
-        """Handle START button."""
+        """Handle START CYCLE button in WORK mode."""
         if not self._selected_device or not self._initialized:
-            self.lblMessage.setText("Спочатку виконайте ініціалізацію!")
+            self.lblWorkMessage.setText("Помилка: машина не ініціалізована!")
             return
 
         # Check if web is already operating
         try:
             server_state = self.api.get_ui_state()
             if server_state.get("operator") == "web":
-                self.lblMessage.setText("Web UI виконує операцію. Зачекайте...")
+                self.lblWorkMessage.setText("Web UI виконує операцію. Зачекайте...")
                 return
         except Exception:
             pass
@@ -1221,19 +1321,18 @@ class ControlTab(QWidget):
         try:
             device = self.api.device(self._selected_device)
         except Exception as e:
-            self.lblMessage.setText(f"Не вдалося завантажити девайс: {e}")
+            self.lblWorkMessage.setText(f"Не вдалося завантажити девайс: {e}")
             return
 
         if not device or not device.get("steps"):
-            self.lblMessage.setText("Девайс не має координат для закручування!")
+            self.lblWorkMessage.setText("Девайс не має координат для закручування!")
             return
 
         self._cycle_state = "RUNNING"
-        self.lblState.setText("RUNNING")
-        self.lblMessage.setText("Цикл виконується...")
-        self.progressBar.setValue(0)
-        self.btnStart.setEnabled(False)
-        self.btnInit.setEnabled(False)
+        self._holes_completed = 0
+        self.lblWorkMessage.setText("Цикл виконується...")
+        self.workProgressBar.setValue(0)
+        self.btnStartCycle.setEnabled(False)
 
         # Sync state to server
         self._sync_state_to_server("RUNNING", "Цикл виконується", 0, "Запуск циклу")
@@ -1247,19 +1346,22 @@ class ControlTab(QWidget):
 
     def _on_cycle_progress(self, message: str, holes: int, total: int, pct: int):
         """Handle cycle progress updates."""
-        self.lblMessage.setText(message)
-        self.lblProgress.setText(f"{holes} / {total}")
-        self.progressBar.setValue(pct)
+        self._holes_completed = holes
+        self.lblWorkMessage.setText(message)
+        self.lblWorkHoles.setText(f"Гвинтів: {holes} / {total}")
+        self.workProgressBar.setValue(pct)
 
     def _on_cycle_success(self, holes_completed: int):
         """Called when cycle completes successfully."""
         self._total_cycles += 1
         self._cycle_state = "COMPLETED"
-        self.lblState.setText("COMPLETED")
-        self.lblMessage.setText(f"Цикл завершено! Закручено {holes_completed} гвинтів. Натисніть START для наступного.")
-        self.progressBar.setValue(100)
-        self.btnStart.setEnabled(True)
-        self.btnInit.setEnabled(True)
+        self._holes_completed = holes_completed
+
+        self.lblWorkMessage.setText(f"Цикл завершено! Закручено {holes_completed} гвинтів.")
+        self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+        self.lblWorkHoles.setText(f"Гвинтів: {holes_completed} / {self._total_holes}")
+        self.workProgressBar.setValue(100)
+        self.btnStartCycle.setEnabled(True)
         self._cycle_worker = None
 
         # Sync state to server
@@ -1268,29 +1370,21 @@ class ControlTab(QWidget):
     def _on_cycle_error(self, error_msg: str):
         """Called when cycle fails."""
         self._cycle_state = "ERROR"
-        self.lblState.setText("ERROR")
-        self.lblMessage.setText(f"ПОМИЛКА: {error_msg}")
-        self.progressBar.setValue(0)
-        self.btnStart.setEnabled(True)
-        self.btnInit.setEnabled(True)
+        self.lblWorkMessage.setText(f"ПОМИЛКА: {error_msg}")
+        self.workProgressBar.setValue(0)
+        self.btnStartCycle.setEnabled(True)
         self._cycle_worker = None
 
         # Special handling for torque error
         if error_msg == "TORQUE_NOT_REACHED":
             self._cycle_state = "PAUSED"
-            self.lblState.setText("PAUSED")
-            self.lblMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть START.")
+            self.lblWorkMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть СТАРТ.")
             self._sync_state_to_server("PAUSED", "Момент не досягнуто", 0, "Помилка моменту")
         else:
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
 
-    def on_stop(self):
-        """Handle STOP button."""
-        # Abort init worker if running
-        if self._init_worker and self._init_worker.isRunning():
-            self._init_worker.abort()
-            self._init_worker = None
-
+    def on_stop_and_return(self):
+        """Handle STOP button in WORK mode - stop and return to START mode."""
         # Abort cycle worker if running
         if self._cycle_worker and self._cycle_worker.isRunning():
             self._cycle_worker.abort()
@@ -1312,15 +1406,12 @@ class ControlTab(QWidget):
             pass
 
         self._cycle_state = "STOPPED"
-        self._initialized = False
-        self.lblState.setText("STOPPED")
-        self.lblMessage.setText("Цикл зупинено оператором.")
-        self.progressBar.setValue(0)
-        self.btnStart.setEnabled(False)
-        self.btnInit.setEnabled(True)
 
         # Sync state to server
         self._sync_state_to_server("STOPPED", "Цикл зупинено")
+
+        # Return to start mode
+        self.switch_to_start_mode()
 
     def on_estop(self):
         """Handle E-STOP button."""
@@ -1352,11 +1443,16 @@ class ControlTab(QWidget):
 
         self._cycle_state = "E-STOP"
         self._initialized = False
-        self.lblState.setText("E-STOP")
-        self.lblMessage.setText("АВАРІЙНА ЗУПИНКА! Натисніть Clear E-Stop для продовження.")
-        self.progressBar.setValue(0)
-        self.btnStart.setEnabled(False)
-        self.btnInit.setEnabled(False)
+
+        # Update UI based on current mode
+        if self._current_mode == self.MODE_START:
+            self.lblStartMessage.setText("АВАРІЙНА ЗУПИНКА!")
+            self.startProgressBar.setValue(0)
+            self.btnInit.setEnabled(False)
+        else:
+            self.lblWorkMessage.setText("АВАРІЙНА ЗУПИНКА!")
+            self.workProgressBar.setValue(0)
+            self.btnStartCycle.setEnabled(False)
 
         # Sync state to server
         self._sync_state_to_server("E-STOP", "Аварійна зупинка")
@@ -1374,19 +1470,11 @@ class ControlTab(QWidget):
         # Check for UI state changes from web UI
         self._check_server_ui_state()
 
-        # Update cycle status from status dict
-        cycle = status.get("cycle", {})
-        xy = status.get("xy_table", {})
+        # Check E-STOP from sensors
         sensors = status.get("sensors", {})
-
-        # Check E-STOP
         estop = sensors.get("emergency_stop") == "ACTIVE"
-        if estop:
-            self.lblState.setText("E-STOP")
-            self.lblState.setProperty("state", "error")
-
-        # XY Table state
-        xy_state = xy.get("state", "DISCONNECTED")
+        if estop and self._cycle_state != "E-STOP":
+            self.on_estop()
 
     def _check_server_ui_state(self):
         """Check if server UI state was updated by web client."""
@@ -1396,7 +1484,6 @@ class ControlTab(QWidget):
             # Check if web is actively operating
             web_is_operating = server_state.get("operator") == "web"
 
-            # Always update if web is operating (to show live progress)
             if web_is_operating or (server_state.get("updated_at", 0) > self._last_server_state_time and
                                     server_state.get("updated_by") == "web"):
 
@@ -1404,62 +1491,39 @@ class ControlTab(QWidget):
 
                 # Update device selection from web
                 new_device = server_state.get("selected_device")
-                if new_device != self._selected_device:
+                if new_device and new_device != self._selected_device:
                     self._selected_device = new_device
                     self._update_device_styles()
-                    self.lblDevice.setText(new_device or "-")
+                    if self._current_mode == self.MODE_START:
+                        self.lblStartDevice.setText(f"Девайс: {new_device}")
+                    else:
+                        self.lblWorkDevice.setText(f"Девайс: {new_device}")
 
                 # Update cycle state from web
                 new_state = server_state.get("cycle_state", "IDLE")
                 self._cycle_state = new_state
-                self.lblState.setText(new_state)
 
-                # Update progress bar and message when web is operating
+                # Update progress when web is operating
                 if web_is_operating:
                     progress_pct = server_state.get("progress_percent", 0)
-                    current_step = server_state.get("current_step", "")
                     message = server_state.get("message", "")
+                    holes = server_state.get("holes_completed", 0)
+                    total = server_state.get("total_holes", 0)
 
-                    self.progressBar.setValue(progress_pct)
-                    self.lblMessage.setText(current_step or message or "Web UI виконує операцію...")
-
-                    # Disable buttons while web is operating
-                    self.btnInit.setEnabled(False)
-                    self.btnStart.setEnabled(False)
-                else:
-                    # Update buttons based on state when web is not operating
-                    if new_state in ("IDLE", "STOPPED", "ERROR", "INIT_ERROR"):
-                        self.btnInit.setEnabled(bool(self._selected_device))
-                        self.btnStart.setEnabled(False)
-                        self._initialized = False
-                    elif new_state == "READY":
-                        self.btnInit.setEnabled(True)
-                        self.btnStart.setEnabled(True)
-                        self._initialized = True
-                    elif new_state in ("RUNNING", "INITIALIZING", "RETURNING"):
+                    if self._current_mode == self.MODE_START:
+                        self.startProgressBar.setValue(progress_pct)
+                        self.lblStartMessage.setText(message or "Web UI виконує операцію...")
                         self.btnInit.setEnabled(False)
-                        self.btnStart.setEnabled(False)
-                    elif new_state == "COMPLETED":
-                        self.btnInit.setEnabled(True)
-                        self.btnStart.setEnabled(True)
-                        self._initialized = True
+                    else:
+                        self.workProgressBar.setValue(progress_pct)
+                        self.lblWorkMessage.setText(message or "Web UI виконує операцію...")
+                        self.lblWorkHoles.setText(f"Гвинтів: {holes} / {total}")
+                        self.btnStartCycle.setEnabled(False)
 
-                # Update progress
-                holes = server_state.get("holes_completed", 0)
-                total = server_state.get("total_holes", 0)
-                self.lblProgress.setText(f"{holes} / {total}")
-
-                # Update cycles count
-                cycles = server_state.get("cycles_completed", 0)
-                if cycles > self._total_cycles:
-                    self._total_cycles = cycles
-
-            # Update our timestamp if we're the latest
             if server_state.get("updated_by") == "desktop":
                 self._last_server_state_time = server_state.get("updated_at", 0)
 
-        except Exception as e:
-            # Ignore errors - server might not have endpoint yet
+        except Exception:
             pass
 
 
@@ -1608,77 +1672,227 @@ class ServiceTab(QWidget):
                 lblState.style().polish(lblState)
 
 
-# ================== XY Tab ==================
-class XYTab(QWidget):
-    """XY Table control tab."""
+# ================== Platform Tab ==================
+class PlatformTab(QWidget):
+    """Platform (XY Table) control tab with full features."""
 
     def __init__(self, api: ApiClient, parent=None):
         super().__init__(parent)
         self.api = api
+        self._current_x = 0.0
+        self._current_y = 0.0
+        self._offset_x = 0.0
+        self._offset_y = 0.0
         self._setup_ui()
 
     def _setup_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(20)
+        root.setSpacing(16)
+
+        # Top row: Status + Position
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
 
         # Status card
-        self.statusCard = make_card("XY Стіл - Статус")
+        self.statusCard = make_card("Статус XY")
         status_lay = self.statusCard.layout()
 
-        grid = QGridLayout()
-        grid.setSpacing(12)
+        status_grid = QGridLayout()
+        status_grid.setSpacing(8)
 
-        grid.addWidget(QLabel("Стан:"), 0, 0)
+        status_grid.addWidget(QLabel("Стан:"), 0, 0)
         self.lblState = QLabel("-")
         self.lblState.setObjectName("statusValue")
-        grid.addWidget(self.lblState, 0, 1)
+        status_grid.addWidget(self.lblState, 0, 1)
 
-        grid.addWidget(QLabel("Позиція:"), 1, 0)
-        self.lblPosition = QLabel("X: ?.?? Y: ?.??")
-        self.lblPosition.setObjectName("statusValue")
-        grid.addWidget(self.lblPosition, 1, 1)
-
-        grid.addWidget(QLabel("Homed:"), 2, 0)
+        status_grid.addWidget(QLabel("Homed:"), 1, 0)
         self.lblHomed = QLabel("X: ? Y: ?")
         self.lblHomed.setObjectName("statusValue")
-        grid.addWidget(self.lblHomed, 2, 1)
+        status_grid.addWidget(self.lblHomed, 1, 1)
 
-        grid.addWidget(QLabel("Endstops:"), 3, 0)
+        status_grid.addWidget(QLabel("Endstops:"), 2, 0)
         self.lblEndstops = QLabel("-")
         self.lblEndstops.setObjectName("statusValue")
-        grid.addWidget(self.lblEndstops, 3, 1)
+        status_grid.addWidget(self.lblEndstops, 2, 1)
 
-        status_lay.addLayout(grid)
-        root.addWidget(self.statusCard)
+        status_lay.addLayout(status_grid)
+        top_row.addWidget(self.statusCard, 1)
 
-        # Control buttons
-        btn_card = make_card("Керування")
-        btn_lay = btn_card.layout()
+        # Position card
+        self.posCard = make_card("Позиція")
+        pos_lay = self.posCard.layout()
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(16)
+        pos_grid = QGridLayout()
+        pos_grid.setSpacing(8)
+
+        pos_grid.addWidget(QLabel("Фізична:"), 0, 0)
+        self.lblPhysPos = QLabel("X: ?.??  Y: ?.??")
+        self.lblPhysPos.setObjectName("positionValue")
+        pos_grid.addWidget(self.lblPhysPos, 0, 1)
+
+        pos_grid.addWidget(QLabel("Робоча:"), 1, 0)
+        self.lblWorkPos = QLabel("X: ?.??  Y: ?.??")
+        self.lblWorkPos.setObjectName("positionValue")
+        pos_grid.addWidget(self.lblWorkPos, 1, 1)
+
+        pos_grid.addWidget(QLabel("Offset:"), 2, 0)
+        self.lblOffset = QLabel("X: 0.00  Y: 0.00")
+        self.lblOffset.setObjectName("statusValue")
+        pos_grid.addWidget(self.lblOffset, 2, 1)
+
+        pos_lay.addLayout(pos_grid)
+        top_row.addWidget(self.posCard, 1)
+
+        root.addLayout(top_row)
+
+        # Middle row: Homing + Offset + Brakes/Power
+        middle_row = QHBoxLayout()
+        middle_row.setSpacing(16)
+
+        # Homing card
+        self.homeCard = make_card("Хомінг")
+        home_lay = self.homeCard.layout()
+
+        home_btns = QHBoxLayout()
+        home_btns.setSpacing(12)
 
         self.btnHomeAll = QPushButton("HOME ALL")
+        self.btnHomeAll.setObjectName("btn_home")
+        self.btnHomeAll.setMinimumHeight(60)
+        self.btnHomeAll.clicked.connect(lambda: self._do_home(None))
+        home_btns.addWidget(self.btnHomeAll)
+
         self.btnHomeX = QPushButton("HOME X")
+        self.btnHomeX.setObjectName("btn_home")
+        self.btnHomeX.setMinimumHeight(60)
+        self.btnHomeX.clicked.connect(lambda: self._do_home("X"))
+        home_btns.addWidget(self.btnHomeX)
+
         self.btnHomeY = QPushButton("HOME Y")
+        self.btnHomeY.setObjectName("btn_home")
+        self.btnHomeY.setMinimumHeight(60)
+        self.btnHomeY.clicked.connect(lambda: self._do_home("Y"))
+        home_btns.addWidget(self.btnHomeY)
+
+        home_lay.addLayout(home_btns)
+        middle_row.addWidget(self.homeCard, 1)
+
+        # Offset card
+        self.offsetCard = make_card("Work Offset (G92)")
+        offset_lay = self.offsetCard.layout()
+
+        offset_btns = QHBoxLayout()
+        offset_btns.setSpacing(12)
+
+        self.btnSetZero = QPushButton("SET ZERO")
+        self.btnSetZero.setObjectName("btn_offset")
+        self.btnSetZero.setMinimumHeight(60)
+        self.btnSetZero.clicked.connect(self._set_zero)
+        offset_btns.addWidget(self.btnSetZero)
+
+        self.btnResetOffset = QPushButton("RESET")
+        self.btnResetOffset.setObjectName("btn_offset")
+        self.btnResetOffset.setMinimumHeight(60)
+        self.btnResetOffset.clicked.connect(self._reset_offset)
+        offset_btns.addWidget(self.btnResetOffset)
+
+        offset_lay.addLayout(offset_btns)
+        middle_row.addWidget(self.offsetCard, 1)
+
+        root.addLayout(middle_row)
+
+        # Movement card
+        self.moveCard = make_card("Переміщення")
+        move_lay = self.moveCard.layout()
+
+        move_grid = QGridLayout()
+        move_grid.setSpacing(12)
+
+        # X input
+        move_grid.addWidget(QLabel("X (мм):"), 0, 0)
+        self.spinMoveX = QSpinBox()
+        self.spinMoveX.setRange(0, 1000)
+        self.spinMoveX.setValue(0)
+        self.spinMoveX.setMinimumHeight(50)
+        move_grid.addWidget(self.spinMoveX, 0, 1)
+
+        # Y input
+        move_grid.addWidget(QLabel("Y (мм):"), 0, 2)
+        self.spinMoveY = QSpinBox()
+        self.spinMoveY.setRange(0, 1000)
+        self.spinMoveY.setValue(0)
+        self.spinMoveY.setMinimumHeight(50)
+        move_grid.addWidget(self.spinMoveY, 0, 3)
+
+        # Feed input
+        move_grid.addWidget(QLabel("Feed:"), 0, 4)
+        self.spinFeed = QSpinBox()
+        self.spinFeed.setRange(100, 100000)
+        self.spinFeed.setValue(5000)
+        self.spinFeed.setSingleStep(1000)
+        self.spinFeed.setMinimumHeight(50)
+        move_grid.addWidget(self.spinFeed, 0, 5)
+
+        # Move/Stop buttons
+        self.btnMove = QPushButton("MOVE")
+        self.btnMove.setObjectName("btn_move")
+        self.btnMove.setMinimumHeight(60)
+        self.btnMove.clicked.connect(self._do_move)
+        move_grid.addWidget(self.btnMove, 1, 0, 1, 3)
+
         self.btnStop = QPushButton("STOP")
         self.btnStop.setObjectName("btn_danger")
-
-        self.btnHomeAll.clicked.connect(lambda: self._do_home(None))
-        self.btnHomeX.clicked.connect(lambda: self._do_home("X"))
-        self.btnHomeY.clicked.connect(lambda: self._do_home("Y"))
+        self.btnStop.setMinimumHeight(60)
         self.btnStop.clicked.connect(self._do_stop)
+        move_grid.addWidget(self.btnStop, 1, 3, 1, 3)
 
-        btn_row.addWidget(self.btnHomeAll)
-        btn_row.addWidget(self.btnHomeX)
-        btn_row.addWidget(self.btnHomeY)
-        btn_row.addWidget(self.btnStop)
+        move_lay.addLayout(move_grid)
+        root.addWidget(self.moveCard)
 
-        btn_lay.addLayout(btn_row)
-        root.addWidget(btn_card)
+        # Brakes and Power card
+        self.brakePowerCard = make_card("Гальма та Живлення")
+        bp_lay = self.brakePowerCard.layout()
 
-        root.addStretch(1)
+        bp_grid = QGridLayout()
+        bp_grid.setSpacing(12)
+
+        # Brakes
+        bp_grid.addWidget(QLabel("Гальмо X:"), 0, 0)
+        self.btnBrakeX = QPushButton("ON")
+        self.btnBrakeX.setObjectName("btn_toggle")
+        self.btnBrakeX.setCheckable(True)
+        self.btnBrakeX.setMinimumHeight(50)
+        self.btnBrakeX.clicked.connect(lambda: self._toggle_relay("r02_brake_x", self.btnBrakeX))
+        bp_grid.addWidget(self.btnBrakeX, 0, 1)
+
+        bp_grid.addWidget(QLabel("Гальмо Y:"), 0, 2)
+        self.btnBrakeY = QPushButton("ON")
+        self.btnBrakeY.setObjectName("btn_toggle")
+        self.btnBrakeY.setCheckable(True)
+        self.btnBrakeY.setMinimumHeight(50)
+        self.btnBrakeY.clicked.connect(lambda: self._toggle_relay("r03_brake_y", self.btnBrakeY))
+        bp_grid.addWidget(self.btnBrakeY, 0, 3)
+
+        # Power (inverted logic - relay ON = power OFF)
+        bp_grid.addWidget(QLabel("Живлення X:"), 1, 0)
+        self.btnPowerX = QPushButton("ON")
+        self.btnPowerX.setObjectName("btn_toggle")
+        self.btnPowerX.setCheckable(True)
+        self.btnPowerX.setMinimumHeight(50)
+        self.btnPowerX.clicked.connect(lambda: self._toggle_power("r09_pwr_x", self.btnPowerX))
+        bp_grid.addWidget(self.btnPowerX, 1, 1)
+
+        bp_grid.addWidget(QLabel("Живлення Y:"), 1, 2)
+        self.btnPowerY = QPushButton("ON")
+        self.btnPowerY.setObjectName("btn_toggle")
+        self.btnPowerY.setCheckable(True)
+        self.btnPowerY.setMinimumHeight(50)
+        self.btnPowerY.clicked.connect(lambda: self._toggle_power("r10_pwr_y", self.btnPowerY))
+        bp_grid.addWidget(self.btnPowerY, 1, 3)
+
+        bp_lay.addLayout(bp_grid)
+        root.addWidget(self.brakePowerCard)
 
     def _do_home(self, axis: str = None):
         """Execute homing."""
@@ -1694,10 +1908,53 @@ class XYTab(QWidget):
         except Exception as e:
             print(f"Stop error: {e}")
 
+    def _do_move(self):
+        """Move to specified position."""
+        x = self.spinMoveX.value()
+        y = self.spinMoveY.value()
+        feed = self.spinFeed.value()
+        try:
+            self.api.xy_move(x, y, feed)
+        except Exception as e:
+            print(f"Move error: {e}")
+
+    def _set_zero(self):
+        """Set current position as work zero."""
+        try:
+            # Set offset to current physical position
+            self.api.set_offsets(self._current_x, self._current_y)
+        except Exception as e:
+            print(f"Set zero error: {e}")
+
+    def _reset_offset(self):
+        """Reset work offset to zero."""
+        try:
+            self.api.set_offsets(0.0, 0.0)
+        except Exception as e:
+            print(f"Reset offset error: {e}")
+
+    def _toggle_relay(self, relay: str, btn: QPushButton):
+        """Toggle brake relay."""
+        try:
+            state = "on" if btn.isChecked() else "off"
+            self.api.relay_set(relay, state)
+        except Exception as e:
+            print(f"Relay error: {e}")
+
+    def _toggle_power(self, relay: str, btn: QPushButton):
+        """Toggle power relay (inverted logic)."""
+        try:
+            # Inverted: button checked = power ON = relay OFF
+            state = "off" if btn.isChecked() else "on"
+            self.api.relay_set(relay, state)
+        except Exception as e:
+            print(f"Power relay error: {e}")
+
     def render(self, status: dict):
         """Update UI from status."""
         xy = status.get("xy_table", {})
         sensors = status.get("sensors", {})
+        relays = status.get("relays", {})
 
         # State
         state = xy.get("state", "DISCONNECTED")
@@ -1709,20 +1966,40 @@ class XYTab(QWidget):
         estop = sensors.get("emergency_stop") == "ACTIVE"
 
         if x_homed and not estop:
-            x_pos = f"{xy.get('x', 0):.2f}"
+            self._current_x = xy.get("x", 0)
+            x_pos = f"{self._current_x:.2f}"
         else:
             x_pos = "?.??"
 
         if y_homed and not estop:
-            y_pos = f"{xy.get('y', 0):.2f}"
+            self._current_y = xy.get("y", 0)
+            y_pos = f"{self._current_y:.2f}"
         else:
             y_pos = "?.??"
 
-        self.lblPosition.setText(f"X: {x_pos}  Y: {y_pos}")
+        self.lblPhysPos.setText(f"X: {x_pos}  Y: {y_pos}")
+
+        # Load offsets
+        try:
+            offsets = self.api.get_offsets()
+            self._offset_x = offsets.get("x", 0.0)
+            self._offset_y = offsets.get("y", 0.0)
+        except Exception:
+            pass
+
+        self.lblOffset.setText(f"X: {self._offset_x:.2f}  Y: {self._offset_y:.2f}")
+
+        # Work position (physical - offset)
+        if x_homed and y_homed and not estop:
+            work_x = self._current_x - self._offset_x
+            work_y = self._current_y - self._offset_y
+            self.lblWorkPos.setText(f"X: {work_x:.2f}  Y: {work_y:.2f}")
+        else:
+            self.lblWorkPos.setText("X: ?.??  Y: ?.??")
 
         # Homed status
-        x_h = "YES" if x_homed else "NO"
-        y_h = "YES" if y_homed else "NO"
+        x_h = "ТАК" if x_homed else "НІ"
+        y_h = "ТАК" if y_homed else "НІ"
         self.lblHomed.setText(f"X: {x_h}  Y: {y_h}")
 
         # Endstops
@@ -1731,6 +2008,22 @@ class XYTab(QWidget):
         y_min = "TRIG" if endstops.get("y_min") else "open"
         self.lblEndstops.setText(f"X_MIN: {x_min}  Y_MIN: {y_min}")
 
+        # Update brake buttons
+        brake_x_on = relays.get("r02_brake_x") == "ON"
+        brake_y_on = relays.get("r03_brake_y") == "ON"
+        self.btnBrakeX.setChecked(brake_x_on)
+        self.btnBrakeX.setText("ON" if brake_x_on else "OFF")
+        self.btnBrakeY.setChecked(brake_y_on)
+        self.btnBrakeY.setText("ON" if brake_y_on else "OFF")
+
+        # Update power buttons (inverted logic)
+        power_x_off = relays.get("r09_pwr_x") == "ON"  # relay ON = power OFF
+        power_y_off = relays.get("r10_pwr_y") == "ON"
+        self.btnPowerX.setChecked(not power_x_off)
+        self.btnPowerX.setText("ON" if not power_x_off else "OFF")
+        self.btnPowerY.setChecked(not power_y_off)
+        self.btnPowerY.setText("ON" if not power_y_off else "OFF")
+
 
 # ================== Main Window ==================
 class MainWindow(QMainWindow):
@@ -1738,7 +2031,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ScrewDrive TouchDesk")
+        self.setWindowTitle("3SD-SF Screw Feed")
         self.setObjectName("root")
 
         self.api = ApiClient()
@@ -1758,13 +2051,16 @@ class MainWindow(QMainWindow):
         self.tabs.setObjectName("tabs")
         root.addWidget(self.tabs)
 
-        # Create tabs
-        self.tabControl = ControlTab(self.api)
+        # Create tabs - new structure
+        self.tabStartWork = StartWorkTab(self.api)
+        self.tabPlatform = PlatformTab(self.api)
         self.tabService = ServiceTab(self.api)
-        self.tabXY = XYTab(self.api)
 
-        self.tabs.addTab(self.tabControl, "КЕРУВАННЯ")
-        self.tabs.addTab(self.tabXY, "XY СТІЛ")
+        # Connect tab name change signal
+        self.tabStartWork.tabNameChanged.connect(self._on_tab_name_changed)
+
+        self.tabs.addTab(self.tabStartWork, "СТАРТ")
+        self.tabs.addTab(self.tabPlatform, "ПЛАТФОРМА")
         self.tabs.addTab(self.tabService, "СЕРВІС")
 
         # Timer for status polling
@@ -1778,6 +2074,10 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen()
         if screen:
             self.setFixedSize(screen.size())
+
+    def _on_tab_name_changed(self, new_name: str):
+        """Handle tab name change from StartWorkTab."""
+        self.tabs.setTabText(0, new_name)
 
     def set_border(self, state: str):
         """Set border state (ok/idle/alarm)."""
@@ -1794,7 +2094,7 @@ class MainWindow(QMainWindow):
             return
 
         # Update tabs
-        for tab in (self.tabControl, self.tabService, self.tabXY):
+        for tab in (self.tabStartWork, self.tabPlatform, self.tabService):
             try:
                 tab.render(status)
             except Exception as e:
@@ -1917,6 +2217,130 @@ QTabBar::tab:selected {{
     border-radius: 16px;
 }}
 #btn_estop:hover {{ background: #ff3333; }}
+
+/* Big INIT button */
+#btn_init_big {{
+    font-size: 48px;
+    font-weight: 700;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text']};
+    border: 4px solid {COLORS['blue']};
+    border-radius: 20px;
+}}
+#btn_init_big:hover {{ background: #1a3050; }}
+#btn_init_big:disabled {{ opacity: 0.4; }}
+
+/* WORK mode buttons */
+#btn_work_start {{
+    font-size: 48px;
+    font-weight: 700;
+    background: {COLORS['green_bg']};
+    color: #e9ffee;
+    border: 4px solid {COLORS['green']};
+    border-radius: 20px;
+}}
+#btn_work_start:hover {{ background: #1a5235; }}
+#btn_work_start:disabled {{ opacity: 0.4; }}
+
+#btn_work_stop {{
+    font-size: 48px;
+    font-weight: 700;
+    background: {COLORS['red_bg']};
+    color: #ffe9e9;
+    border: 4px solid {COLORS['red']};
+    border-radius: 20px;
+}}
+#btn_work_stop:hover {{ background: #4a2525; }}
+
+/* Platform tab buttons */
+#btn_home {{
+    font-size: 20px;
+    font-weight: 600;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text']};
+    border: 2px solid {COLORS['yellow']};
+    border-radius: 12px;
+}}
+#btn_home:hover {{ background: #2a2510; }}
+
+#btn_offset {{
+    font-size: 20px;
+    font-weight: 600;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text']};
+    border: 2px solid {COLORS['blue']};
+    border-radius: 12px;
+}}
+#btn_offset:hover {{ background: #1a3050; }}
+
+#btn_move {{
+    font-size: 24px;
+    font-weight: 600;
+    background: {COLORS['green_bg']};
+    color: #e9ffee;
+    border: 2px solid {COLORS['green']};
+    border-radius: 12px;
+}}
+#btn_move:hover {{ background: #1a5235; }}
+
+#btn_toggle {{
+    font-size: 18px;
+    font-weight: 600;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+    border: 2px solid {COLORS['border_light']};
+    border-radius: 10px;
+}}
+#btn_toggle:checked {{
+    background: {COLORS['green_bg']};
+    color: #e9ffee;
+    border-color: {COLORS['green']};
+}}
+
+/* Work mode labels */
+#workStatusLabel {{
+    font-size: 24px;
+    font-weight: 600;
+    color: {COLORS['text']};
+}}
+
+#workCounterLabel {{
+    font-size: 32px;
+    font-weight: 700;
+    color: {COLORS['green']};
+}}
+
+#workMessage {{
+    font-size: 28px;
+    font-weight: 500;
+    color: {COLORS['text']};
+    padding: 16px;
+    background: {COLORS['bg_card']};
+    border: 1px solid {COLORS['border']};
+    border-radius: 12px;
+}}
+
+/* Work progress bar */
+#workProgressBar {{
+    border: 2px solid {COLORS['border']};
+    border-radius: 12px;
+    background: {COLORS['bg_input']};
+    height: 50px;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 600;
+}}
+#workProgressBar::chunk {{
+    background: {COLORS['green']};
+    border-radius: 10px;
+}}
+
+/* Position value */
+#positionValue {{
+    font-size: 24px;
+    font-weight: 700;
+    color: {COLORS['green']};
+}}
 
 /* Status values */
 #statusValue {{
