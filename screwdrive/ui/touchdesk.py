@@ -1224,6 +1224,9 @@ class StartWorkTab(QWidget):
 
     def switch_to_start_mode(self):
         """Switch back to START mode."""
+        print("DEBUG: switch_to_start_mode called!")
+        import traceback
+        traceback.print_stack()
         self._current_mode = self.MODE_START
         self._initialized = False
         self.stack.setCurrentIndex(self.MODE_START)
@@ -1567,8 +1570,15 @@ class StartWorkTab(QWidget):
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
         from PyQt5.QtCore import Qt
 
+        print("DEBUG: _show_area_blocked_dialog called")
+
+        # Disable stop button to prevent accidental clicks
+        self.btnStopCycle.setEnabled(False)
+        self.btnStartCycle.setEnabled(False)
+
         # Get screen size
         screen = QApplication.primaryScreen().geometry()
+        print(f"DEBUG: Screen geometry: {screen}")
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Світлова завіса")
@@ -1638,10 +1648,15 @@ class StartWorkTab(QWidget):
 
     def _on_area_exit_button_clicked(self):
         """Handle ВИЇЗД button click - close dialog and move to operator position."""
+        print("DEBUG: _on_area_exit_button_clicked called")
+        print(f"DEBUG: Current mode before: {self._current_mode}")
+
         # Close dialog first
         if hasattr(self, '_area_dialog') and self._area_dialog:
             self._area_dialog.done(0)
             self._area_dialog = None
+
+        print(f"DEBUG: Current mode after dialog close: {self._current_mode}")
 
         # Get work position from selected device
         if self._selected_device and self._selected_device in self._devices_by_name:
@@ -1650,18 +1665,30 @@ class StartWorkTab(QWidget):
             work_y = device.get("work_y")
             work_feed = device.get("work_feed", 5000)
 
+            print(f"DEBUG: Moving to work_x={work_x}, work_y={work_y}, feed={work_feed}")
+
             if work_x is not None and work_y is not None:
                 try:
                     self.api.xy_move(work_x, work_y, work_feed)
                     self.lblWorkMessage.setText("Виїзд до оператора...")
+                    print("DEBUG: xy_move called successfully")
                 except Exception as e:
+                    print(f"DEBUG: xy_move error: {e}")
                     self.lblWorkMessage.setText(f"Помилка виїзду: {e}")
+        else:
+            print(f"DEBUG: No device selected or not found. selected={self._selected_device}")
 
-        # Re-enable start button for next cycle
+        # Re-enable buttons
         self.btnStartCycle.setEnabled(True)
+        self.btnStopCycle.setEnabled(True)
+
+        print(f"DEBUG: Current mode at end: {self._current_mode}")
 
     def on_stop_and_return(self):
         """Handle STOP button in WORK mode - stop and return to START mode."""
+        print("DEBUG: on_stop_and_return called!")
+        import traceback
+        traceback.print_stack()
         # Abort cycle worker if running
         if self._cycle_worker and self._cycle_worker.isRunning():
             self._cycle_worker.abort()
