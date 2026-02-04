@@ -2507,10 +2507,12 @@ class ControlTab(QWidget):
             msg = QMessageBox(self)
             msg.setIcon(QMessageBox.Warning)
             msg.setWindowTitle("Гальма")
-            msg.setText("Увімкніть гальма X та Y\nперед переміщенням!")
+            msg.setText("Вимкніть гальма X та Y\nперед переміщенням!")
             msg.setStyleSheet("""
                 QMessageBox {
                     background-color: #2b2b2b;
+                    border: 3px solid #f44336;
+                    border-radius: 12px;
                 }
                 QMessageBox QLabel {
                     color: #ffffff;
@@ -2527,9 +2529,13 @@ class ControlTab(QWidget):
                     border: none;
                     border-radius: 6px;
                     min-width: 100px;
+                    margin: 10px auto;
                 }
                 QMessageBox QPushButton:hover {
                     background-color: #ffa726;
+                }
+                QMessageBox QDialogButtonBox {
+                    qproperty-centerButtons: true;
                 }
             """)
             msg.exec_()
