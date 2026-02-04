@@ -1318,7 +1318,8 @@ def create_app(
         what = data.get('what', '')
         screw_size = data.get('screw_size', '')
         task = data.get('task', '')
-        torque = float(data.get('torque', 0.5))
+        torque_val = data.get('torque')
+        torque = float(torque_val) if torque_val is not None else None
         work_x = data.get('work_x')
         work_y = data.get('work_y')
         work_feed = data.get('work_feed', 5000)
@@ -1379,7 +1380,8 @@ def create_app(
         what = data.get('what', old_dev.what)
         screw_size = data.get('screw_size', old_dev.screw_size)
         task = data.get('task', old_dev.task)
-        torque = float(data.get('torque', old_dev.torque))
+        torque_val = data.get('torque', old_dev.torque)
+        torque = float(torque_val) if torque_val is not None else None
         steps_data = data.get('steps', None)
 
         # Handle work position fields
@@ -1569,7 +1571,7 @@ def _load_devices(app: Flask) -> None:
                         what=dev.get('what', ''),
                         screw_size=dev.get('screw_size', ''),
                         task=dev.get('task', ''),
-                        torque=float(dev.get('torque', 0.5)),
+                        torque=float(dev['torque']) if dev.get('torque') is not None else None,
                         work_x=work_x,
                         work_y=work_y,
                         work_feed=work_feed

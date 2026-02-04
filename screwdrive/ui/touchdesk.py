@@ -1077,7 +1077,7 @@ class StartWorkTab(QWidget):
         self._holes_completed = 0
         self._total_holes = 0
         self._device_task = "-"
-        self._device_torque = 0.5
+        self._device_torque = None
         self._init_worker = None
         self._cycle_worker = None
         self._current_mode = self.MODE_START
@@ -1293,7 +1293,8 @@ class StartWorkTab(QWidget):
         self.lblWorkCounter.setText(self._get_counter_text())
         self.lblWorkHoles.setText(f"Гвинтів: 0 / {self._total_holes}")
         self.lblWorkTask.setText(f"Таска: {self._device_task}")
-        self.lblWorkTorque.setText(f"Момент: {self._device_torque} Nm")
+        torque_str = f"{self._device_torque} Nm" if self._device_torque is not None else "-"
+        self.lblWorkTorque.setText(f"Момент: {torque_str}")
         self.lblWorkMessage.setText("Готово. Натисніть СТАРТ ЗАКРУЧУВАННЯ для початку циклу.")
         self.workProgressBar.setValue(0)
 
@@ -1386,14 +1387,15 @@ class StartWorkTab(QWidget):
                 for dev in self._devices:
                     if dev.get("key") == saved_device:
                         self._device_task = dev.get("task", "-") or "-"
-                        self._device_torque = dev.get("torque", 0.5)
+                        self._device_torque = dev.get("torque")
                         break
 
                 # Update UI
                 self._update_device_styles()
                 self.lblStartDevice.setText(f"Девайс: {saved_device}")
                 self.lblStartTask.setText(f"Таска: {self._device_task}")
-                self.lblStartTorque.setText(f"Момент: {self._device_torque} Nm")
+                torque_str = f"{self._device_torque} Nm" if self._device_torque is not None else "-"
+                self.lblStartTorque.setText(f"Момент: {torque_str}")
 
                 # Switch to WORK mode if in working states
                 # RUNNING is included - if app restarted during cycle, show WORK mode with paused state
@@ -1438,12 +1440,13 @@ class StartWorkTab(QWidget):
             if dev.get("key") == key:
                 self._total_holes = dev.get("holes", 0)
                 self._device_task = dev.get("task", "-") or "-"
-                self._device_torque = dev.get("torque", 0.5)
+                self._device_torque = dev.get("torque")
                 break
 
         self.lblStartDevice.setText(f"Девайс: {key}")
         self.lblStartTask.setText(f"Таска: {self._device_task}")
-        self.lblStartTorque.setText(f"Момент: {self._device_torque} Nm")
+        torque_str = f"{self._device_torque} Nm" if self._device_torque is not None else "-"
+        self.lblStartTorque.setText(f"Момент: {torque_str}")
         self.lblStartMessage.setText(f"Девайс {key} вибрано. Натисніть ІНІЦІАЛІЗАЦІЯ.")
         self.btnInit.setEnabled(True)
 

@@ -2241,7 +2241,7 @@ function loadDeviceToEditor(device) {
     $('editHoles').value = device.holes || '1';
     $('editScrewSize').value = device.screw_size || 'M3x8';
     $('editTask').value = device.task !== undefined ? device.task : '0';
-    $('editTorque').value = device.torque !== undefined ? device.torque : '0.5';
+    $('editTorque').value = device.torque !== undefined && device.torque !== null ? device.torque : '';
 
     // Work position fields
     $('editWorkX').value = device.work_x !== undefined ? device.work_x : '';
@@ -2266,7 +2266,7 @@ function newDevice() {
     $('editHoles').value = '';        // Placeholder: Виберіть...
     $('editScrewSize').value = '';    // Placeholder: Виберіть...
     $('editTask').value = '';         // Placeholder: Виберіть...
-    $('editTorque').value = '0.5';    // Default torque
+    $('editTorque').value = '';       // Empty by default
 
     // Work position defaults (physical coordinates)
     $('editWorkX').value = '110';
@@ -2300,7 +2300,8 @@ async function saveDevice() {
     const holes = $('editHoles').value;
     const screwSize = $('editScrewSize').value;
     const task = $('editTask').value;
-    const torque = parseFloat($('editTorque').value) || 0.5;
+    const torqueVal = $('editTorque').value.trim();
+    const torque = torqueVal ? parseFloat(torqueVal) : null;
 
     // Validate dropdowns
     if (!holes) {
