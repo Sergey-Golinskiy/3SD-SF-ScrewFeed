@@ -2500,8 +2500,21 @@ class ControlTab(QWidget):
 
         root.addLayout(main_row)
 
+    def _check_brakes(self) -> bool:
+        """Check if both brakes are released (ON). Returns True if movement allowed."""
+        if not self._brake_x_on or not self._brake_y_on:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "Гальма",
+                "Увімкніть гальма X та Y перед переміщенням!"
+            )
+            return False
+        return True
+
     def _jog(self, dx_mult: int, dy_mult: int):
         """Jog in direction by step amount."""
+        if not self._check_brakes():
+            return
         step = self.cmbStep.currentData()
         feed = self.cmbFeed.currentData()
         dx = dx_mult * step
@@ -2513,6 +2526,8 @@ class ControlTab(QWidget):
 
     def _do_homing(self):
         """Full homing sequence."""
+        if not self._check_brakes():
+            return
         try:
             self.api.xy_home()
         except Exception as e:
@@ -2520,6 +2535,8 @@ class ControlTab(QWidget):
 
     def _do_homing_axis(self, axis: str):
         """Home single axis."""
+        if not self._check_brakes():
+            return
         try:
             self.api.xy_home(axis=axis)
         except Exception as e:
@@ -2527,6 +2544,8 @@ class ControlTab(QWidget):
 
     def _go_to_work_zero(self):
         """Move to work zero position."""
+        if not self._check_brakes():
+            return
         try:
             self.api.xy_move(self._offset_x, self._offset_y, 5000)
         except Exception as e:
@@ -2534,6 +2553,8 @@ class ControlTab(QWidget):
 
     def _go_to_operator(self):
         """Move to operator position (X=110, Y=500)."""
+        if not self._check_brakes():
+            return
         try:
             self.api.xy_move(110, 500, 5000)
         except Exception as e:
