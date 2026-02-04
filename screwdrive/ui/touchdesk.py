@@ -1041,6 +1041,8 @@ class StartWorkTab(QWidget):
         self._current_mode = self.MODE_START
         self._pedal_was_pressed = False  # Track pedal state for edge detection
         self._state_restored = False  # Track if state was restored from server
+        self._cycle_start_time = None  # Track cycle start time
+        self._cycle_times = []  # List of cycle times for average calculation
 
         self._setup_ui()
         self._restore_state_from_server()
@@ -1201,6 +1203,14 @@ class StartWorkTab(QWidget):
 
         layout.addLayout(btn_row, 1)
 
+    def _get_counter_text(self) -> str:
+        """Get counter text with average cycle time."""
+        avg_time_str = ""
+        if self._cycle_times:
+            avg_time = sum(self._cycle_times) / len(self._cycle_times)
+            avg_time_str = f" ({avg_time:.1f}с)"
+        return f"Циклів: {self._total_cycles}{avg_time_str}"
+
     def switch_to_work_mode(self):
         """Switch to WORK mode after successful initialization."""
         self._current_mode = self.MODE_WORK
@@ -1209,7 +1219,7 @@ class StartWorkTab(QWidget):
 
         # Update work mode labels
         self.lblWorkDevice.setText(f"Девайс: {self._selected_device}")
-        self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+        self.lblWorkCounter.setText(self._get_counter_text())
         self.lblWorkHoles.setText(f"Гвинтів: 0 / {self._total_holes}")
         self.lblWorkMessage.setText("Готово. Натисніть СТАРТ ЗАКРУЧУВАННЯ для початку циклу.")
         self.workProgressBar.setValue(0)
@@ -1312,7 +1322,7 @@ class StartWorkTab(QWidget):
 
                     self.switch_to_work_mode()
                     self.lblWorkDevice.setText(f"Девайс: {saved_device}")
-                    self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+                    self.lblWorkCounter.setText(self._get_counter_text())
                     self.lblWorkHoles.setText(f"Гвинтів: {self._holes_completed} / {self._total_holes}")
 
                     if saved_cycle_state == "COMPLETED":
@@ -1495,6 +1505,9 @@ class StartWorkTab(QWidget):
         # Sync state to server
         self._sync_state_to_server("RUNNING", "Цикл виконується", 0, "Запуск циклу")
 
+        # Record cycle start time
+        self._cycle_start_time = time.time()
+
         # Start cycle worker
         self._cycle_worker = CycleWorker(self.api, device)
         self._cycle_worker.progress.connect(self._on_cycle_progress)
@@ -1515,8 +1528,14 @@ class StartWorkTab(QWidget):
         self._cycle_state = "COMPLETED"
         self._holes_completed = holes_completed
 
+        # Calculate cycle time and add to list
+        if self._cycle_start_time is not None:
+            cycle_time = time.time() - self._cycle_start_time
+            self._cycle_times.append(cycle_time)
+            self._cycle_start_time = None
+
         self.lblWorkMessage.setText(f"Цикл завершено! Закручено {holes_completed} гвинтів.")
-        self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+        self.lblWorkCounter.setText(self._get_counter_text())
         self.lblWorkHoles.setText(f"Гвинтів: {holes_completed} / {self._total_holes}")
         self.workProgressBar.setValue(100)
         self.btnStartCycle.setEnabled(True)
@@ -1675,7 +1694,7 @@ class StartWorkTab(QWidget):
                 server_cycles = server_state.get("cycles_completed", 0)
                 if server_cycles > self._total_cycles:
                     self._total_cycles = server_cycles
-                    self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+                    self.lblWorkCounter.setText(self._get_counter_text())
 
                 # Sync holes progress from server
                 server_holes = server_state.get("holes_completed", 0)
