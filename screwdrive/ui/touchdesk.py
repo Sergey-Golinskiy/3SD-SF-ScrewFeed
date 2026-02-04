@@ -1200,7 +1200,7 @@ class StartWorkTab(QWidget):
                 self._selected_device = saved_device
                 self._initialized = True
                 self._cycle_state = saved_cycle_state
-                self._total_cycles = 0
+                self._total_cycles = server_state.get("cycles_completed", 0)
                 self._holes_completed = server_state.get("holes_completed", 0)
                 self._total_holes = server_state.get("total_holes", 0)
 
@@ -1208,8 +1208,13 @@ class StartWorkTab(QWidget):
                 self._update_device_styles()
                 self.lblStartDevice.setText(f"Девайс: {saved_device}")
 
-                # Switch to WORK mode if ready
-                if saved_cycle_state in ("READY", "COMPLETED", "PAUSED"):
+                # Switch to WORK mode if in working states
+                # RUNNING is included - if app restarted during cycle, show WORK mode with paused state
+                if saved_cycle_state in ("READY", "COMPLETED", "PAUSED", "RUNNING", "ERROR"):
+                    # If was running when restarted, set to paused
+                    if saved_cycle_state == "RUNNING":
+                        self._cycle_state = "PAUSED"
+
                     self.switch_to_work_mode()
                     self.lblWorkDevice.setText(f"Девайс: {saved_device}")
                     self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
@@ -1217,8 +1222,11 @@ class StartWorkTab(QWidget):
 
                     if saved_cycle_state == "COMPLETED":
                         self.lblWorkMessage.setText("Готово. Натисніть СТАРТ для нового циклу.")
-                    elif saved_cycle_state == "PAUSED":
+                    elif saved_cycle_state == "PAUSED" or saved_cycle_state == "RUNNING":
+                        # RUNNING state means app restarted during cycle - treat as paused
                         self.lblWorkMessage.setText("Пауза. Натисніть СТАРТ для продовження.")
+                    elif saved_cycle_state == "ERROR":
+                        self.lblWorkMessage.setText("Помилка. Натисніть СТАРТ для повторення.")
                     else:
                         self.lblWorkMessage.setText("Готово до запуску.")
 
@@ -1258,6 +1266,7 @@ class StartWorkTab(QWidget):
         """Sync current state to server for web UI."""
         try:
             self.api.set_ui_state({
+                "source": "desktop",  # Important: identifies this as desktop update
                 "selected_device": self._selected_device,
                 "cycle_state": cycle_state,
                 "initialized": self._initialized,
