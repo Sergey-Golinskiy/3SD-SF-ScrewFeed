@@ -140,6 +140,18 @@ class ApiClient:
     def xy_estop(self):
         return self._post("xy/estop")
 
+    def xy_command(self, command: str):
+        """Send raw G-code command to XY table."""
+        return self._post("xy/command", {"command": command}, timeout=10)
+
+    def xy_disable_motors(self):
+        """Disable stepper motors (M18)."""
+        return self.xy_command("M18")
+
+    def xy_enable_motors(self):
+        """Enable stepper motors (M17)."""
+        return self.xy_command("M17")
+
     def xy_jog(self, dx: float = 0, dy: float = 0, feed: float = 5000):
         """Jog XY table by offset."""
         return self._post("xy/jog", {"dx": dx, "dy": dy, "feed": feed}, timeout=30)
@@ -341,6 +353,18 @@ class InitWorker(QThread):
                 xy_status = self.api.xy_status()
                 if not xy_status.get("connected"):
                     raise Exception("XY стіл не підключено!")
+
+                if self._abort:
+                    return
+
+                # Step 0.3: Enable stepper motors
+                self.progress.emit("Увімкнення моторів...", 12)
+                self._sync_progress("Увімкнення моторів...", 12)
+                try:
+                    self.api.xy_enable_motors()
+                except Exception as e:
+                    print(f"WARNING: Failed to enable motors: {e}")
+                time.sleep(0.2)
 
                 if self._abort:
                     return
@@ -834,6 +858,7 @@ class CycleWorker(QThread):
         - R04 OFF (cylinder up)
         - R06 OFF (screwdriver motor off)
         - R05 pulse (free run to stop spindle)
+        - Disable stepper motors (M18)
         """
         try:
             self.api.relay_set("r04_c2", "off")
@@ -845,6 +870,11 @@ class CycleWorker(QThread):
             pass
         try:
             self.api.relay_set("r05_di4_free", "pulse", 0.3)
+        except:
+            pass
+        # Disable stepper motors
+        try:
+            self.api.xy_disable_motors()
         except:
             pass
 
