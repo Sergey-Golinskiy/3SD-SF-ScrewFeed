@@ -33,6 +33,21 @@ API_BASE = os.getenv("API_BASE", "http://127.0.0.1:5000/api")
 POLL_MS = 1000
 BORDER_W = 8
 
+
+def pluralize_gvynt(n: int) -> str:
+    """Ukrainian pluralization for 'гвинт' (screw)."""
+    n = abs(n)
+    if 11 <= n % 100 <= 19:
+        return "гвинтів"
+    last_digit = n % 10
+    if last_digit == 1:
+        return "гвинт"
+    elif 2 <= last_digit <= 4:
+        return "гвинти"
+    else:
+        return "гвинтів"
+
+
 # ================== Colors (matching web UI) ==================
 COLORS = {
     'bg_primary': '#121212',
@@ -1281,7 +1296,7 @@ class StartWorkTab(QWidget):
             name = dev.get("name", key)
             holes = dev.get("holes", 1)
 
-            btn = QPushButton(f"{key}\n{holes} отворів")
+            btn = QPushButton(f"{key}\n{holes} {pluralize_gvynt(holes)}")
             btn.setObjectName("devButton")
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             btn.setMinimumHeight(80)
