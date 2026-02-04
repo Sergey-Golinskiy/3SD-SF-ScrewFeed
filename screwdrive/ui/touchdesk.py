@@ -828,6 +828,26 @@ class CycleWorker(QThread):
         except:
             pass
 
+    def _area_barrier_shutdown(self):
+        """
+        Shutdown for light barrier trigger.
+        - R04 OFF (cylinder up)
+        - R06 OFF (screwdriver motor off)
+        - R05 pulse (free run to stop spindle)
+        """
+        try:
+            self.api.relay_set("r04_c2", "off")
+        except:
+            pass
+        try:
+            self.api.relay_set("r06_di1_pot", "off")
+        except:
+            pass
+        try:
+            self.api.relay_set("r05_di4_free", "pulse", 0.3)
+        except:
+            pass
+
     def run(self):
         try:
             steps = self.device.get("steps", [])
@@ -970,8 +990,8 @@ class CycleWorker(QThread):
 
             # Special handling for area sensor (light barrier) blocked
             elif self.AREA_BLOCKED_ERROR in error_str:
-                # Safety shutdown - cylinder up
-                self._safety_shutdown()
+                # Safety shutdown with R05 pulse
+                self._area_barrier_shutdown()
 
                 # Log the event
                 try:
@@ -982,33 +1002,8 @@ class CycleWorker(QThread):
                 except Exception:
                     pass
 
-                # Return to operator position
-                try:
-                    work_x = self.device.get("work_x")
-                    work_y = self.device.get("work_y")
-                    work_feed = self.device.get("work_feed", 5000)
-                    if work_x is not None and work_y is not None:
-                        self.api.xy_move(work_x, work_y, work_feed)
-                        # Wait for move without area monitoring
-                        start = time.time()
-                        while time.time() - start < 30.0:
-                            try:
-                                status = self.api.xy_status()
-                                if (status.get("state") or "").lower() == "ready":
-                                    break
-                            except Exception:
-                                pass
-                            time.sleep(0.1)
-                except Exception:
-                    pass
-
-                error_msg = (
-                    "⚠️ СВІТЛОВА ЗАВІСА!\n"
-                    "Закручування зупинено.\n"
-                    "Захист спрацював - вхід в робочу зону.\n\n"
-                    "Натисніть START для повторного циклу."
-                )
-                self.finished_error.emit(error_msg)
+                # Don't auto-return - stay in place, UI will show dialog
+                self.finished_error.emit(self.AREA_BLOCKED_ERROR)
 
             else:
                 self._safety_shutdown()
@@ -1557,8 +1552,85 @@ class StartWorkTab(QWidget):
             self._cycle_state = "PAUSED"
             self.lblWorkMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть СТАРТ.")
             self._sync_state_to_server("PAUSED", "Момент не досягнуто", 0, "Помилка моменту")
+        # Special handling for light barrier (area sensor)
+        elif error_msg == "AREA_BLOCKED":
+            self._cycle_state = "AREA_BLOCKED"
+            self.lblWorkMessage.setText("⚠️ СВІТЛОВА ЗАВІСА!")
+            self._sync_state_to_server("AREA_BLOCKED", "Світлова завіса спрацювала", 0, "Світлова завіса")
+            # Show dialog with ВИЇЗД button
+            self._show_area_blocked_dialog()
         else:
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
+
+    def _show_area_blocked_dialog(self):
+        """Show dialog when light barrier is triggered."""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+        from PyQt5.QtCore import Qt
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Світлова завіса")
+        dialog.setModal(True)
+        dialog.setFixedSize(400, 250)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #2b2b2b;
+                border: 3px solid #f44336;
+                border-radius: 12px;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(20)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        # Warning label
+        lbl = QLabel("⚠️ СВІТЛОВА ЗАВІСА!\n\nЗакручування зупинено.\nПриберіть руки з робочої зони.")
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("""
+            color: #ffffff;
+            font-size: 18px;
+            font-weight: bold;
+        """)
+        layout.addWidget(lbl)
+
+        # ВИЇЗД button
+        btn = QPushButton("ВИЇЗД")
+        btn.setFixedSize(200, 60)
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: #ffffff;
+                font-size: 20px;
+                font-weight: bold;
+                border: none;
+                border-radius: 8px;
+            }
+            QPushButton:pressed {
+                background-color: #388E3C;
+            }
+        """)
+        btn.clicked.connect(lambda: self._on_area_exit_clicked(dialog))
+        layout.addWidget(btn, alignment=Qt.AlignCenter)
+
+        dialog.exec_()
+
+    def _on_area_exit_clicked(self, dialog):
+        """Handle ВИЇЗД button click - move to operator position."""
+        dialog.accept()
+
+        # Get work position from selected device
+        if self._selected_device and self._selected_device in self._devices_by_name:
+            device = self._devices_by_name[self._selected_device]
+            work_x = device.get("work_x")
+            work_y = device.get("work_y")
+            work_feed = device.get("work_feed", 5000)
+
+            if work_x is not None and work_y is not None:
+                try:
+                    self.api.xy_move(work_x, work_y, work_feed)
+                    self.lblWorkMessage.setText("Виїзд до оператора...")
+                except Exception as e:
+                    self.lblWorkMessage.setText(f"Помилка виїзду: {e}")
 
     def on_stop_and_return(self):
         """Handle STOP button in WORK mode - stop and return to START mode."""
