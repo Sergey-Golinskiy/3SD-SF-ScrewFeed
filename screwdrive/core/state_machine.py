@@ -232,6 +232,7 @@ class CycleStateMachine:
         self._stop_event.set()
         self._relays.emergency_stop()  # Keeps brakes ON
         self._xy.estop()
+        self._xy.disable_motors()  # Explicitly disable XY motors
         self._set_state(CycleState.ESTOP)
 
     def clear_estop(self) -> bool:
