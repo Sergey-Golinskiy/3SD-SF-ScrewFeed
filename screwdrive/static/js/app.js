@@ -1005,7 +1005,8 @@ async function runInitialization() {
                 console.warn('Failed to load offsets, using 0,0');
             }
 
-            // Step 6: Move to work position (with offset applied)
+            // Step 6: Move to work position (physical coordinates)
+            // Device's work_x/work_y are stored as physical coordinates (relative to limit switches)
             updateInitStatus('Виїзд до оператора...', 85);
             syncProgress('Виїзд до оператора...', 85);
 
@@ -1017,11 +1018,8 @@ async function runInitialization() {
                 throw new Error('Робоча позиція не задана для цього девайсу. Вкажіть Робоча X та Робоча Y в налаштуваннях.');
             }
 
-            // Apply offset: device coords are relative to work zero, add offset to get physical coords
-            const physicalX = workX + offsetX;
-            const physicalY = workY + offsetY;
-
-            const moveResponse = await api.post('/xy/move', { x: physicalX, y: physicalY, feed: workFeed });
+            // Use physical coordinates directly (no offset applied)
+            const moveResponse = await api.post('/xy/move', { x: workX, y: workY, feed: workFeed });
             if (moveResponse.status !== 'ok') {
                 // Check if alarm caused the failure
                 if (await checkAndResetAlarms()) {
