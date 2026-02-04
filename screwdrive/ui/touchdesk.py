@@ -559,15 +559,36 @@ class CycleWorker(QThread):
 
     # Special error for driver alarm - requires device removal and reinit
     DRIVER_ALARM_ERROR = "DRIVER_ALARM"
+    # Special error for area sensor (light barrier) triggered
+    AREA_BLOCKED_ERROR = "AREA_BLOCKED"
 
     def __init__(self, api: ApiClient, device: dict):
         super().__init__()
         self.api = api
         self.device = device
         self._abort = False
+        self._area_monitoring_active = False  # Light barrier monitoring
 
     def abort(self):
         self._abort = True
+
+    def _check_area_sensor(self) -> bool:
+        """
+        Check if light barrier (area_sensor) is clear.
+        Returns True if clear, False if blocked.
+        Only checks if area monitoring is active.
+        """
+        if not self._area_monitoring_active:
+            return True
+        try:
+            resp = self.api.sensor("area_sensor")
+            if resp.get("state") == "ACTIVE":
+                # Barrier blocked - someone in work area
+                return False
+            return True
+        except Exception as e:
+            print(f"WARNING: Area sensor check failed: {e}")
+            return False  # Fail-safe: assume blocked if can't check
 
     def _check_driver_alarms(self) -> str:
         """
@@ -662,7 +683,7 @@ class CycleWorker(QThread):
     def _wait_for_move(self, timeout: float = 30.0) -> bool:
         """
         Wait for XY table to finish moving.
-        Also checks for driver alarms during movement.
+        Also checks for driver alarms and area sensor during movement.
         """
         start = time.time()
         while time.time() - start < timeout:
@@ -675,6 +696,10 @@ class CycleWorker(QThread):
                 self._full_emergency_shutdown(alarm)
                 raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}")
 
+            # Check area sensor (light barrier)
+            if not self._check_area_sensor():
+                raise Exception(self.AREA_BLOCKED_ERROR)
+
             try:
                 status = self.api.xy_status()
                 state = (status.get("state") or "").lower()
@@ -685,13 +710,15 @@ class CycleWorker(QThread):
             except Exception as e:
                 if "error" in str(e).lower() or "estop" in str(e).lower():
                     raise
+                if self.AREA_BLOCKED_ERROR in str(e):
+                    raise
             time.sleep(0.1)
         return False
 
     def _wait_for_sensor(self, sensor: str, expected: str, timeout: float = 10.0) -> bool:
         """
         Wait for sensor to reach expected state.
-        Also checks for driver alarms while waiting.
+        Also checks for driver alarms and area sensor while waiting.
         """
         start = time.time()
         while time.time() - start < timeout:
@@ -703,6 +730,10 @@ class CycleWorker(QThread):
             if alarm:
                 self._full_emergency_shutdown(alarm)
                 raise Exception(f"{self.DRIVER_ALARM_ERROR}:{alarm}")
+
+            # Check area sensor (light barrier)
+            if not self._check_area_sensor():
+                raise Exception(self.AREA_BLOCKED_ERROR)
 
             try:
                 resp = self.api.sensor(sensor)
@@ -865,6 +896,13 @@ class CycleWorker(QThread):
 
                 elif step_type == "work":
                     # Work position - move and screw
+
+                    # Enable area monitoring on first work step
+                    if not self._area_monitoring_active:
+                        self._area_monitoring_active = True
+                        self.progress.emit("Контроль світлової завіси увімкнено", holes_completed, total_holes,
+                                          int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
+
                     msg = f"Закручування ({holes_completed + 1}/{total_holes}) X:{step_x:.1f} Y:{step_y:.1f}"
                     self.progress.emit(msg, holes_completed, total_holes,
                                       int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
@@ -873,12 +911,16 @@ class CycleWorker(QThread):
                     # Check alarm before move
                     self._check_alarm_and_raise()
 
+                    # Check area sensor before move
+                    if not self._check_area_sensor():
+                        raise Exception(self.AREA_BLOCKED_ERROR)
+
                     # Move to position (with offset)
                     resp = self.api.xy_move(physical_x, physical_y, step_feed)
                     if resp.get("status") != "ok":
                         raise Exception("Помилка переміщення")
 
-                    # _wait_for_move also checks alarms
+                    # _wait_for_move also checks alarms and area sensor
                     self._wait_for_move()
 
                     # _perform_screwing has alarm checks inside
@@ -889,6 +931,9 @@ class CycleWorker(QThread):
                     self.progress.emit(msg, holes_completed, total_holes,
                                       int((holes_completed / total_holes) * 100) if total_holes > 0 else 0)
                     self._sync_progress(msg, holes_completed, total_holes)
+
+            # Disable area monitoring before returning to operator
+            self._area_monitoring_active = False
 
             # Cycle complete - return to operator
             self.progress.emit("Повернення до оператора...", holes_completed, total_holes, 100)
@@ -906,6 +951,9 @@ class CycleWorker(QThread):
         except Exception as e:
             error_str = str(e)
 
+            # Disable area monitoring on any error
+            self._area_monitoring_active = False
+
             # Special handling for driver alarm errors
             if self.DRIVER_ALARM_ERROR in error_str:
                 # Full emergency shutdown already done in _check_driver_alarms
@@ -919,6 +967,49 @@ class CycleWorker(QThread):
                     "3. Виконайте переініціалізацію"
                 )
                 self.finished_error.emit(error_msg)
+
+            # Special handling for area sensor (light barrier) blocked
+            elif self.AREA_BLOCKED_ERROR in error_str:
+                # Safety shutdown - cylinder up
+                self._safety_shutdown()
+
+                # Log the event
+                try:
+                    from screwdrive.core.logger import get_logger, LogLevel
+                    syslog = get_logger()
+                    syslog.sensor("Світлова завіса спрацювала! Закручування зупинено.",
+                                 level=LogLevel.WARNING, source="area_sensor")
+                except Exception:
+                    pass
+
+                # Return to operator position
+                try:
+                    work_x = self.device.get("work_x")
+                    work_y = self.device.get("work_y")
+                    work_feed = self.device.get("work_feed", 5000)
+                    if work_x is not None and work_y is not None:
+                        self.api.xy_move(work_x, work_y, work_feed)
+                        # Wait for move without area monitoring
+                        start = time.time()
+                        while time.time() - start < 30.0:
+                            try:
+                                status = self.api.xy_status()
+                                if (status.get("state") or "").lower() == "ready":
+                                    break
+                            except Exception:
+                                pass
+                            time.sleep(0.1)
+                except Exception:
+                    pass
+
+                error_msg = (
+                    "⚠️ СВІТЛОВА ЗАВІСА!\n"
+                    "Закручування зупинено.\n"
+                    "Захист спрацював - вхід в робочу зону.\n\n"
+                    "Натисніть START для повторного циклу."
+                )
+                self.finished_error.emit(error_msg)
+
             else:
                 self._safety_shutdown()
                 self.finished_error.emit(error_str)
