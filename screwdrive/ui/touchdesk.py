@@ -1068,6 +1068,7 @@ class StartWorkTab(QWidget):
         self._state_restored = False  # Track if state was restored from server
         self._cycle_start_time = None  # Track cycle start time
         self._cycle_times = []  # List of cycle times for average calculation
+        self._estop_dialog = None  # E-STOP fullscreen dialog
 
         self._setup_ui()
         self._restore_state_from_server()
@@ -1750,18 +1751,88 @@ class StartWorkTab(QWidget):
         self._cycle_state = "E-STOP"
         self._initialized = False
 
-        # Update UI based on current mode
-        if self._current_mode == self.MODE_START:
-            self.lblStartMessage.setText("АВАРІЙНА ЗУПИНКА!")
-            self.startProgressBar.setValue(0)
-            self.btnInit.setEnabled(False)
-        else:
-            self.lblWorkMessage.setText("АВАРІЙНА ЗУПИНКА!")
-            self.workProgressBar.setValue(0)
-            self.btnStartCycle.setEnabled(False)
-
         # Sync state to server
         self._sync_state_to_server("E-STOP", "Аварійна зупинка")
+
+        # Show E-STOP dialog (non-blocking)
+        if not self._estop_dialog:
+            self._show_estop_dialog()
+
+    def _show_estop_dialog(self):
+        """Show fullscreen E-STOP dialog."""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QApplication
+        from PyQt5.QtCore import Qt
+
+        # Get screen size
+        screen = QApplication.primaryScreen().geometry()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Аварійна зупинка")
+        dialog.setModal(False)  # Non-modal so render() can still update
+        dialog.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        dialog.setGeometry(screen)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #b71c1c;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(30)
+        layout.setContentsMargins(50, 60, 50, 60)
+
+        # Warning icon
+        icon_lbl = QLabel("🛑")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("font-size: 120px;")
+        layout.addWidget(icon_lbl)
+
+        # Warning text
+        lbl = QLabel("АВАРІЙНА ЗУПИНКА!")
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("""
+            color: #ffffff;
+            font-size: 52px;
+            font-weight: bold;
+        """)
+        layout.addWidget(lbl)
+
+        layout.addStretch()
+
+        # Instruction text
+        instr_lbl = QLabel("Відпустіть кнопку для продовження")
+        instr_lbl.setAlignment(Qt.AlignCenter)
+        instr_lbl.setStyleSheet("""
+            color: #ffcdd2;
+            font-size: 28px;
+        """)
+        layout.addWidget(instr_lbl)
+
+        # Reinit message
+        reinit_lbl = QLabel("Потрібна переініціалізація!")
+        reinit_lbl.setAlignment(Qt.AlignCenter)
+        reinit_lbl.setStyleSheet("""
+            color: #ffeb3b;
+            font-size: 24px;
+            font-weight: bold;
+        """)
+        layout.addWidget(reinit_lbl)
+
+        layout.addStretch()
+
+        self._estop_dialog = dialog
+        dialog.show()
+
+    def _close_estop_dialog(self):
+        """Close E-STOP dialog and switch to START mode."""
+        if self._estop_dialog:
+            self._estop_dialog.close()
+            self._estop_dialog = None
+
+        # Reset state and switch to START mode for reinitialization
+        self._cycle_state = "IDLE"
+        self.switch_to_start_mode()
+        self.lblStartMessage.setText("Аварійна зупинка знята. Потрібна переініціалізація.")
 
     def render(self, status: dict):
         """Update UI from status."""
@@ -1781,6 +1852,9 @@ class StartWorkTab(QWidget):
         estop = sensors.get("emergency_stop") == "ACTIVE"
         if estop and self._cycle_state != "E-STOP":
             self.on_estop()
+        # Close E-STOP dialog when button is released
+        elif not estop and self._estop_dialog:
+            self._close_estop_dialog()
 
         # Check pedal press (ped_start) - trigger start on rising edge
         pedal_pressed = sensors.get("ped_start") == "ACTIVE"
