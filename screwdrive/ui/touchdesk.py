@@ -2504,10 +2504,35 @@ class ControlTab(QWidget):
         """Check if both brakes are released (ON). Returns True if movement allowed."""
         if not self._brake_x_on or not self._brake_y_on:
             from PyQt5.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, "Гальма",
-                "Увімкніть гальма X та Y перед переміщенням!"
-            )
+            msg = QMessageBox(self)
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Гальма")
+            msg.setText("Увімкніть гальма X та Y\nперед переміщенням!")
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: #2b2b2b;
+                }
+                QMessageBox QLabel {
+                    color: #ffffff;
+                    font-size: 18px;
+                    font-weight: bold;
+                    padding: 20px;
+                }
+                QMessageBox QPushButton {
+                    background-color: #ff9800;
+                    color: #000000;
+                    font-size: 16px;
+                    font-weight: bold;
+                    padding: 10px 30px;
+                    border: none;
+                    border-radius: 6px;
+                    min-width: 100px;
+                }
+                QMessageBox QPushButton:hover {
+                    background-color: #ffa726;
+                }
+            """)
+            msg.exec_()
             return False
         return True
 
