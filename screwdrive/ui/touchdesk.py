@@ -2627,6 +2627,7 @@ class MainWindow(QMainWindow):
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setObjectName("tabs")
+        self.tabs.setDocumentMode(True)  # Cleaner look, tabs expand better
         root.addWidget(self.tabs)
 
         # Hide tab bar by default - show/hide with 5s pedal hold
@@ -2634,6 +2635,7 @@ class MainWindow(QMainWindow):
         self._pedal_hold_start = None  # Time when pedal press started
         self.tabs.tabBar().setVisible(False)
         self.tabs.tabBar().setExpanding(True)  # Tabs fill available width equally
+        self.tabs.tabBar().setUsesScrollButtons(False)  # No scroll buttons
 
         # Create tabs - new structure
         self.tabStartWork = StartWorkTab(self.api)
@@ -2752,23 +2754,27 @@ APP_QSS = f"""
 /* Tabs - matching web UI style */
 #tabs::pane {{ border: none; background: transparent; }}
 QTabWidget::pane {{ background: transparent; }}
+QTabWidget::tab-bar {{
+    alignment: center;
+}}
 QTabBar {{
     background: {COLORS['bg_secondary']};
     border-radius: 12px;
+    padding: 4px;
 }}
 QTabBar::tab {{
     color: {COLORS['text_secondary']};
-    background: transparent;
-    padding: 12px 8px;
-    margin: 2px;
+    background: {COLORS['bg_card']};
+    padding: 14px 20px;
+    margin: 3px;
     border-radius: 8px;
-    font-size: 16px;
-    font-weight: 500;
-    min-height: 40px;
-    qproperty-alignment: AlignCenter;
+    font-size: 17px;
+    font-weight: 600;
+    min-height: 45px;
+    min-width: 120px;
 }}
 QTabBar::tab:hover {{
-    background: {COLORS['bg_card']};
+    background: {COLORS['border_light']};
     color: {COLORS['text']};
 }}
 QTabBar::tab:selected {{
