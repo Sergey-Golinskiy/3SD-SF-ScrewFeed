@@ -157,7 +157,8 @@ class ApiClient:
 
     def xy_command(self, command: str):
         """Send raw G-code command to XY table."""
-        return self._post("xy/command", {"command": command}, timeout=10)
+        # Use 15 second timeout for commands (serial operations may take time)
+        return self._post("xy/command", {"command": command}, timeout=15)
 
     def xy_disable_motors(self):
         """Disable stepper motors (M18)."""
@@ -169,7 +170,7 @@ class ApiClient:
 
     def xy_clear_estop(self):
         """Clear E-STOP state on XY controller (M999)."""
-        return self._post("xy/clear_estop", timeout=10)
+        return self._post("xy/clear_estop", timeout=15)
 
     def xy_jog(self, dx: float = 0, dy: float = 0, feed: float = 5000):
         """Jog XY table by offset."""
@@ -1660,8 +1661,23 @@ class StartWorkTab(QWidget):
         # Special handling for torque error
         if error_msg == "TORQUE_NOT_REACHED":
             self._cycle_state = "PAUSED"
-            self.lblWorkMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть СТАРТ.")
+            self.lblWorkMessage.setText("Момент не досягнуто. Повернення до оператора...")
             self._sync_state_to_server("PAUSED", "Момент не досягнуто", 0, "Помилка моменту")
+
+            # Move to operator position (device's work_x/work_y)
+            try:
+                device = self.api.device(self._selected_device)
+                if device:
+                    work_x = device.get("work_x")
+                    work_y = device.get("work_y")
+                    work_feed = device.get("work_feed", 5000)
+
+                    if work_x is not None and work_y is not None:
+                        self.api.xy_move(work_x, work_y, work_feed)
+            except Exception as e:
+                print(f"Failed to move to operator position after torque error: {e}")
+
+            self.lblWorkMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть СТАРТ.")
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"

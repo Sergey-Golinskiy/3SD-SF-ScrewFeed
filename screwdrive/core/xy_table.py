@@ -583,8 +583,9 @@ class XYTableController:
         timeout = timeout or self._timeout
         cmd_upper = cmd.strip().upper()
 
-        # Commands that return single line without "ok" suffix
-        single_line_commands = {"PING", "M119", "GETIP"}
+        # Commands that return single line responses (for faster handling)
+        # PING returns "PONG", GETIP returns "IP x.x.x.x", M17/M18/M999 return "ok" or "err ..."
+        single_line_commands = {"PING", "GETIP", "M17", "M18", "M999"}
 
         with self._lock:
             try:
@@ -882,23 +883,24 @@ class XYTableController:
 
     def clear_estop(self) -> bool:
         """
-        Clear emergency stop - BYPASSES LOCK for immediate response.
+        Clear emergency stop state on slave.
+        Uses proper locking to avoid serial buffer corruption.
         """
         if self._serial is None:
             return False
 
         try:
-            # Write directly to serial WITHOUT waiting for lock
-            self._serial.write(b"M999\n")
-            self._serial.flush()
-            print("CLEAR: M999 sent directly (bypassing lock)")
+            # Use _send_command with proper locking (M999 is in single_line_commands)
+            response = self._send_command("M999", timeout=5.0)
+            print(f"CLEAR: M999 response: {response!r}")
 
-            # Small delay to let xy_cli process the command
-            time.sleep(0.05)
-
-            self._state = XYTableState.READY
-            self._notify_state_change()
-            return True
+            if response and ("clear" in response.lower() or "ok" in response.lower()):
+                self._state = XYTableState.READY
+                self._notify_state_change()
+                return True
+            else:
+                print(f"Clear ESTOP failed: unexpected response {response!r}")
+                return False
         except Exception as e:
             print(f"Clear ESTOP error: {e}")
             return False
