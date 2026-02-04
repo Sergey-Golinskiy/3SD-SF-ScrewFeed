@@ -1586,7 +1586,7 @@ class StartWorkTab(QWidget):
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"
-            self.lblWorkMessage.setText("⚠️ СВІТЛОВА ЗАВІСА!")
+            self.lblWorkMessage.setText("СВІТЛОВА ЗАВІСА!")
             self._sync_state_to_server("AREA_BLOCKED", "Світлова завіса спрацювала", 0, "Світлова завіса")
             # Show dialog with ВИЇЗД button
             self._show_area_blocked_dialog()
@@ -1616,11 +1616,22 @@ class StartWorkTab(QWidget):
         layout.setSpacing(30)
         layout.setContentsMargins(50, 60, 50, 60)
 
-        # Warning icon
-        icon_lbl = QLabel("⚠️")
+        # Warning icon - triangle with exclamation
+        icon_lbl = QLabel("!")
         icon_lbl.setAlignment(Qt.AlignCenter)
-        icon_lbl.setStyleSheet("font-size: 100px;")
-        layout.addWidget(icon_lbl)
+        icon_lbl.setStyleSheet("""
+            color: #1a1a1a;
+            font-size: 80px;
+            font-weight: bold;
+            background-color: #ffeb3b;
+            border: 6px solid #f57f17;
+            border-radius: 50px;
+            min-width: 100px;
+            max-width: 100px;
+            min-height: 100px;
+            max-height: 100px;
+        """)
+        layout.addWidget(icon_lbl, alignment=Qt.AlignCenter)
 
         # Warning text
         lbl = QLabel("СВІТЛОВА ЗАВІСА!")
@@ -1781,11 +1792,19 @@ class StartWorkTab(QWidget):
         layout.setSpacing(30)
         layout.setContentsMargins(50, 60, 50, 60)
 
-        # Warning icon
-        icon_lbl = QLabel("🛑")
+        # Warning icon - text-based STOP sign
+        icon_lbl = QLabel("STOP")
         icon_lbl.setAlignment(Qt.AlignCenter)
-        icon_lbl.setStyleSheet("font-size: 120px;")
-        layout.addWidget(icon_lbl)
+        icon_lbl.setStyleSheet("""
+            color: #ffffff;
+            font-size: 80px;
+            font-weight: bold;
+            background-color: #d32f2f;
+            border: 8px solid #ffffff;
+            border-radius: 20px;
+            padding: 20px 40px;
+        """)
+        layout.addWidget(icon_lbl, alignment=Qt.AlignCenter)
 
         # Warning text
         lbl = QLabel("АВАРІЙНА ЗУПИНКА!")
