@@ -1331,8 +1331,8 @@ body {
 
 .coord-row-new {
     display: grid;
-    grid-template-columns: 40px 1fr 1fr 140px 100px 40px;
-    gap: 10px;
+    grid-template-columns: 30px 70px 70px 90px 80px 32px 32px;
+    gap: 6px;
     padding: 8px;
     background: var(--bg-secondary);
     border-radius: 6px;
