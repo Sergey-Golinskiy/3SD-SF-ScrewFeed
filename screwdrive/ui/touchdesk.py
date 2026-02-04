@@ -1563,47 +1563,63 @@ class StartWorkTab(QWidget):
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
 
     def _show_area_blocked_dialog(self):
-        """Show dialog when light barrier is triggered."""
+        """Show fullscreen dialog when light barrier is triggered."""
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
         from PyQt5.QtCore import Qt
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Світлова завіса")
         dialog.setModal(True)
-        dialog.setFixedSize(400, 250)
+        dialog.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        dialog.showFullScreen()
         dialog.setStyleSheet("""
             QDialog {
-                background-color: #2b2b2b;
-                border: 3px solid #f44336;
-                border-radius: 12px;
+                background-color: #1a1a1a;
             }
         """)
 
         layout = QVBoxLayout(dialog)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(40)
+        layout.setContentsMargins(50, 100, 50, 100)
 
-        # Warning label
-        lbl = QLabel("⚠️ СВІТЛОВА ЗАВІСА!\n\nЗакручування зупинено.\nПриберіть руки з робочої зони.")
+        # Warning icon
+        icon_lbl = QLabel("⚠️")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("font-size: 120px;")
+        layout.addWidget(icon_lbl)
+
+        # Warning text
+        lbl = QLabel("СВІТЛОВА ЗАВІСА!")
         lbl.setAlignment(Qt.AlignCenter)
         lbl.setStyleSheet("""
-            color: #ffffff;
-            font-size: 18px;
+            color: #f44336;
+            font-size: 48px;
             font-weight: bold;
         """)
         layout.addWidget(lbl)
 
+        # Instruction text
+        instr_lbl = QLabel("Закручування зупинено.\nПриберіть руки з робочої зони.")
+        instr_lbl.setAlignment(Qt.AlignCenter)
+        instr_lbl.setStyleSheet("""
+            color: #ffffff;
+            font-size: 32px;
+        """)
+        layout.addWidget(instr_lbl)
+
+        layout.addStretch()
+
         # ВИЇЗД button
         btn = QPushButton("ВИЇЗД")
-        btn.setFixedSize(200, 60)
+        btn.setFixedSize(400, 120)
         btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: #ffffff;
-                font-size: 20px;
+                font-size: 48px;
                 font-weight: bold;
                 border: none;
-                border-radius: 8px;
+                border-radius: 16px;
             }
             QPushButton:pressed {
                 background-color: #388E3C;
@@ -1611,6 +1627,8 @@ class StartWorkTab(QWidget):
         """)
         btn.clicked.connect(lambda: self._on_area_exit_clicked(dialog))
         layout.addWidget(btn, alignment=Qt.AlignCenter)
+
+        layout.addStretch()
 
         dialog.exec_()
 
