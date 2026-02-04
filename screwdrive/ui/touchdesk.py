@@ -2646,7 +2646,7 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(self.tabStartWork, "СТАРТ")
         self.tabs.addTab(self.tabControl, "КЕРУВАННЯ")
-        self.tabs.addTab(self.tabPlatform, "ПЛАТФОРМА")
+        self.tabs.addTab(self.tabPlatform, "СТІЛ")
         self.tabs.addTab(self.tabLogs, "ЛОГИ")
         self.tabs.addTab(self.tabService, "СЕРВІС")
 
