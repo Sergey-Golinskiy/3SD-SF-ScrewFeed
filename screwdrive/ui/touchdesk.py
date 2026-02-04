@@ -2753,14 +2753,23 @@ APP_QSS = f"""
 
 /* Tabs - matching web UI style */
 #tabs::pane {{ border: none; background: transparent; }}
-QTabWidget::pane {{ background: transparent; }}
+QTabWidget::pane {{ background: transparent; border: none; }}
+QTabWidget {{
+    border: none;
+    background: transparent;
+}}
 QTabWidget::tab-bar {{
     alignment: center;
+    border: none;
 }}
 QTabBar {{
     background: {COLORS['bg_secondary']};
     border-radius: 12px;
     padding: 4px;
+    border: none;
+}}
+QTabBar::scroller {{
+    width: 0px;
 }}
 QTabBar::tab {{
     color: {COLORS['text_secondary']};
