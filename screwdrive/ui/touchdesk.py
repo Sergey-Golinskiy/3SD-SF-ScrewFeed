@@ -2367,9 +2367,9 @@ class ControlTab(QWidget):
         jog_card = make_card("КЕРУВАННЯ")
         jog_lay = jog_card.layout()
 
-        # Jog grid - 3x3 layout
+        # Jog grid - 3x3 layout (without center button)
         jog_grid = QGridLayout()
-        jog_grid.setSpacing(8)
+        jog_grid.setSpacing(16)
 
         # Y- button (top center)
         self.btnYMinus = QPushButton("Y-")
@@ -2384,13 +2384,6 @@ class ControlTab(QWidget):
         self.btnXPlus.setMinimumSize(80, 60)
         self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
         jog_grid.addWidget(self.btnXPlus, 1, 0)
-
-        # Home button (center)
-        self.btnHome = QPushButton("⌂")
-        self.btnHome.setObjectName("jogButtonHome")
-        self.btnHome.setMinimumSize(80, 60)
-        self.btnHome.clicked.connect(self._do_homing)
-        jog_grid.addWidget(self.btnHome, 1, 1)
 
         # X- button (middle right)
         self.btnXMinus = QPushButton("X-")
@@ -2468,6 +2461,12 @@ class ControlTab(QWidget):
         self.btnWorkZero.clicked.connect(self._go_to_work_zero)
         home_grid.addWidget(self.btnWorkZero, 2, 0, 1, 2)
 
+        self.btnToOperator = QPushButton("До оператора")
+        self.btnToOperator.setObjectName("homeButtonSmall")
+        self.btnToOperator.setMinimumHeight(45)
+        self.btnToOperator.clicked.connect(self._go_to_operator)
+        home_grid.addWidget(self.btnToOperator, 3, 0, 1, 2)
+
         home_lay.addLayout(home_grid)
         right_col.addWidget(home_card)
 
@@ -2538,6 +2537,13 @@ class ControlTab(QWidget):
             self.api.xy_move(self._offset_x, self._offset_y, 5000)
         except Exception as e:
             print(f"Move to work zero failed: {e}")
+
+    def _go_to_operator(self):
+        """Move to operator position (X=110, Y=500)."""
+        try:
+            self.api.xy_move(110, 500, 5000)
+        except Exception as e:
+            print(f"Move to operator failed: {e}")
 
     def _toggle_brake_x(self):
         """Toggle X brake."""
