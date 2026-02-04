@@ -376,7 +376,19 @@ class InitWorker(QThread):
                 if self._abort:
                     return
 
-                # Step 0.3: Enable stepper motors
+                # Step 0.3: Clear E-STOP state on XY controller (in case it was set)
+                self.progress.emit("Скидання стану E-STOP...", 11)
+                self._sync_progress("Скидання стану E-STOP...", 11)
+                try:
+                    self.api.xy_clear_estop()
+                except Exception as e:
+                    print(f"WARNING: Failed to clear E-STOP state: {e}")
+                time.sleep(0.2)
+
+                if self._abort:
+                    return
+
+                # Step 0.4: Enable stepper motors
                 self.progress.emit("Увімкнення моторів...", 12)
                 self._sync_progress("Увімкнення моторів...", 12)
                 try:
