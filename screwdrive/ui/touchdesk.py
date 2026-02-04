@@ -1911,10 +1911,16 @@ class StartWorkTab(QWidget):
             self._estop_dialog.close()
             self._estop_dialog = None
 
+        # Disable motors so table can be moved manually
+        try:
+            self.api.xy_disable_motors()
+        except Exception as e:
+            print(f"Failed to disable motors on E-STOP release: {e}")
+
         # Reset state and switch to START mode for reinitialization
         self._cycle_state = "IDLE"
         self.switch_to_start_mode()
-        self.lblStartMessage.setText("Аварійна зупинка знята. Потрібна переініціалізація.")
+        self.lblStartMessage.setText("Аварійна зупинка знята. Мотори вимкнено для ручного переміщення.")
 
     def render(self, status: dict):
         """Update UI from status."""
