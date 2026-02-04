@@ -1573,6 +1573,14 @@ class StartWorkTab(QWidget):
                     self._total_cycles = server_cycles
                     self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
 
+                # Sync holes progress from server
+                server_holes = server_state.get("holes_completed", 0)
+                server_total_holes = server_state.get("total_holes", 0)
+                if server_holes != self._holes_completed or server_total_holes != self._total_holes:
+                    self._holes_completed = server_holes
+                    self._total_holes = server_total_holes
+                    self.lblWorkHoles.setText(f"Гвинтів: {self._holes_completed} / {self._total_holes}")
+
                 # Update cycle state from web
                 new_state = server_state.get("cycle_state", "IDLE")
                 old_state = self._cycle_state
