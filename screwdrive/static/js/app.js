@@ -2313,16 +2313,15 @@ async function saveDevice() {
         return;
     }
 
-    // Generate key from fields: Назва_Щокрутим_Розмір(Кількість гвинтів)
-    // Example: ABCD_КРУТ_M3x8(4 гвинти)
+    // Generate key from fields: Назва_Щокрутим_Розмір
+    // Example: ABCD_КРУТ_M3x8
     let deviceKey = key;
     if (!deviceKey) {
         deviceKey = name;
         if (what) {
             deviceKey += '_' + what.toUpperCase();
         }
-        const holesNum = parseInt(holes);
-        deviceKey += '_' + screwSize + '(' + holesNum + ' ' + pluralizeGvynt(holesNum) + ')';
+        deviceKey += '_' + screwSize;
     }
 
     // Validate and get work position
