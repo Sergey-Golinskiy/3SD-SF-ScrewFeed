@@ -2313,16 +2313,13 @@ async function saveDevice() {
         return;
     }
 
-    // Generate key from fields: Назва_Щокрутим_Розмір
+    // Always generate key from fields: Назва_Щокрутим_Розмір
     // Example: ABCD_КРУТ_M3x8
-    let deviceKey = key;
-    if (!deviceKey) {
-        deviceKey = name;
-        if (what) {
-            deviceKey += '_' + what.toUpperCase();
-        }
-        deviceKey += '_' + screwSize;
+    let deviceKey = name;
+    if (what) {
+        deviceKey += '_' + what.toUpperCase();
     }
+    deviceKey += '_' + screwSize;
 
     // Validate and get work position
     const workX = parseFloat($('editWorkX').value);
