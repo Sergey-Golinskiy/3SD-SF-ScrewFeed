@@ -2069,7 +2069,9 @@ class ServiceTab(QWidget):
         self._relay_widgets = {}
         self._sensor_widgets = {}
         self._last_ip_update = 0
-        self._last_slave_ip_update = 0
+        # Delay first slave IP request to avoid blocking UI on startup
+        import time
+        self._last_slave_ip_update = time.time()
 
         self._setup_ui()
 
