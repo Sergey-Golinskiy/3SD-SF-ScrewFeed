@@ -1207,6 +1207,16 @@ def handle_command(line: str) -> str:
         if up == "PING":
             return "PONG"
 
+        # === Get IP address ===
+        if up == "GETIP":
+            import subprocess
+            try:
+                result = subprocess.run(['hostname', '-I'], capture_output=True, text=True, timeout=5)
+                ip = result.stdout.strip().split()[0] if result.stdout.strip() else "NO_IP"
+                return f"IP {ip}"
+            except Exception as e:
+                return "IP NO_IP"
+
         # === Status commands ===
         if up == "M114":
             return get_status_str() + "\nok"

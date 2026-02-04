@@ -2063,6 +2063,7 @@ class ServiceTab(QWidget):
         self._relay_widgets = {}
         self._sensor_widgets = {}
         self._last_ip_update = 0
+        self._last_slave_ip_update = 0
 
         self._setup_ui()
 
@@ -2110,6 +2111,26 @@ class ServiceTab(QWidget):
         api_box.addWidget(self.lblApiStatus)
 
         net_row.addLayout(api_box)
+        net_row.addStretch(1)
+
+        # Slave IP section
+        slave_box = QHBoxLayout()
+        slave_box.setSpacing(12)
+        slave_label = QLabel("Slave IP:")
+        slave_label.setObjectName("serviceLabelLarge")
+        slave_box.addWidget(slave_label)
+
+        self.lblSlaveIp = QLabel("-")
+        self.lblSlaveIp.setObjectName("serviceIpValue")
+        slave_box.addWidget(self.lblSlaveIp)
+
+        btnRefreshSlaveIp = QPushButton("⟳")
+        btnRefreshSlaveIp.setObjectName("btn_refresh")
+        btnRefreshSlaveIp.setFixedSize(44, 44)
+        btnRefreshSlaveIp.clicked.connect(self._update_slave_ip)
+        slave_box.addWidget(btnRefreshSlaveIp)
+
+        net_row.addLayout(slave_box)
 
         net_lay.addLayout(net_row)
         root.addWidget(self.netCard)
@@ -2220,6 +2241,27 @@ class ServiceTab(QWidget):
         """Update IP address."""
         self.lblIp.setText(get_local_ip())
 
+    def _update_slave_ip(self):
+        """Update slave IP address via serial command."""
+        try:
+            response = self.api.xy_command("GETIP")
+            if response and "response" in response:
+                resp_text = response["response"]
+                # Parse "IP x.x.x.x" response
+                if resp_text and resp_text.startswith("IP "):
+                    ip = resp_text[3:].strip()
+                    if ip and ip != "NO_IP":
+                        self.lblSlaveIp.setText(ip)
+                    else:
+                        self.lblSlaveIp.setText("Немає мережі")
+                else:
+                    self.lblSlaveIp.setText("-")
+            else:
+                self.lblSlaveIp.setText("-")
+        except Exception as e:
+            print(f"Failed to get slave IP: {e}")
+            self.lblSlaveIp.setText("-")
+
     def render(self, status: dict):
         """Update UI from status."""
         sensors = status.get("sensors", {})
@@ -2231,6 +2273,11 @@ class ServiceTab(QWidget):
         if current_time - self._last_ip_update > 10:
             self._last_ip_update = current_time
             self._update_ip()
+
+        # Update slave IP every 30 seconds
+        if current_time - self._last_slave_ip_update > 30:
+            self._last_slave_ip_update = current_time
+            self._update_slave_ip()
 
         # Update API status
         self.lblApiStatus.setText("● Онлайн")
