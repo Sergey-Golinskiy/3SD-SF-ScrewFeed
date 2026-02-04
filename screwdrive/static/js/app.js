@@ -2350,6 +2350,8 @@ function addCoordRow(x = '', y = '', type = 'FREE', feed = 5000) {
             <option value="WORK" ${typeUpper === 'WORK' ? 'selected' : ''}>WORK</option>
         </select>
         <input type="text" class="coord-feed" value="F ${feed}" placeholder="F 5000">
+        <button class="btn-move-up" onclick="moveCoordUp(this)" title="Перемістити вгору">↑</button>
+        <button class="btn-move-down" onclick="moveCoordDown(this)" title="Перемістити вниз">↓</button>
         <button class="btn-set-current" onclick="setCurrentCoord(this)" title="Задати поточні координати">⊕</button>
         <button class="btn-del-new" onclick="removeCoordRow(this)">−</button>
     `;
@@ -2413,6 +2415,24 @@ function renumberCoordRows() {
     rows.forEach((row, i) => {
         row.querySelector('.row-num').textContent = (i + 1) + '.';
     });
+}
+
+function moveCoordUp(btn) {
+    const row = btn.closest('.coord-row-new');
+    const prevRow = row.previousElementSibling;
+    if (prevRow && prevRow.classList.contains('coord-row-new')) {
+        row.parentNode.insertBefore(row, prevRow);
+        renumberCoordRows();
+    }
+}
+
+function moveCoordDown(btn) {
+    const row = btn.closest('.coord-row-new');
+    const nextRow = row.nextElementSibling;
+    if (nextRow && nextRow.classList.contains('coord-row-new')) {
+        row.parentNode.insertBefore(nextRow, row);
+        renumberCoordRows();
+    }
 }
 
 async function goToCoord(btn) {
@@ -2999,6 +3019,8 @@ window.relayPulse = relayPulse;
 window.goToCoord = goToCoord;
 window.removeCoordRow = removeCoordRow;
 window.setCurrentCoord = setCurrentCoord;
+window.moveCoordUp = moveCoordUp;
+window.moveCoordDown = moveCoordDown;
 window.updateTypeStyle = updateTypeStyle;
 window.editUser = editUser;
 window.deleteUser = deleteUser;
