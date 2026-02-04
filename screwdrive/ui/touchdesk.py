@@ -2566,11 +2566,18 @@ class ControlTab(QWidget):
         """Update UI from status."""
         # Update position from XY table status
         xy = status.get("xy_table", {})
-        pos = xy.get("position", {})
-        self._current_x = pos.get("x", 0.0)
-        self._current_y = pos.get("y", 0.0)
+        sensors = status.get("sensors", {})
 
-        self.lblPosition.setText(f"X: {self._current_x:.2f}   Y: {self._current_y:.2f}")
+        # Get homing status and emergency stop
+        x_homed = xy.get("x_homed", False)
+        y_homed = xy.get("y_homed", False)
+        estop = sensors.get("emergency_stop") == "ACTIVE"
+
+        # Get physical coordinates
+        if x_homed and not estop:
+            self._current_x = xy.get("x", 0.0)
+        if y_homed and not estop:
+            self._current_y = xy.get("y", 0.0)
 
         # Get offsets for work position
         try:
@@ -2580,9 +2587,31 @@ class ControlTab(QWidget):
         except Exception:
             pass
 
-        work_x = self._current_x - self._offset_x
-        work_y = self._current_y - self._offset_y
-        self.lblWorkPosition.setText(f"Робочі: X: {work_x:.2f}   Y: {work_y:.2f}")
+        # Main display shows WORK coordinates (matching web UI)
+        if x_homed and not estop:
+            work_x = f"{self._current_x - self._offset_x:.2f}"
+        else:
+            work_x = "?.??"
+
+        if y_homed and not estop:
+            work_y = f"{self._current_y - self._offset_y:.2f}"
+        else:
+            work_y = "?.??"
+
+        self.lblPosition.setText(f"X: {work_x}   Y: {work_y}")
+
+        # Secondary display shows physical coordinates
+        if x_homed and not estop:
+            phys_x = f"{self._current_x:.2f}"
+        else:
+            phys_x = "?.??"
+
+        if y_homed and not estop:
+            phys_y = f"{self._current_y:.2f}"
+        else:
+            phys_y = "?.??"
+
+        self.lblWorkPosition.setText(f"Фізичні: X: {phys_x}   Y: {phys_y}")
 
         # Update brake status from relays
         relays = status.get("relays", {})
