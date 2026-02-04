@@ -1256,21 +1256,21 @@ class StartWorkTab(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(20)
 
-        # START button (green, left)
+        # START button (green, left) - 65% width
         self.btnStartCycle = QPushButton("СТАРТ\nЗАКРУЧУВАННЯ")
         self.btnStartCycle.setObjectName("btn_work_start")
         self.btnStartCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.btnStartCycle.setMinimumHeight(350)
         self.btnStartCycle.clicked.connect(self.on_start)
-        btn_row.addWidget(self.btnStartCycle, 1)
+        btn_row.addWidget(self.btnStartCycle, 65)
 
-        # STOP button (red, right)
-        self.btnStopCycle = QPushButton("ЗУПИНИТИ\nЗАКРУЧУВАННЯ")
+        # STOP button (muted red, right) - 35% width
+        self.btnStopCycle = QPushButton("СТОП")
         self.btnStopCycle.setObjectName("btn_work_stop")
         self.btnStopCycle.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.btnStopCycle.setMinimumHeight(350)
         self.btnStopCycle.clicked.connect(self.on_stop_and_return)
-        btn_row.addWidget(self.btnStopCycle, 1)
+        btn_row.addWidget(self.btnStopCycle, 35)
 
         layout.addLayout(btn_row, 1)
 
@@ -3360,12 +3360,12 @@ QTabBar::tab:selected {{
 #btn_work_stop {{
     font-size: 48px;
     font-weight: 600;
-    background: {COLORS['red']};
-    color: white;
+    background: #6b3a3a;
+    color: #d0a0a0;
     border: none;
     border-radius: 16px;
 }}
-#btn_work_stop:hover {{ background: #d64545; }}
+#btn_work_stop:hover {{ background: #7b4545; color: #e0b0b0; }}
 
 /* Platform tab buttons */
 #btn_home {{
