@@ -2272,25 +2272,36 @@ class ServiceTab(QWidget):
         self.lblIp.setText(get_local_ip())
 
     def _update_slave_ip(self):
-        """Update slave IP address via serial command."""
-        try:
-            response = self.api.xy_command("GETIP")
-            if response and "response" in response:
-                resp_text = response["response"]
-                # Parse "IP x.x.x.x" response
-                if resp_text and resp_text.startswith("IP "):
-                    ip = resp_text[3:].strip()
-                    if ip and ip != "NO_IP":
-                        self.lblSlaveIp.setText(ip)
+        """Update slave IP address via serial command (runs in background thread)."""
+        import threading
+
+        def fetch_ip():
+            try:
+                response = self.api.xy_command("GETIP")
+                if response and "response" in response:
+                    resp_text = response["response"]
+                    # Parse "IP x.x.x.x" response
+                    if resp_text and resp_text.startswith("IP "):
+                        ip = resp_text[3:].strip()
+                        if ip and ip != "NO_IP":
+                            self._slave_ip_result = ip
+                        else:
+                            self._slave_ip_result = "Немає мережі"
                     else:
-                        self.lblSlaveIp.setText("Немає мережі")
+                        self._slave_ip_result = "-"
                 else:
-                    self.lblSlaveIp.setText("-")
-            else:
-                self.lblSlaveIp.setText("-")
-        except Exception as e:
-            print(f"Failed to get slave IP: {e}")
-            self.lblSlaveIp.setText("-")
+                    self._slave_ip_result = "-"
+            except Exception:
+                self._slave_ip_result = "-"
+
+        # Run in background thread to not block UI
+        thread = threading.Thread(target=fetch_ip, daemon=True)
+        thread.start()
+
+    def _apply_slave_ip_result(self):
+        """Apply slave IP result from background thread."""
+        if hasattr(self, '_slave_ip_result'):
+            self.lblSlaveIp.setText(self._slave_ip_result)
 
     def render(self, status: dict):
         """Update UI from status."""
@@ -2304,10 +2315,13 @@ class ServiceTab(QWidget):
             self._last_ip_update = current_time
             self._update_ip()
 
-        # Update slave IP every 30 seconds
+        # Update slave IP every 30 seconds (non-blocking)
         if current_time - self._last_slave_ip_update > 30:
             self._last_slave_ip_update = current_time
             self._update_slave_ip()
+
+        # Apply slave IP result from background thread
+        self._apply_slave_ip_result()
 
         # Update API status
         self.lblApiStatus.setText("● Онлайн")
