@@ -584,7 +584,7 @@ class XYTableController:
         cmd_upper = cmd.strip().upper()
 
         # Commands that return single line without "ok" suffix
-        single_line_commands = {"PING", "M119"}
+        single_line_commands = {"PING", "M119", "GETIP"}
 
         with self._lock:
             try:
