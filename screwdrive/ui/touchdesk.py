@@ -1224,9 +1224,6 @@ class StartWorkTab(QWidget):
 
     def switch_to_start_mode(self):
         """Switch back to START mode."""
-        print("DEBUG: switch_to_start_mode called!")
-        import traceback
-        traceback.print_stack()
         self._current_mode = self.MODE_START
         self._initialized = False
         self.stack.setCurrentIndex(self.MODE_START)
@@ -1570,15 +1567,8 @@ class StartWorkTab(QWidget):
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
         from PyQt5.QtCore import Qt
 
-        print("DEBUG: _show_area_blocked_dialog called")
-
-        # Disable stop button to prevent accidental clicks
-        self.btnStopCycle.setEnabled(False)
-        self.btnStartCycle.setEnabled(False)
-
         # Get screen size
         screen = QApplication.primaryScreen().geometry()
-        print(f"DEBUG: Screen geometry: {screen}")
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Світлова завіса")
@@ -1592,13 +1582,13 @@ class StartWorkTab(QWidget):
         """)
 
         layout = QVBoxLayout(dialog)
-        layout.setSpacing(40)
-        layout.setContentsMargins(50, 80, 50, 80)
+        layout.setSpacing(30)
+        layout.setContentsMargins(50, 60, 50, 60)
 
         # Warning icon
         icon_lbl = QLabel("⚠️")
         icon_lbl.setAlignment(Qt.AlignCenter)
-        icon_lbl.setStyleSheet("font-size: 120px;")
+        icon_lbl.setStyleSheet("font-size: 100px;")
         layout.addWidget(icon_lbl)
 
         # Warning text
@@ -1616,21 +1606,31 @@ class StartWorkTab(QWidget):
         instr_lbl.setAlignment(Qt.AlignCenter)
         instr_lbl.setStyleSheet("""
             color: #ffffff;
-            font-size: 32px;
+            font-size: 28px;
         """)
         layout.addWidget(instr_lbl)
 
+        # Reinit required message
+        reinit_lbl = QLabel("Потрібна переініціалізація!")
+        reinit_lbl.setAlignment(Qt.AlignCenter)
+        reinit_lbl.setStyleSheet("""
+            color: #ff9800;
+            font-size: 24px;
+            font-weight: bold;
+        """)
+        layout.addWidget(reinit_lbl)
+
         layout.addStretch()
 
-        # ВИЇЗД button - store reference for click handler
+        # "Зона безпечна" button
         self._area_dialog = dialog
-        btn = QPushButton("ВИЇЗД")
-        btn.setFixedSize(400, 120)
+        btn = QPushButton("ЗОНА БЕЗПЕЧНА")
+        btn.setFixedSize(450, 120)
         btn.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: #ffffff;
-                font-size: 48px;
+                font-size: 36px;
                 font-weight: bold;
                 border: none;
                 border-radius: 16px;
@@ -1639,56 +1639,28 @@ class StartWorkTab(QWidget):
                 background-color: #388E3C;
             }
         """)
-        btn.clicked.connect(self._on_area_exit_button_clicked)
+        btn.clicked.connect(self._on_area_safe_button_clicked)
         layout.addWidget(btn, alignment=Qt.AlignCenter)
 
         layout.addStretch()
 
         dialog.exec_()
 
-    def _on_area_exit_button_clicked(self):
-        """Handle ВИЇЗД button click - close dialog and move to operator position."""
-        print("DEBUG: _on_area_exit_button_clicked called")
-        print(f"DEBUG: Current mode before: {self._current_mode}")
-
-        # Close dialog first
+    def _on_area_safe_button_clicked(self):
+        """Handle 'Зона безпечна' button - close dialog and go to START for reinit."""
+        # Close dialog
         if hasattr(self, '_area_dialog') and self._area_dialog:
             self._area_dialog.done(0)
             self._area_dialog = None
 
-        print(f"DEBUG: Current mode after dialog close: {self._current_mode}")
-
-        # Get work position from selected device
-        if self._selected_device and self._selected_device in self._devices_by_name:
-            device = self._devices_by_name[self._selected_device]
-            work_x = device.get("work_x")
-            work_y = device.get("work_y")
-            work_feed = device.get("work_feed", 5000)
-
-            print(f"DEBUG: Moving to work_x={work_x}, work_y={work_y}, feed={work_feed}")
-
-            if work_x is not None and work_y is not None:
-                try:
-                    self.api.xy_move(work_x, work_y, work_feed)
-                    self.lblWorkMessage.setText("Виїзд до оператора...")
-                    print("DEBUG: xy_move called successfully")
-                except Exception as e:
-                    print(f"DEBUG: xy_move error: {e}")
-                    self.lblWorkMessage.setText(f"Помилка виїзду: {e}")
-        else:
-            print(f"DEBUG: No device selected or not found. selected={self._selected_device}")
-
-        # Re-enable buttons
-        self.btnStartCycle.setEnabled(True)
-        self.btnStopCycle.setEnabled(True)
-
-        print(f"DEBUG: Current mode at end: {self._current_mode}")
+        # Reset state and switch to START mode for reinitialization
+        self._initialized = False
+        self._cycle_state = "IDLE"
+        self.switch_to_start_mode()
+        self.lblStartMessage.setText("Потрібна переініціалізація після спрацювання завіси.")
 
     def on_stop_and_return(self):
         """Handle STOP button in WORK mode - stop and return to START mode."""
-        print("DEBUG: on_stop_and_return called!")
-        import traceback
-        traceback.print_stack()
         # Abort cycle worker if running
         if self._cycle_worker and self._cycle_worker.isRunning():
             self._cycle_worker.abort()
