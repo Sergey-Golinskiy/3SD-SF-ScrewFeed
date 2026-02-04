@@ -1564,14 +1564,17 @@ class StartWorkTab(QWidget):
 
     def _show_area_blocked_dialog(self):
         """Show fullscreen dialog when light barrier is triggered."""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
         from PyQt5.QtCore import Qt
+
+        # Get screen size
+        screen = QApplication.primaryScreen().geometry()
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Світлова завіса")
         dialog.setModal(True)
-        dialog.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        dialog.showFullScreen()
+        dialog.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        dialog.setGeometry(screen)
         dialog.setStyleSheet("""
             QDialog {
                 background-color: #1a1a1a;
@@ -1580,7 +1583,7 @@ class StartWorkTab(QWidget):
 
         layout = QVBoxLayout(dialog)
         layout.setSpacing(40)
-        layout.setContentsMargins(50, 100, 50, 100)
+        layout.setContentsMargins(50, 80, 50, 80)
 
         # Warning icon
         icon_lbl = QLabel("⚠️")
@@ -1609,7 +1612,8 @@ class StartWorkTab(QWidget):
 
         layout.addStretch()
 
-        # ВИЇЗД button
+        # ВИЇЗД button - store reference for click handler
+        self._area_dialog = dialog
         btn = QPushButton("ВИЇЗД")
         btn.setFixedSize(400, 120)
         btn.setStyleSheet("""
@@ -1625,16 +1629,19 @@ class StartWorkTab(QWidget):
                 background-color: #388E3C;
             }
         """)
-        btn.clicked.connect(lambda: self._on_area_exit_clicked(dialog))
+        btn.clicked.connect(self._on_area_exit_button_clicked)
         layout.addWidget(btn, alignment=Qt.AlignCenter)
 
         layout.addStretch()
 
         dialog.exec_()
 
-    def _on_area_exit_clicked(self, dialog):
-        """Handle ВИЇЗД button click - move to operator position."""
-        dialog.accept()
+    def _on_area_exit_button_clicked(self):
+        """Handle ВИЇЗД button click - close dialog and move to operator position."""
+        # Close dialog first
+        if hasattr(self, '_area_dialog') and self._area_dialog:
+            self._area_dialog.done(0)
+            self._area_dialog = None
 
         # Get work position from selected device
         if self._selected_device and self._selected_device in self._devices_by_name:
@@ -1649,6 +1656,9 @@ class StartWorkTab(QWidget):
                     self.lblWorkMessage.setText("Виїзд до оператора...")
                 except Exception as e:
                     self.lblWorkMessage.setText(f"Помилка виїзду: {e}")
+
+        # Re-enable start button for next cycle
+        self.btnStartCycle.setEnabled(True)
 
     def on_stop_and_return(self):
         """Handle STOP button in WORK mode - stop and return to START mode."""
