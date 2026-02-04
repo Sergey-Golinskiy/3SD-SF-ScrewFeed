@@ -140,6 +140,10 @@ class ApiClient:
     def xy_estop(self):
         return self._post("xy/estop")
 
+    def xy_jog(self, dx: float = 0, dy: float = 0, feed: float = 5000):
+        """Jog XY table by offset."""
+        return self._post("xy/jog", {"dx": dx, "dy": dy, "feed": feed}, timeout=30)
+
     # Cycle
     def cycle_estop(self):
         return self._post("cycle/estop")
@@ -2312,6 +2316,293 @@ class LogsTab(QWidget):
             self._fetch_logs()
 
 
+# ================== Control Tab ==================
+class ControlTab(QWidget):
+    """Control tab - XY table manual control (jog, homing, brakes)."""
+
+    STEP_OPTIONS = [0.1, 0.5, 1, 5, 10, 50]
+    FEED_OPTIONS = [1000, 3000, 5000, 10000, 20000, 30000, 50000]
+
+    def __init__(self, api: ApiClient, parent=None):
+        super().__init__(parent)
+        self.api = api
+        self._current_x = 0.0
+        self._current_y = 0.0
+        self._offset_x = 0.0
+        self._offset_y = 0.0
+        self._brake_x_on = False
+        self._brake_y_on = False
+        self._setup_ui()
+
+    def _setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(16)
+
+        # Main horizontal layout
+        main_row = QHBoxLayout()
+        main_row.setSpacing(16)
+
+        # Left: Position and Jog controls
+        left_col = QVBoxLayout()
+        left_col.setSpacing(16)
+
+        # Position display card
+        pos_card = make_card("ПОЗИЦІЯ")
+        pos_lay = pos_card.layout()
+
+        self.lblPosition = QLabel("X: 0.00   Y: 0.00")
+        self.lblPosition.setObjectName("xyPositionLarge")
+        self.lblPosition.setAlignment(Qt.AlignCenter)
+        pos_lay.addWidget(self.lblPosition)
+
+        self.lblWorkPosition = QLabel("Робочі: X: 0.00   Y: 0.00")
+        self.lblWorkPosition.setObjectName("xyPositionSmall")
+        self.lblWorkPosition.setAlignment(Qt.AlignCenter)
+        pos_lay.addWidget(self.lblWorkPosition)
+
+        left_col.addWidget(pos_card)
+
+        # Jog controls card
+        jog_card = make_card("КЕРУВАННЯ")
+        jog_lay = jog_card.layout()
+
+        # Jog grid - 3x3 layout
+        jog_grid = QGridLayout()
+        jog_grid.setSpacing(8)
+
+        # Y- button (top center)
+        self.btnYMinus = QPushButton("Y-")
+        self.btnYMinus.setObjectName("jogButton")
+        self.btnYMinus.setMinimumSize(80, 60)
+        self.btnYMinus.clicked.connect(lambda: self._jog(0, -1))
+        jog_grid.addWidget(self.btnYMinus, 0, 1)
+
+        # X+ button (middle left)
+        self.btnXPlus = QPushButton("X+")
+        self.btnXPlus.setObjectName("jogButton")
+        self.btnXPlus.setMinimumSize(80, 60)
+        self.btnXPlus.clicked.connect(lambda: self._jog(1, 0))
+        jog_grid.addWidget(self.btnXPlus, 1, 0)
+
+        # Home button (center)
+        self.btnHome = QPushButton("⌂")
+        self.btnHome.setObjectName("jogButtonHome")
+        self.btnHome.setMinimumSize(80, 60)
+        self.btnHome.clicked.connect(self._do_homing)
+        jog_grid.addWidget(self.btnHome, 1, 1)
+
+        # X- button (middle right)
+        self.btnXMinus = QPushButton("X-")
+        self.btnXMinus.setObjectName("jogButton")
+        self.btnXMinus.setMinimumSize(80, 60)
+        self.btnXMinus.clicked.connect(lambda: self._jog(-1, 0))
+        jog_grid.addWidget(self.btnXMinus, 1, 2)
+
+        # Y+ button (bottom center)
+        self.btnYPlus = QPushButton("Y+")
+        self.btnYPlus.setObjectName("jogButton")
+        self.btnYPlus.setMinimumSize(80, 60)
+        self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
+        jog_grid.addWidget(self.btnYPlus, 2, 1)
+
+        jog_lay.addLayout(jog_grid)
+
+        # Step and Feed selectors row
+        selectors_row = QHBoxLayout()
+        selectors_row.setSpacing(12)
+
+        selectors_row.addWidget(QLabel("Крок:"))
+        self.cmbStep = QComboBox()
+        self.cmbStep.setObjectName("controlCombo")
+        for step in self.STEP_OPTIONS:
+            self.cmbStep.addItem(str(step), step)
+        self.cmbStep.setCurrentIndex(4)  # Default 10
+        selectors_row.addWidget(self.cmbStep)
+
+        selectors_row.addWidget(QLabel("Швидк:"))
+        self.cmbFeed = QComboBox()
+        self.cmbFeed.setObjectName("controlCombo")
+        for feed in self.FEED_OPTIONS:
+            self.cmbFeed.addItem(str(feed), feed)
+        self.cmbFeed.setCurrentIndex(2)  # Default 5000
+        selectors_row.addWidget(self.cmbFeed)
+
+        jog_lay.addLayout(selectors_row)
+
+        left_col.addWidget(jog_card)
+        main_row.addLayout(left_col, 1)
+
+        # Right: Homing and Brakes
+        right_col = QVBoxLayout()
+        right_col.setSpacing(16)
+
+        # Homing card
+        home_card = make_card("ХОМІНГ")
+        home_lay = home_card.layout()
+
+        home_grid = QGridLayout()
+        home_grid.setSpacing(12)
+
+        self.btnHomingAll = QPushButton("ХОМІНГ")
+        self.btnHomingAll.setObjectName("homeButton")
+        self.btnHomingAll.setMinimumHeight(50)
+        self.btnHomingAll.clicked.connect(self._do_homing)
+        home_grid.addWidget(self.btnHomingAll, 0, 0, 1, 2)
+
+        self.btnHomingX = QPushButton("ХОМ X")
+        self.btnHomingX.setObjectName("homeButtonSmall")
+        self.btnHomingX.setMinimumHeight(45)
+        self.btnHomingX.clicked.connect(lambda: self._do_homing_axis("x"))
+        home_grid.addWidget(self.btnHomingX, 1, 0)
+
+        self.btnHomingY = QPushButton("ХОМ Y")
+        self.btnHomingY.setObjectName("homeButtonSmall")
+        self.btnHomingY.setMinimumHeight(45)
+        self.btnHomingY.clicked.connect(lambda: self._do_homing_axis("y"))
+        home_grid.addWidget(self.btnHomingY, 1, 1)
+
+        self.btnWorkZero = QPushButton("В роб. 0")
+        self.btnWorkZero.setObjectName("homeButtonSmall")
+        self.btnWorkZero.setMinimumHeight(45)
+        self.btnWorkZero.clicked.connect(self._go_to_work_zero)
+        home_grid.addWidget(self.btnWorkZero, 2, 0, 1, 2)
+
+        home_lay.addLayout(home_grid)
+        right_col.addWidget(home_card)
+
+        # Brakes card
+        brake_card = make_card("ГАЛЬМА")
+        brake_lay = brake_card.layout()
+
+        brake_grid = QGridLayout()
+        brake_grid.setSpacing(12)
+
+        brake_grid.addWidget(QLabel("Гальмо X:"), 0, 0)
+        self.btnBrakeX = QPushButton("--")
+        self.btnBrakeX.setObjectName("brakeButton")
+        self.btnBrakeX.setMinimumHeight(45)
+        self.btnBrakeX.clicked.connect(self._toggle_brake_x)
+        brake_grid.addWidget(self.btnBrakeX, 0, 1)
+
+        brake_grid.addWidget(QLabel("Гальмо Y:"), 1, 0)
+        self.btnBrakeY = QPushButton("--")
+        self.btnBrakeY.setObjectName("brakeButton")
+        self.btnBrakeY.setMinimumHeight(45)
+        self.btnBrakeY.clicked.connect(self._toggle_brake_y)
+        brake_grid.addWidget(self.btnBrakeY, 1, 1)
+
+        brake_lay.addLayout(brake_grid)
+        right_col.addWidget(brake_card)
+
+        # Stop button
+        self.btnStop = QPushButton("СТОП")
+        self.btnStop.setObjectName("stopButton")
+        self.btnStop.setMinimumHeight(60)
+        self.btnStop.clicked.connect(self._do_stop)
+        right_col.addWidget(self.btnStop)
+
+        right_col.addStretch()
+        main_row.addLayout(right_col, 1)
+
+        root.addLayout(main_row)
+
+    def _jog(self, dx_mult: int, dy_mult: int):
+        """Jog in direction by step amount."""
+        step = self.cmbStep.currentData()
+        feed = self.cmbFeed.currentData()
+        dx = dx_mult * step
+        dy = dy_mult * step
+        try:
+            self.api.xy_jog(dx=dx, dy=dy, feed=feed)
+        except Exception as e:
+            print(f"Jog failed: {e}")
+
+    def _do_homing(self):
+        """Full homing sequence."""
+        try:
+            self.api.xy_home()
+        except Exception as e:
+            print(f"Homing failed: {e}")
+
+    def _do_homing_axis(self, axis: str):
+        """Home single axis."""
+        try:
+            self.api.xy_home(axis=axis)
+        except Exception as e:
+            print(f"Homing {axis} failed: {e}")
+
+    def _go_to_work_zero(self):
+        """Move to work zero position."""
+        try:
+            self.api.xy_move(self._offset_x, self._offset_y, 5000)
+        except Exception as e:
+            print(f"Move to work zero failed: {e}")
+
+    def _toggle_brake_x(self):
+        """Toggle X brake."""
+        try:
+            new_state = "off" if self._brake_x_on else "on"
+            self.api.relay_set("r02_brake_x", new_state)
+        except Exception as e:
+            print(f"Brake X toggle failed: {e}")
+
+    def _toggle_brake_y(self):
+        """Toggle Y brake."""
+        try:
+            new_state = "off" if self._brake_y_on else "on"
+            self.api.relay_set("r03_brake_y", new_state)
+        except Exception as e:
+            print(f"Brake Y toggle failed: {e}")
+
+    def _do_stop(self):
+        """Emergency stop XY movement."""
+        try:
+            self.api.xy_stop()
+        except Exception as e:
+            print(f"Stop failed: {e}")
+
+    def render(self, status: dict):
+        """Update UI from status."""
+        # Update position from XY table status
+        xy = status.get("xy_table", {})
+        pos = xy.get("position", {})
+        self._current_x = pos.get("x", 0.0)
+        self._current_y = pos.get("y", 0.0)
+
+        self.lblPosition.setText(f"X: {self._current_x:.2f}   Y: {self._current_y:.2f}")
+
+        # Get offsets for work position
+        try:
+            offsets = self.api.get_offsets()
+            self._offset_x = offsets.get("x", 0.0)
+            self._offset_y = offsets.get("y", 0.0)
+        except Exception:
+            pass
+
+        work_x = self._current_x - self._offset_x
+        work_y = self._current_y - self._offset_y
+        self.lblWorkPosition.setText(f"Робочі: X: {work_x:.2f}   Y: {work_y:.2f}")
+
+        # Update brake status from relays
+        relays = status.get("relays", {})
+        brake_x_state = relays.get("r02_brake_x", "OFF")
+        brake_y_state = relays.get("r03_brake_y", "OFF")
+
+        self._brake_x_on = brake_x_state == "ON"
+        self._brake_y_on = brake_y_state == "ON"
+
+        self.btnBrakeX.setText("ON" if self._brake_x_on else "OFF")
+        self.btnBrakeX.setProperty("active", self._brake_x_on)
+        self.btnBrakeX.style().unpolish(self.btnBrakeX)
+        self.btnBrakeX.style().polish(self.btnBrakeX)
+
+        self.btnBrakeY.setText("ON" if self._brake_y_on else "OFF")
+        self.btnBrakeY.setProperty("active", self._brake_y_on)
+        self.btnBrakeY.style().unpolish(self.btnBrakeY)
+        self.btnBrakeY.style().polish(self.btnBrakeY)
+
+
 # ================== Main Window ==================
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -2345,6 +2636,7 @@ class MainWindow(QMainWindow):
 
         # Create tabs - new structure
         self.tabStartWork = StartWorkTab(self.api)
+        self.tabControl = ControlTab(self.api)
         self.tabPlatform = PlatformTab(self.api)
         self.tabLogs = LogsTab(self.api)
         self.tabService = ServiceTab(self.api)
@@ -2353,6 +2645,7 @@ class MainWindow(QMainWindow):
         self.tabStartWork.tabNameChanged.connect(self._on_tab_name_changed)
 
         self.tabs.addTab(self.tabStartWork, "СТАРТ")
+        self.tabs.addTab(self.tabControl, "КЕРУВАННЯ")
         self.tabs.addTab(self.tabPlatform, "ПЛАТФОРМА")
         self.tabs.addTab(self.tabLogs, "ЛОГИ")
         self.tabs.addTab(self.tabService, "СЕРВІС")
@@ -2411,7 +2704,7 @@ class MainWindow(QMainWindow):
             self._pedal_hold_start = None
 
         # Update tabs
-        for tab in (self.tabStartWork, self.tabPlatform, self.tabLogs, self.tabService):
+        for tab in (self.tabStartWork, self.tabControl, self.tabPlatform, self.tabLogs, self.tabService):
             try:
                 tab.render(status)
             except Exception as e:
@@ -2933,6 +3226,106 @@ QScrollBar::handle:vertical:hover {{
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0;
+}}
+
+/* Control Tab - XY Position display */
+#xyPositionLarge {{
+    font-size: 48px;
+    font-weight: 700;
+    color: {COLORS['green']};
+    padding: 20px;
+}}
+#xyPositionSmall {{
+    font-size: 20px;
+    font-weight: 500;
+    color: {COLORS['text_secondary']};
+    padding: 8px;
+}}
+
+/* Control Tab - Jog buttons */
+#jogButton {{
+    font-size: 24px;
+    font-weight: 700;
+    background: {COLORS['blue']};
+    color: white;
+    border: none;
+    border-radius: 12px;
+    min-width: 100px;
+    min-height: 70px;
+}}
+#jogButton:hover {{ background: {COLORS['blue_hover']}; }}
+#jogButton:pressed {{ background: #2563eb; }}
+
+#jogButtonHome {{
+    font-size: 32px;
+    font-weight: 700;
+    background: {COLORS['yellow']};
+    color: {COLORS['bg_primary']};
+    border: none;
+    border-radius: 12px;
+    min-width: 100px;
+    min-height: 70px;
+}}
+#jogButtonHome:hover {{ background: #d4a021; }}
+#jogButtonHome:pressed {{ background: #c4901a; }}
+
+/* Control Tab - Home buttons */
+#homeButton {{
+    font-size: 22px;
+    font-weight: 600;
+    background: {COLORS['yellow']};
+    color: {COLORS['bg_primary']};
+    border: none;
+    border-radius: 10px;
+}}
+#homeButton:hover {{ background: #d4a021; }}
+#homeButton:pressed {{ background: #c4901a; }}
+
+#homeButtonSmall {{
+    font-size: 18px;
+    font-weight: 600;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text']};
+    border: 2px solid {COLORS['yellow']};
+    border-radius: 8px;
+}}
+#homeButtonSmall:hover {{ background: {COLORS['yellow']}; color: {COLORS['bg_primary']}; }}
+
+/* Control Tab - Brake buttons */
+#brakeButton {{
+    font-size: 20px;
+    font-weight: 700;
+    background: {COLORS['bg_input']};
+    color: {COLORS['text_muted']};
+    border: 2px solid {COLORS['border']};
+    border-radius: 10px;
+    min-width: 100px;
+}}
+#brakeButton[active="true"] {{
+    background: {COLORS['green']};
+    color: white;
+    border-color: {COLORS['green']};
+}}
+#brakeButton:hover {{ border-color: {COLORS['yellow']}; }}
+
+/* Control Tab - Stop button */
+#stopButton {{
+    font-size: 28px;
+    font-weight: 700;
+    background: {COLORS['red']};
+    color: white;
+    border: 3px solid #ff4444;
+    border-radius: 12px;
+}}
+#stopButton:hover {{ background: #d64545; }}
+#stopButton:pressed {{ background: #c53535; }}
+
+/* Control Tab - ComboBox */
+#controlCombo {{
+    font-size: 18px;
+    font-weight: 500;
+    padding: 12px 16px;
+    min-width: 100px;
 }}
 """
 
