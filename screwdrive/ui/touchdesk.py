@@ -1205,7 +1205,7 @@ class StartWorkTab(QWidget):
         top_bar = QHBoxLayout()
         top_bar.setSpacing(20)
 
-        self.lblWorkDevice = QLabel("Девайс: -")
+        self.lblWorkDevice = QLabel("-")
         self.lblWorkDevice.setObjectName("workStatusLabel")
         top_bar.addWidget(self.lblWorkDevice)
 
@@ -1289,7 +1289,7 @@ class StartWorkTab(QWidget):
         self.tabNameChanged.emit("РОБОТА")
 
         # Update work mode labels
-        self.lblWorkDevice.setText(f"Девайс: {self._selected_device}")
+        self.lblWorkDevice.setText(self._selected_device)
         self.lblWorkCounter.setText(self._get_counter_text())
         self.lblWorkHoles.setText(f"Гвинтів: 0 / {self._total_holes}")
         self.lblWorkTask.setText(f"Таска: {self._device_task}")
@@ -1405,7 +1405,7 @@ class StartWorkTab(QWidget):
                         self._cycle_state = "PAUSED"
 
                     self.switch_to_work_mode()
-                    self.lblWorkDevice.setText(f"Девайс: {saved_device}")
+                    self.lblWorkDevice.setText(saved_device)
                     self.lblWorkCounter.setText(self._get_counter_text())
                     self.lblWorkHoles.setText(f"Гвинтів: {self._holes_completed} / {self._total_holes}")
 
@@ -1968,7 +1968,7 @@ class StartWorkTab(QWidget):
                     if self._current_mode == self.MODE_START:
                         self.lblStartDevice.setText(f"Девайс: {new_device}")
                     else:
-                        self.lblWorkDevice.setText(f"Девайс: {new_device}")
+                        self.lblWorkDevice.setText(new_device)
 
                 # Update initialized flag from web
                 web_initialized = server_state.get("initialized", False)
