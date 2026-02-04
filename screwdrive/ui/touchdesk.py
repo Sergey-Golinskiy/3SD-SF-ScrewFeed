@@ -1562,9 +1562,19 @@ class StartWorkTab(QWidget):
                     else:
                         self.lblWorkDevice.setText(f"Девайс: {new_device}")
 
+                # Update initialized flag from web
+                web_initialized = server_state.get("initialized", False)
+                if web_initialized and not self._initialized:
+                    self._initialized = True
+
                 # Update cycle state from web
                 new_state = server_state.get("cycle_state", "IDLE")
+                old_state = self._cycle_state
                 self._cycle_state = new_state
+
+                # Switch to WORK mode when web completes initialization
+                if new_state == "READY" and self._initialized and self._current_mode == self.MODE_START:
+                    self.switch_to_work_mode()
 
                 # Update progress when web is operating
                 if web_is_operating:
@@ -1572,6 +1582,10 @@ class StartWorkTab(QWidget):
                     message = server_state.get("message", "")
                     holes = server_state.get("holes_completed", 0)
                     total = server_state.get("total_holes", 0)
+
+                    # Switch to WORK mode if cycle is running and we're in START mode
+                    if new_state == "RUNNING" and self._current_mode == self.MODE_START:
+                        self.switch_to_work_mode()
 
                     if self._current_mode == self.MODE_START:
                         self.startProgressBar.setValue(progress_pct)
