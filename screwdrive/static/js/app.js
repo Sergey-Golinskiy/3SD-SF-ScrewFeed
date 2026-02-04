@@ -2350,11 +2350,46 @@ function addCoordRow(x = '', y = '', type = 'FREE', feed = 5000) {
             <option value="WORK" ${typeUpper === 'WORK' ? 'selected' : ''}>WORK</option>
         </select>
         <input type="text" class="coord-feed" value="F ${feed}" placeholder="F 5000">
+        <button class="btn-set-current" onclick="setCurrentCoord(this)" title="Задати поточні координати">⊕</button>
         <button class="btn-del-new" onclick="removeCoordRow(this)">−</button>
     `;
 
     list.appendChild(row);
     state.coordRows.push(row);
+}
+
+/**
+ * Set current work coordinates to the coord row inputs.
+ */
+function setCurrentCoord(btn) {
+    const row = btn.closest('.coord-row-new');
+    if (!row) return;
+
+    // Get current position from status
+    if (!state.status || !state.status.xy_table) {
+        alert('Немає даних про поточну позицію');
+        return;
+    }
+
+    const xy = state.status.xy_table;
+    const sensors = state.status.sensors || {};
+    const estopActive = sensors.emergency_stop === 'ACTIVE' || sensors.emergency_stop === true;
+
+    // Check if homed
+    if (!xy.x_homed || !xy.y_homed || estopActive) {
+        alert('Стіл не захомлений або активна аварійна зупинка');
+        return;
+    }
+
+    // Calculate work coordinates (physical - offset)
+    const physicalX = xy.x || 0;
+    const physicalY = xy.y || 0;
+    const workX = (physicalX - workOffsets.x).toFixed(2);
+    const workY = (physicalY - workOffsets.y).toFixed(2);
+
+    // Set values to inputs
+    row.querySelector('.coord-x').value = workX;
+    row.querySelector('.coord-y').value = workY;
 }
 
 function updateTypeStyle(select) {
@@ -2963,6 +2998,7 @@ window.relayOff = relayOff;
 window.relayPulse = relayPulse;
 window.goToCoord = goToCoord;
 window.removeCoordRow = removeCoordRow;
+window.setCurrentCoord = setCurrentCoord;
 window.updateTypeStyle = updateTypeStyle;
 window.editUser = editUser;
 window.deleteUser = deleteUser;
