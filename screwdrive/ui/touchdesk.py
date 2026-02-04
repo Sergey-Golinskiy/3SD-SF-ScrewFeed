@@ -1076,6 +1076,8 @@ class StartWorkTab(QWidget):
         self._total_cycles = 0
         self._holes_completed = 0
         self._total_holes = 0
+        self._device_task = "-"
+        self._device_torque = 0.5
         self._init_worker = None
         self._cycle_worker = None
         self._current_mode = self.MODE_START
@@ -1144,6 +1146,22 @@ class StartWorkTab(QWidget):
         self.lblStartDevice.setAlignment(Qt.AlignCenter)
         status_lay.addWidget(self.lblStartDevice)
 
+        # Task and Torque row
+        task_torque_row = QHBoxLayout()
+        task_torque_row.setSpacing(40)
+
+        self.lblStartTask = QLabel("Таска: -")
+        self.lblStartTask.setObjectName("statusTaskTorque")
+        self.lblStartTask.setAlignment(Qt.AlignCenter)
+        task_torque_row.addWidget(self.lblStartTask)
+
+        self.lblStartTorque = QLabel("Момент: - Nm")
+        self.lblStartTorque.setObjectName("statusTaskTorque")
+        self.lblStartTorque.setAlignment(Qt.AlignCenter)
+        task_torque_row.addWidget(self.lblStartTorque)
+
+        status_lay.addLayout(task_torque_row)
+
         self.lblStartMessage = QLabel("Виберіть девайс зі списку зліва")
         self.lblStartMessage.setObjectName("statusMessage")
         self.lblStartMessage.setWordWrap(True)
@@ -1202,6 +1220,18 @@ class StartWorkTab(QWidget):
         self.lblWorkHoles = QLabel("Гвинтів: 0 / 0")
         self.lblWorkHoles.setObjectName("workStatusLabel")
         top_bar.addWidget(self.lblWorkHoles)
+
+        top_bar.addStretch(1)
+
+        self.lblWorkTask = QLabel("Таска: -")
+        self.lblWorkTask.setObjectName("workStatusLabel")
+        top_bar.addWidget(self.lblWorkTask)
+
+        top_bar.addStretch(1)
+
+        self.lblWorkTorque = QLabel("Момент: - Nm")
+        self.lblWorkTorque.setObjectName("workStatusLabel")
+        top_bar.addWidget(self.lblWorkTorque)
 
         layout.addLayout(top_bar)
 
@@ -1262,6 +1292,8 @@ class StartWorkTab(QWidget):
         self.lblWorkDevice.setText(f"Девайс: {self._selected_device}")
         self.lblWorkCounter.setText(self._get_counter_text())
         self.lblWorkHoles.setText(f"Гвинтів: 0 / {self._total_holes}")
+        self.lblWorkTask.setText(f"Таска: {self._device_task}")
+        self.lblWorkTorque.setText(f"Момент: {self._device_torque} Nm")
         self.lblWorkMessage.setText("Готово. Натисніть СТАРТ ЗАКРУЧУВАННЯ для початку циклу.")
         self.workProgressBar.setValue(0)
 
@@ -1350,9 +1382,18 @@ class StartWorkTab(QWidget):
                 self._holes_completed = server_state.get("holes_completed", 0)
                 self._total_holes = server_state.get("total_holes", 0)
 
+                # Get task and torque from device
+                for dev in self._devices:
+                    if dev.get("key") == saved_device:
+                        self._device_task = dev.get("task", "-") or "-"
+                        self._device_torque = dev.get("torque", 0.5)
+                        break
+
                 # Update UI
                 self._update_device_styles()
                 self.lblStartDevice.setText(f"Девайс: {saved_device}")
+                self.lblStartTask.setText(f"Таска: {self._device_task}")
+                self.lblStartTorque.setText(f"Момент: {self._device_torque} Nm")
 
                 # Switch to WORK mode if in working states
                 # RUNNING is included - if app restarted during cycle, show WORK mode with paused state
@@ -1392,13 +1433,17 @@ class StartWorkTab(QWidget):
         self._cycle_state = "IDLE"
         self._update_device_styles()
 
-        # Get holes count
+        # Get device info
         for dev in self._devices:
             if dev.get("key") == key:
                 self._total_holes = dev.get("holes", 0)
+                self._device_task = dev.get("task", "-") or "-"
+                self._device_torque = dev.get("torque", 0.5)
                 break
 
         self.lblStartDevice.setText(f"Девайс: {key}")
+        self.lblStartTask.setText(f"Таска: {self._device_task}")
+        self.lblStartTorque.setText(f"Момент: {self._device_torque} Nm")
         self.lblStartMessage.setText(f"Девайс {key} вибрано. Натисніть ІНІЦІАЛІЗАЦІЯ.")
         self.btnInit.setEnabled(True)
 
@@ -3419,6 +3464,12 @@ QTabBar::tab:selected {{
     font-size: 16px;
     color: {COLORS['text_secondary']};
     padding: 8px;
+}}
+#statusTaskTorque {{
+    font-size: 18px;
+    font-weight: 500;
+    color: {COLORS['accent']};
+    padding: 4px 0;
 }}
 
 /* Badges */

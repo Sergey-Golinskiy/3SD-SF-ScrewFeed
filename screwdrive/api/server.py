@@ -1267,6 +1267,7 @@ def create_app(
                 'what': prog.what,
                 'screw_size': prog.screw_size,
                 'task': prog.task,
+                'torque': prog.torque,
                 'work_x': prog.work_x,
                 'work_y': prog.work_y,
                 'work_feed': prog.work_feed,
@@ -1289,6 +1290,7 @@ def create_app(
             'what': prog.what,
             'screw_size': prog.screw_size,
             'task': prog.task,
+            'torque': prog.torque,
             'work_x': prog.work_x,
             'work_y': prog.work_y,
             'work_feed': prog.work_feed,
@@ -1316,6 +1318,7 @@ def create_app(
         what = data.get('what', '')
         screw_size = data.get('screw_size', '')
         task = data.get('task', '')
+        torque = float(data.get('torque', 0.5))
         work_x = data.get('work_x')
         work_y = data.get('work_y')
         work_feed = data.get('work_feed', 5000)
@@ -1346,6 +1349,7 @@ def create_app(
             what=what,
             screw_size=screw_size,
             task=task,
+            torque=torque,
             work_x=work_x,
             work_y=work_y,
             work_feed=work_feed
@@ -1375,6 +1379,7 @@ def create_app(
         what = data.get('what', old_dev.what)
         screw_size = data.get('screw_size', old_dev.screw_size)
         task = data.get('task', old_dev.task)
+        torque = float(data.get('torque', old_dev.torque))
         steps_data = data.get('steps', None)
 
         # Handle work position fields
@@ -1414,6 +1419,7 @@ def create_app(
             what=what,
             screw_size=screw_size,
             task=task,
+            torque=torque,
             work_x=work_x,
             work_y=work_y,
             work_feed=work_feed
@@ -1497,6 +1503,7 @@ def _save_devices(app: Flask) -> None:
             'what': prog.what,
             'screw_size': prog.screw_size,
             'task': prog.task,
+            'torque': prog.torque,
             'work_x': prog.work_x,
             'work_y': prog.work_y,
             'work_feed': prog.work_feed,
@@ -1562,6 +1569,7 @@ def _load_devices(app: Flask) -> None:
                         what=dev.get('what', ''),
                         screw_size=dev.get('screw_size', ''),
                         task=dev.get('task', ''),
+                        torque=float(dev.get('torque', 0.5)),
                         work_x=work_x,
                         work_y=work_y,
                         work_feed=work_feed
