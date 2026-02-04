@@ -167,6 +167,10 @@ class ApiClient:
         """Enable stepper motors (M17)."""
         return self.xy_command("M17")
 
+    def xy_clear_estop(self):
+        """Clear E-STOP state on XY controller (M999)."""
+        return self._post("xy/clear_estop", timeout=10)
+
     def xy_jog(self, dx: float = 0, dy: float = 0, feed: float = 5000):
         """Jog XY table by offset."""
         return self._post("xy/jog", {"dx": dx, "dy": dy, "feed": feed}, timeout=30)
@@ -1911,7 +1915,13 @@ class StartWorkTab(QWidget):
             self._estop_dialog.close()
             self._estop_dialog = None
 
-        # Disable motors so table can be moved manually
+        # First clear E-STOP state on XY controller (M999)
+        try:
+            self.api.xy_clear_estop()
+        except Exception as e:
+            print(f"Failed to clear E-STOP state: {e}")
+
+        # Then disable motors so table can be moved manually (M18)
         try:
             self.api.xy_disable_motors()
         except Exception as e:
