@@ -3471,7 +3471,7 @@ QTabBar::tab:selected {{
 #statusTaskTorque {{
     font-size: 18px;
     font-weight: 500;
-    color: {COLORS['accent']};
+    color: {COLORS['blue']};
     padding: 4px 0;
 }}
 
