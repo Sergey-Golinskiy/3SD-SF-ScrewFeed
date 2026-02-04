@@ -2399,29 +2399,23 @@ class ControlTab(QWidget):
         self.btnYPlus.clicked.connect(lambda: self._jog(0, 1))
         jog_grid.addWidget(self.btnYPlus, 2, 1)
 
-        jog_lay.addLayout(jog_grid)
-
-        # Step and Feed selectors row
-        selectors_row = QHBoxLayout()
-        selectors_row.setSpacing(12)
-
-        selectors_row.addWidget(QLabel("Крок:"))
+        # Step selector (bottom left)
         self.cmbStep = QComboBox()
         self.cmbStep.setObjectName("controlCombo")
         for step in self.STEP_OPTIONS:
             self.cmbStep.addItem(str(step), step)
         self.cmbStep.setCurrentIndex(4)  # Default 10
-        selectors_row.addWidget(self.cmbStep)
+        jog_grid.addWidget(self.cmbStep, 2, 0)
 
-        selectors_row.addWidget(QLabel("Швидк:"))
+        # Feed selector (bottom right)
         self.cmbFeed = QComboBox()
         self.cmbFeed.setObjectName("controlCombo")
         for feed in self.FEED_OPTIONS:
             self.cmbFeed.addItem(str(feed), feed)
         self.cmbFeed.setCurrentIndex(2)  # Default 5000
-        selectors_row.addWidget(self.cmbFeed)
+        jog_grid.addWidget(self.cmbFeed, 2, 2)
 
-        jog_lay.addLayout(selectors_row)
+        jog_lay.addLayout(jog_grid)
 
         left_col.addWidget(jog_card)
         main_row.addLayout(left_col, 1)
