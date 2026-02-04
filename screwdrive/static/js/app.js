@@ -1288,6 +1288,85 @@ async function safetyShutdown() {
     try { await api.post('/relays/r06_di1_pot', { state: 'off' }); } catch (e) {}
 }
 
+async function areaBarrierShutdown() {
+    // Shutdown for light barrier trigger
+    // R04 OFF (cylinder up), R06 OFF (motor off), R05 pulse (stop spindle)
+    try { await api.post('/relays/r04_c2', { state: 'off' }); } catch (e) {}
+    try { await api.post('/relays/r06_di1_pot', { state: 'off' }); } catch (e) {}
+    try { await api.post('/relays/r05_di4_free', { state: 'pulse', duration: 0.3 }); } catch (e) {}
+}
+
+function showAreaBlockedDialog() {
+    // Create modal overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'areaBlockedOverlay';
+    overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+    `;
+
+    // Create dialog
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+        background: #2b2b2b;
+        border: 3px solid #f44336;
+        border-radius: 12px;
+        padding: 30px;
+        text-align: center;
+        min-width: 350px;
+    `;
+
+    // Warning text
+    const text = document.createElement('div');
+    text.innerHTML = `
+        <div style="color: #ffffff; font-size: 24px; font-weight: bold; margin-bottom: 15px;">
+            ⚠️ СВІТЛОВА ЗАВІСА!
+        </div>
+        <div style="color: #ffffff; font-size: 16px; margin-bottom: 25px;">
+            Закручування зупинено.<br>
+            Приберіть руки з робочої зони.
+        </div>
+    `;
+    dialog.appendChild(text);
+
+    // ВИЇЗД button
+    const btn = document.createElement('button');
+    btn.textContent = 'ВИЇЗД';
+    btn.style.cssText = `
+        background: #4CAF50;
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        padding: 15px 50px;
+        cursor: pointer;
+    `;
+    btn.onclick = async () => {
+        overlay.remove();
+        updateCycleStatus('Виїзд до оператора...', 'info');
+        try {
+            await returnToOperator();
+            updateCycleStatus('Натисніть START для повторного циклу.', 'info');
+        } catch (e) {
+            updateCycleStatus('Помилка виїзду: ' + e.message, 'error');
+        }
+        $('btnCycleStart').disabled = false;
+    };
+    dialog.appendChild(btn);
+
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+}
+
 async function runCycle() {
     if (cycleInProgress) {
         alert('Цикл вже виконується');
@@ -1475,26 +1554,21 @@ async function runCycle() {
 
     } catch (error) {
         console.error('Cycle error:', error);
-
-        // Safety shutdown
-        await safetyShutdown();
         areaMonitoringActive = false;
 
         if (error.message === 'AREA_BLOCKED') {
-            updateCycleStatus('УВАГА: Світлова завіса! Повернення до оператора...', 'error');
+            // Special shutdown for light barrier - includes R05 pulse
+            await areaBarrierShutdown();
+
+            updateCycleStatus('⚠️ СВІТЛОВА ЗАВІСА!', 'error');
             updateCycleStatusPanel('AREA_BLOCKED', deviceKey, holesCompleted, totalHoles);
             syncUIStateToServer('AREA_BLOCKED', 'Світлова завіса спрацювала', 0, 'Світлова завіса');
 
-            // Return to operator position
-            try {
-                await returnToOperator();
-            } catch (e) {}
-
-            updateCycleStatus('Світлова завіса спрацювала. Натисніть START для повторного циклу.', 'error');
-            updateCycleStatusPanel('PAUSED', deviceKey, holesCompleted, totalHoles);
-            syncUIStateToServer('PAUSED', 'Світлова завіса. Натисніть START.', 0, 'Пауза');
-            $('btnCycleStart').disabled = false;
+            // Stay in place - show dialog with ВИЇЗД button
+            showAreaBlockedDialog();
         } else if (error.message === 'TORQUE_NOT_REACHED') {
+            // Safety shutdown for other errors
+            await safetyShutdown();
             updateCycleStatus('УВАГА: Момент не досягнуто! Повернення до оператора...', 'error');
             updateCycleStatusPanel('TORQUE_ERROR', deviceKey, holesCompleted, totalHoles);
             syncUIStateToServer('TORQUE_ERROR', 'Момент не досягнуто', 0, 'Помилка моменту');
@@ -1510,6 +1584,8 @@ async function runCycle() {
             syncUIStateToServer('PAUSED', 'Момент не досягнуто. Перевірте гвинт.', 0, 'Пауза');
             $('btnCycleStart').disabled = false;
         } else if (error.message.startsWith('DRIVER_ALARM:')) {
+            // Safety shutdown for driver alarm
+            await safetyShutdown();
             // Motor driver alarm - critical error requiring device removal and reinit
             const alarmMsg = error.message.replace('DRIVER_ALARM:', '');
             const fullMsg = '🚨 АВАРІЯ ДРАЙВЕРА МОТОРА!\n' + alarmMsg +
@@ -1524,6 +1600,8 @@ async function runCycle() {
             $('btnInit').disabled = false;
             $('btnCycleStart').disabled = true;
         } else {
+            // Safety shutdown for generic errors
+            await safetyShutdown();
             updateCycleStatus('ПОМИЛКА: ' + error.message, 'error');
             updateCycleStatusPanel('ERROR', deviceKey, holesCompleted, totalHoles);
             syncUIStateToServer('ERROR', error.message, 0, 'Помилка');
