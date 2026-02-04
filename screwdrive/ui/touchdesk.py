@@ -1567,6 +1567,12 @@ class StartWorkTab(QWidget):
                 if web_initialized and not self._initialized:
                     self._initialized = True
 
+                # Sync cycles count from server (web may have completed cycles)
+                server_cycles = server_state.get("cycles_completed", 0)
+                if server_cycles > self._total_cycles:
+                    self._total_cycles = server_cycles
+                    self.lblWorkCounter.setText(f"Циклів: {self._total_cycles}")
+
                 # Update cycle state from web
                 new_state = server_state.get("cycle_state", "IDLE")
                 old_state = self._cycle_state
