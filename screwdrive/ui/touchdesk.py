@@ -2758,13 +2758,12 @@ QTabBar {{
 QTabBar::tab {{
     color: {COLORS['text_secondary']};
     background: transparent;
-    padding: 12px 16px;
-    margin: 3px;
+    padding: 10px 24px;
+    margin: 2px;
     border-radius: 8px;
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 500;
-    min-height: 45px;
-    min-width: 100px;
+    min-height: 40px;
 }}
 QTabBar::tab:hover {{
     background: {COLORS['bg_card']};
