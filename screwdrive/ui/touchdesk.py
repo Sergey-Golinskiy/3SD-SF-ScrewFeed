@@ -2633,6 +2633,7 @@ class MainWindow(QMainWindow):
         self._tabs_visible = False
         self._pedal_hold_start = None  # Time when pedal press started
         self.tabs.tabBar().setVisible(False)
+        self.tabs.tabBar().setExpanding(True)  # Tabs fill available width equally
 
         # Create tabs - new structure
         self.tabStartWork = StartWorkTab(self.api)
@@ -2758,12 +2759,13 @@ QTabBar {{
 QTabBar::tab {{
     color: {COLORS['text_secondary']};
     background: transparent;
-    padding: 10px 24px;
+    padding: 12px 8px;
     margin: 2px;
     border-radius: 8px;
     font-size: 16px;
     font-weight: 500;
     min-height: 40px;
+    qproperty-alignment: AlignCenter;
 }}
 QTabBar::tab:hover {{
     background: {COLORS['bg_card']};
