@@ -275,10 +275,31 @@ class RelayController:
 
     def emergency_stop(self) -> bool:
         """
-        Emergency stop - turn off all relays.
+        Emergency stop - turn off dangerous relays, keep brakes ON.
         Cylinder will automatically retract (R04 OFF = up).
+        Brakes R02/R03 stay ON to keep motors moveable after estop clear.
         """
-        return self.all_off()
+        success = True
+        # Turn off all relays EXCEPT brakes (r02_brake_x, r03_brake_y)
+        for name in self._relays:
+            if name not in ('r02_brake_x', 'r03_brake_y'):
+                if not self.off(name):
+                    success = False
+        return success
+
+    def estop_clear_pulse(self) -> bool:
+        """
+        Pulse R05 (free run) for 300ms after clearing E-STOP.
+        This resets the screwdriver controller.
+        """
+        import time
+        try:
+            self.on('r05_di4_free')
+            time.sleep(0.3)  # 300ms pulse
+            self.off('r05_di4_free')
+            return True
+        except Exception:
+            return False
 
     def is_cylinder_down(self) -> bool:
         """Check if cylinder relay is active (cylinder going down)."""

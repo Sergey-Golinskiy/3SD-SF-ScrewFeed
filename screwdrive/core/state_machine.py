@@ -230,7 +230,7 @@ class CycleStateMachine:
     def emergency_stop(self) -> None:
         """Trigger emergency stop."""
         self._stop_event.set()
-        self._relays.all_off()
+        self._relays.emergency_stop()  # Keeps brakes ON
         self._xy.estop()
         self._set_state(CycleState.ESTOP)
 
@@ -238,6 +238,8 @@ class CycleStateMachine:
         """Clear emergency stop and return to idle."""
         if self._state == CycleState.ESTOP:
             self._xy.clear_estop()
+            # Pulse R05 for 300ms to reset screwdriver controller
+            self._relays.estop_clear_pulse()
             self._set_state(CycleState.IDLE)
             return True
         return False
