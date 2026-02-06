@@ -1104,6 +1104,7 @@ class StartWorkTab(QWidget):
         self._cycle_times = []  # List of cycle times for average calculation
         self._estop_dialog = None  # E-STOP fullscreen dialog
         self._torque_error_dialog = None  # Torque error fullscreen dialog
+        self._device_refresh_counter = 0  # Counter for periodic device list refresh
 
         self._setup_ui()
         self._restore_state_from_server()
@@ -2064,11 +2065,30 @@ class StartWorkTab(QWidget):
 
     def render(self, status: dict):
         """Update UI from status."""
-        # Load devices if needed
-        if not self._devices:
+        # Load devices if needed, or refresh periodically (every 5 seconds)
+        self._device_refresh_counter += 1
+        if not self._devices or self._device_refresh_counter >= 5:
+            self._device_refresh_counter = 0
             try:
-                self._devices = self.api.devices()
-                self._rebuild_devices(self._devices)
+                new_devices = self.api.devices()
+                # Check if device list changed (compare keys and properties)
+                needs_rebuild = False
+                if not self._devices:
+                    needs_rebuild = True
+                else:
+                    old_keys = set(d.get("key") for d in self._devices)
+                    new_keys = set(d.get("key") for d in new_devices)
+                    if old_keys != new_keys:
+                        needs_rebuild = True
+                    else:
+                        # Check if any device properties changed (name, holes)
+                        old_props = {d.get("key"): (d.get("name"), d.get("holes")) for d in self._devices}
+                        new_props = {d.get("key"): (d.get("name"), d.get("holes")) for d in new_devices}
+                        if old_props != new_props:
+                            needs_rebuild = True
+                if needs_rebuild:
+                    self._devices = new_devices
+                    self._rebuild_devices(self._devices)
             except Exception:
                 pass
 
