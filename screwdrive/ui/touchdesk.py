@@ -2966,6 +2966,7 @@ class ControlTab(QWidget):
         self._offset_y = 0.0
         self._brake_x_on = False
         self._brake_y_on = False
+        self._buttons_locked = False  # Track if buttons are locked during movement
         self._setup_ui()
 
     def _setup_ui(self):
@@ -3134,6 +3135,27 @@ class ControlTab(QWidget):
 
         root.addLayout(main_row)
 
+    def _set_buttons_enabled(self, enabled: bool):
+        """Enable or disable all control buttons except STOP.
+
+        Used to prevent queueing of commands during movement.
+        """
+        # Jog buttons
+        self.btnYMinus.setEnabled(enabled)
+        self.btnXPlus.setEnabled(enabled)
+        self.btnXMinus.setEnabled(enabled)
+        self.btnYPlus.setEnabled(enabled)
+        # Homing buttons
+        self.btnHomingAll.setEnabled(enabled)
+        self.btnHomingX.setEnabled(enabled)
+        self.btnHomingY.setEnabled(enabled)
+        self.btnWorkZero.setEnabled(enabled)
+        self.btnToOperator.setEnabled(enabled)
+        # Brake buttons - also disable to prevent state changes during movement
+        self.btnBrakeX.setEnabled(enabled)
+        self.btnBrakeY.setEnabled(enabled)
+        # Note: btnStop is NOT disabled - always available
+
     def _check_brakes(self) -> bool:
         """Check if both brakes are released (ON). Returns True if movement allowed."""
         if not self._brake_x_on or not self._brake_y_on:
@@ -3245,6 +3267,10 @@ class ControlTab(QWidget):
         """Emergency stop XY movement."""
         try:
             self.api.xy_stop()
+            # Immediately unlock buttons after stop command
+            if self._buttons_locked:
+                self._buttons_locked = False
+                self._set_buttons_enabled(True)
         except Exception as e:
             print(f"Stop failed: {e}")
 
@@ -3316,6 +3342,19 @@ class ControlTab(QWidget):
         self.btnBrakeY.setProperty("active", self._brake_y_on)
         self.btnBrakeY.style().unpolish(self.btnBrakeY)
         self.btnBrakeY.style().polish(self.btnBrakeY)
+
+        # Lock/unlock buttons based on XY table state
+        xy_state = xy.get("state", "ready")
+        is_busy = xy_state in ("moving", "homing")
+
+        if is_busy and not self._buttons_locked:
+            # Lock buttons when movement starts
+            self._buttons_locked = True
+            self._set_buttons_enabled(False)
+        elif not is_busy and self._buttons_locked:
+            # Unlock buttons when movement completes
+            self._buttons_locked = False
+            self._set_buttons_enabled(True)
 
 
 # ================== Main Window ==================
