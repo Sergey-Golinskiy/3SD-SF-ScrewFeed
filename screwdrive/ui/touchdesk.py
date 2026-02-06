@@ -2125,9 +2125,10 @@ class StartWorkTab(QWidget):
 
                 self._last_server_state_time = server_state.get("updated_at", 0)
 
-                # Update device selection from web
+                # Update device selection from web (only if not initialized on desktop)
+                # If desktop is initialized, keep the current device to avoid disruption
                 new_device = server_state.get("selected_device")
-                if new_device and new_device != self._selected_device:
+                if new_device and new_device != self._selected_device and not self._initialized:
                     self._selected_device = new_device
                     self._update_device_styles()
                     if self._current_mode == self.MODE_START:
