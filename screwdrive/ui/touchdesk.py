@@ -1103,6 +1103,7 @@ class StartWorkTab(QWidget):
         self._cycle_start_time = None  # Track cycle start time
         self._cycle_times = []  # List of cycle times for average calculation
         self._estop_dialog = None  # E-STOP fullscreen dialog
+        self._torque_error_dialog = None  # Torque error fullscreen dialog
 
         self._setup_ui()
         self._restore_state_from_server()
@@ -1660,9 +1661,9 @@ class StartWorkTab(QWidget):
 
         # Special handling for torque error
         if error_msg == "TORQUE_NOT_REACHED":
-            self._cycle_state = "PAUSED"
+            self._cycle_state = "TORQUE_ERROR"
             self.lblWorkMessage.setText("Момент не досягнуто. Повернення до оператора...")
-            self._sync_state_to_server("PAUSED", "Момент не досягнуто", 0, "Помилка моменту")
+            self._sync_state_to_server("TORQUE_ERROR", "Момент не досягнуто", 0, "Помилка моменту")
 
             # Move to operator position (device's work_x/work_y)
             try:
@@ -1677,7 +1678,8 @@ class StartWorkTab(QWidget):
             except Exception as e:
                 print(f"Failed to move to operator position after torque error: {e}")
 
-            self.lblWorkMessage.setText("Момент не досягнуто. Перевірте гвинт та натисніть СТАРТ.")
+            # Show fullscreen dialog asking operator to remove device
+            self._show_torque_error_dialog()
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"
@@ -1795,6 +1797,106 @@ class StartWorkTab(QWidget):
         self._cycle_state = "IDLE"
         self.switch_to_start_mode()
         self.lblStartMessage.setText("Потрібна переініціалізація після спрацювання завіси.")
+
+    def _show_torque_error_dialog(self):
+        """Show fullscreen dialog when torque is not reached."""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
+        from PyQt5.QtCore import Qt
+
+        # Get screen size
+        screen = QApplication.primaryScreen().geometry()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Помилка моменту")
+        dialog.setModal(True)
+        dialog.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        dialog.setGeometry(screen)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #1a1a1a;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(30)
+        layout.setContentsMargins(50, 60, 50, 60)
+
+        # Warning icon - wrench symbol
+        icon_lbl = QLabel("⚠")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("""
+            color: #1a1a1a;
+            font-size: 80px;
+            font-weight: bold;
+            background-color: #ff9800;
+            border: 6px solid #e65100;
+            border-radius: 50px;
+            min-width: 100px;
+            max-width: 100px;
+            min-height: 100px;
+            max-height: 100px;
+        """)
+        layout.addWidget(icon_lbl, alignment=Qt.AlignCenter)
+
+        # Warning text
+        lbl = QLabel("МОМЕНТ НЕ ДОСЯГНУТО!")
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("""
+            color: #ff9800;
+            font-size: 48px;
+            font-weight: bold;
+        """)
+        layout.addWidget(lbl)
+
+        # Instruction text
+        instr_lbl = QLabel("Гвинт не закручено.\nДістаньте недокручений девайс.")
+        instr_lbl.setAlignment(Qt.AlignCenter)
+        instr_lbl.setStyleSheet("""
+            color: #ffffff;
+            font-size: 28px;
+        """)
+        layout.addWidget(instr_lbl)
+
+        layout.addStretch()
+
+        # "Девайс вилучено" button
+        self._torque_error_dialog = dialog
+        btn = QPushButton("ДЕВАЙС ВИЛУЧЕНО")
+        btn.setFixedSize(450, 120)
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: #ffffff;
+                font-size: 36px;
+                font-weight: bold;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:pressed {
+                background-color: #388E3C;
+            }
+        """)
+        btn.clicked.connect(self._on_device_removed_button_clicked)
+        layout.addWidget(btn, alignment=Qt.AlignCenter)
+
+        layout.addStretch()
+
+        dialog.exec_()
+
+    def _on_device_removed_button_clicked(self):
+        """Handle 'Девайс вилучено' button - close dialog and allow restart."""
+        # Close dialog
+        if self._torque_error_dialog:
+            self._torque_error_dialog.done(0)
+            self._torque_error_dialog = None
+
+        # Reset state - ready for next cycle
+        self._cycle_state = "READY"
+        self.lblWorkMessage.setText("Девайс вилучено. Натисніть СТАРТ для продовження.")
+        self.btnStartCycle.setEnabled(True)
+
+        # Sync state to server
+        self._sync_state_to_server("READY", "Девайс вилучено, готово до продовження", 0, "Готово")
 
     def on_stop_and_return(self):
         """Handle STOP button in WORK mode - stop and return to START mode."""
