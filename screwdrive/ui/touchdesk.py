@@ -1334,12 +1334,11 @@ class StartWorkTab(QWidget):
 
     def _rebuild_devices(self, devices: list):
         """Rebuild device list buttons."""
-        # Clear existing
-        for i in reversed(range(self.devListLay.count())):
-            w = self.devListLay.itemAt(i).widget()
-            if w:
-                w.setParent(None)
-                w.deleteLater()
+        # Clear existing - remove ALL items (widgets and spacers)
+        while self.devListLay.count():
+            item = self.devListLay.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
         self._device_buttons.clear()
 
         # Create buttons
