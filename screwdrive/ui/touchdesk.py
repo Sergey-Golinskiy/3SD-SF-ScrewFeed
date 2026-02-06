@@ -1324,13 +1324,23 @@ class StartWorkTab(QWidget):
         """Switch back to START mode."""
         self._current_mode = self.MODE_START
         self._initialized = False
+        self._selected_device = None
+        self._device_task = "-"
+        self._device_torque = None
         self.stack.setCurrentIndex(self.MODE_START)
         self.tabNameChanged.emit("СТАРТ")
 
-        # Reset start mode
-        self.btnInit.setEnabled(bool(self._selected_device))
+        # Reset start mode UI
+        self._update_device_styles()
+        self.btnInit.setEnabled(False)
         self.startProgressBar.setValue(0)
+        self.lblStartDevice.setText("Девайс: -")
+        self.lblStartTask.setText("Таска: -")
+        self.lblStartTorque.setText("Момент: -")
         self.lblStartMessage.setText("Виберіть девайс та натисніть ІНІЦІАЛІЗАЦІЯ")
+
+        # Sync reset state to server
+        self._sync_state_to_server("IDLE", "Очікування вибору девайсу")
 
     def _rebuild_devices(self, devices: list):
         """Rebuild device list buttons."""
@@ -2125,10 +2135,10 @@ class StartWorkTab(QWidget):
 
                 self._last_server_state_time = server_state.get("updated_at", 0)
 
-                # Update device selection from web (only if not initialized on desktop)
-                # If desktop is initialized, keep the current device to avoid disruption
+                # Update device selection from web only when web is actively operating
+                # Don't sync device selection on startup or when desktop is working
                 new_device = server_state.get("selected_device")
-                if new_device and new_device != self._selected_device and not self._initialized:
+                if new_device and new_device != self._selected_device and web_is_operating:
                     self._selected_device = new_device
                     self._update_device_styles()
                     if self._current_mode == self.MODE_START:
