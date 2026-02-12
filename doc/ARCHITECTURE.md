@@ -6,23 +6,39 @@
 3SD-SF-ScrewFeed/
 ├── README.md                           # Опис проекту
 ├── xy_cli.py                          # Контролер XY столу (Slave Pi)
-├── old_main.ino                       # Оригінальна Arduino версія (довідка)
+├── .gitignore                         # Git ignore правила
 │
 ├── doc/                               # Документація
-│   ├── README.md                      # Цей файл
-│   ├── ARCHITECTURE.md                # Архітектура
+│   ├── README.md                      # Індекс документації
+│   ├── ARCHITECTURE.md                # Архітектура (цей файл)
 │   ├── HARDWARE.md                    # Апаратне забезпечення
-│   └── ...
+│   ├── API.md                         # REST API документація
+│   ├── WORK_CYCLE.md                  # Робочий цикл
+│   ├── XY_TABLE.md                    # XY стіл
+│   ├── SCREWDRIVER.md                 # Шуруповерт
+│   ├── USER_INTERFACE.md              # Інтерфейси
+│   ├── USER_FLOW.md                   # Сценарії використання
+│   ├── CONFIGURATION.md               # Конфігурація
+│   ├── INSTALLATION.md                # Встановлення
+│   ├── DEPLOY_PULL_GUIDE.md           # Оновлення на сервері
+│   └── SPLASH_SETUP_UA.md             # Splash Screen
 │
-├── screwdrive/                        # Основний пакет застосунку
-│   ├── main.py                        # Точка входу (Master Pi)
+├── scripts/                           # Утилітарні скрипти
+│   └── setup_splash.sh               # Налаштування splash screen
+│
+├── screwdrive/                        # Основний пакет застосунку (Master Pi)
+│   ├── main.py                        # Точка входу
 │   ├── requirements.txt               # Python залежності
 │   │
 │   ├── config/                        # Конфігураційні файли
 │   │   ├── settings.yaml              # Основні налаштування
 │   │   ├── devices.yaml               # Програми девайсів
 │   │   ├── gpio_pins.yaml             # Мапінг GPIO пінів
-│   │   └── auth.yaml                  # Автентифікація
+│   │   ├── auth.yaml                  # Автентифікація
+│   │   ├── fixtures.yaml              # Визначення фікстур (деталей)
+│   │   ├── backup_settings.json       # Резервна копія налаштувань
+│   │   ├── cycle_history.json         # Статистика циклів
+│   │   └── global_cycles.txt          # Глобальний лічильник циклів
 │   │
 │   ├── core/                          # Ядро системи
 │   │   ├── __init__.py                # Експорт класів
@@ -30,28 +46,42 @@
 │   │   ├── relays.py                  # Керування реле
 │   │   ├── sensors.py                 # Зчитування датчиків
 │   │   ├── xy_table.py                # Комунікація з XY столом
-│   │   └── state_machine.py           # Логіка автоматизації
+│   │   ├── state_machine.py           # Логіка автоматизації
+│   │   ├── camera.py                  # USB камера (стрімінг, відеозапис)
+│   │   ├── scanner.py                 # Сканер штрих-кодів
+│   │   └── usb_storage.py             # USB накопичувач
 │   │
 │   ├── api/                           # REST API
-│   │   ├── __init__.py
-│   │   ├── server.py                  # Flask сервер
-│   │   ├── auth.py                    # Автентифікація
-│   │   └── logger.py                  # Логування
+│   │   ├── __init__.py                # Flask app factory
+│   │   ├── server.py                  # Flask сервер (50+ ендпоінтів)
+│   │   ├── auth.py                    # Автентифікація та авторизація
+│   │   └── logger.py                  # Система логування
 │   │
 │   ├── ui/                            # Користувацькі інтерфейси
-│   │   └── touchdesk.py               # PyQt5 десктоп UI
+│   │   ├── __init__.py
+│   │   ├── touchdesk.py               # PyQt5 десктоп UI
+│   │   ├── touchdesk.service          # Systemd service файл
+│   │   └── touchdesk-x11.service      # X11 варіант service
 │   │
 │   ├── templates/                     # HTML шаблони
 │   │   ├── index.html                 # Головна сторінка Web UI
 │   │   └── login.html                 # Сторінка входу
 │   │
 │   ├── static/                        # Статичні файли Web UI
-│   │   ├── css/style.css              # Стилі
+│   │   ├── css/style.css              # Стилі (Dark Theme)
 │   │   └── js/app.js                  # JavaScript логіка
 │   │
-│   └── logs/                          # Директорія логів
-│
-└── OLD/                               # Архів старого коду
+│   ├── services/                      # Systemd сервіси
+│   │   ├── screwdrive-api.service     # API сервер
+│   │   ├── splashscreen.service       # Splash screen
+│   │   └── clear-splash.sh            # Очистка splash
+│   │
+│   ├── resources/                     # Ресурси
+│   │   ├── splash.png                 # Зображення splash screen
+│   │   └── kms.json                   # KMS конфігурація дисплея
+│   │
+│   ├── install_services.sh            # Скрипт встановлення сервісів
+│   └── logs/                          # Директорія логів (runtime)
 ```
 
 ---
@@ -195,6 +225,66 @@ IDLE → READY → HOMING → MOVING_FREE → MOVING_WORK → LOWERING
 - `DeviceProgram` - повна програма девайсу
 - `CycleStatus` - поточний статус
 - `CycleStateMachine` - головна машина станів
+
+### 6. USBCamera (`core/camera.py`)
+
+**Призначення:** USB камера з MJPEG стрімінгом та відеозаписом
+
+**Можливості:**
+- Автодетект USB-камери
+- MJPEG стрімінг для live preview у браузері
+- Відеозапис з контролем старт/стоп
+- FIFO ротація записів (ліміт 35 ГБ)
+- Потокобезпечна робота
+
+**Ключові методи:**
+```python
+start()                     # Запустити захоплення
+stop()                      # Зупинити захоплення
+get_frame() -> bytes        # Отримати JPEG кадр
+start_recording(filename)   # Почати запис
+stop_recording()            # Зупинити запис
+```
+
+**Залежності:** OpenCV (`cv2`) - опціональна
+
+### 7. BarcodeScanner (`core/scanner.py`)
+
+**Призначення:** Зчитування штрих-кодів з USB HID сканера
+
+**Можливості:**
+- Ексклюзивний захват USB input device (EVIOCGRAB)
+- Time-gap детекція завершення сканування (120мс)
+- Повна розкладка клавіатури (цифри, літери, символи, Shift)
+- Фоновий потік зчитування
+
+**Ключові методи:**
+```python
+start()                     # Запустити сканер
+stop()                      # Зупинити сканер
+get_last_scan() -> str      # Останній зчитаний код
+on_scan(callback)           # Колбек на нове сканування
+```
+
+### 8. USBStorage (`core/usb_storage.py`)
+
+**Призначення:** Керування зовнішнім USB-накопичувачем для відеозаписів
+
+**Можливості:**
+- Детекція змінних USB block devices
+- Монтування/розмонтування
+- Форматування в ext4
+- Інформація про використаний простір
+- Захист системних mount points
+
+**Ключові методи:**
+```python
+list_usb_block_devices()    # Список USB пристроїв
+mount(device)               # Монтувати
+unmount()                   # Розмонтувати
+format_device(device)       # Форматувати в ext4
+get_storage_info() -> dict  # Інформація про простір
+```
 
 ---
 

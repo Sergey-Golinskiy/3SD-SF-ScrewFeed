@@ -13,6 +13,9 @@
 - Захисні блокування (світлова завіса, аварійна кнопка)
 - Веб-інтерфейс та десктоп-інтерфейс
 - Налаштування девайсів (програм закручування)
+- USB-камера з відеозаписом та MJPEG стрімінгом
+- Сканер штрих-кодів для ідентифікації деталей (fixtures)
+- USB-накопичувач для зберігання відеозаписів
 
 ---
 
@@ -25,9 +28,13 @@
 | [XY_TABLE.md](XY_TABLE.md) | Система керування XY столом |
 | [SCREWDRIVER.md](SCREWDRIVER.md) | Система керування шуруповертом |
 | [USER_INTERFACE.md](USER_INTERFACE.md) | Інтерфейси користувача (Web UI, Desktop UI) |
+| [USER_FLOW.md](USER_FLOW.md) | Сценарії використання (User Flow) для всіх ролей |
 | [WORK_CYCLE.md](WORK_CYCLE.md) | Робочий цикл та логіка роботи |
 | [API.md](API.md) | REST API документація |
+| [CONFIGURATION.md](CONFIGURATION.md) | Довідник по конфігурації системи |
 | [INSTALLATION.md](INSTALLATION.md) | Інструкція з встановлення |
+| [DEPLOY_PULL_GUIDE.md](DEPLOY_PULL_GUIDE.md) | Інструкція з оновлення коду на сервері |
+| [SPLASH_SETUP_UA.md](SPLASH_SETUP_UA.md) | Налаштування Splash Screen |
 
 ---
 
@@ -66,6 +73,9 @@ http://<master-pi-ip>:5000
 │  ├─ SensorController           - 9 датчиків                 │
 │  ├─ XYTableController          - зв'язок з XY столом        │
 │  ├─ CycleStateMachine          - логіка циклу               │
+│  ├─ USBCamera                  - відеозапис та стрімінг     │
+│  ├─ BarcodeScanner             - сканування штрих-кодів     │
+│  ├─ USBStorage                 - зовнішній USB-накопичувач  │
 │  └─ Flask API Server           - REST API + Web UI          │
 │                                                              │
 │  UI:                                                         │
@@ -141,5 +151,5 @@ http://<master-pi-ip>:5000
 
 Проект розроблено для автоматизації процесу закручування гвинтів.
 
-**Версія документації:** 1.0
+**Версія документації:** 1.1
 **Дата оновлення:** Лютий 2026

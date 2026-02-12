@@ -1,280 +1,203 @@
 # 3SD-SF-ScrewFeed
 
-CLI/Serial tool for controlling X/Y coordinate table on Raspberry Pi 5 — part of the automated screwdriver project.
+Автоматизована система для закручування гвинтів з XY-координатним столом на базі двох Raspberry Pi 5.
 
-Migrated from Arduino/RAMPS version (`old_main.ino`) with full command compatibility.
+## Огляд
 
-## Features
+Система складається з двох Raspberry Pi 5, які працюють у конфігурації Master-Slave:
 
-- **Dual operation modes**: Interactive CLI or Serial (for remote control from another RPi)
-- **Full G-code compatibility**: G0, G1, G28 commands
-- **E-STOP support**: Emergency stop with M112/M999
-- **Configurable parameters**: Steps/mm, travel limits, work position
-- **Endstop protection**: Automatic stop on MIN endstop trigger
+| Компонент | Опис |
+|-----------|------|
+| **Master Pi** | Основний контролер: керування циклом, реле, датчики, REST API, Web UI, Desktop UI |
+| **Slave Pi** | Контролер XY столу: крокові мотори через GPIO (`xy_cli.py`) |
+| **Зв'язок** | UART Serial (`/dev/ttyAMA0`, 115200 baud) |
 
-## Requirements
+### Основні можливості
 
-- **Raspberry Pi 5** with GPIO access
-- **Python 3.10+**
-- **lgpio** library (required)
-- **pyserial** library (optional, for serial mode)
+- Автоматичне позиціонування за XY координатами (220x500 мм)
+- Послідовне закручування гвинтів за програмою
+- Контроль моменту закручування
+- Захисні блокування (світлова завіса, аварійна кнопка E-STOP)
+- Веб-інтерфейс (6 вкладок) та десктоп-інтерфейс (PyQt5 EGLFS)
+- Налаштування девайсів (програм закручування) через UI
+- USB-камера з відеозаписом та MJPEG стрімінгом
+- Сканер штрих-кодів для ідентифікації деталей
+- Автентифікація з ролями (admin, operator)
 
-### Installation
+## Стек технологій
+
+- **Python 3.10+** — основна мова
+- **Flask** — REST API сервер (50+ ендпоінтів)
+- **PyQt5** — десктоп сенсорний інтерфейс (EGLFS)
+- **lgpio** — GPIO на Raspberry Pi 5
+- **pyserial** — UART комунікація Master ↔ Slave
+- **OpenCV** — USB камера (опціонально)
+- **HTML/CSS/JS** — веб-інтерфейс (Vanilla JS, Dark Theme)
+
+## Швидкий старт
+
+### Master Raspberry Pi 5
 
 ```bash
-# Install required libraries
-pip install lgpio
-
-# For serial mode (optional)
-pip install pyserial
-
-# Clone repository
-git clone <repository-url>
-cd 3SD-SF-ScrewFeed
+cd /home/user/3SD-SF-ScrewFeed/screwdrive
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py --api-only --port 5000
 ```
 
-## GPIO Pinout
-
-| Function        | GPIO (BCM) |
-|-----------------|------------|
-| X_STEP          | 9          |
-| X_DIR           | 10         |
-| X_ENA           | 11         |
-| X_MIN (endstop) | 2          |
-| Y_STEP          | 21         |
-| Y_DIR           | 7          |
-| Y_ENA           | 8          |
-| Y_MIN (endstop) | 3          |
-
-### Signal Logic
-
-| Signal      | Active Level         |
-|-------------|----------------------|
-| Endstop     | LOW (NPN sensor)     |
-| ENA (enable)| HIGH                 |
-| STEP pulse  | LOW (common-anode)   |
-
-## Usage
-
-### Interactive CLI Mode
+### Slave Raspberry Pi 5 (XY стіл)
 
 ```bash
-python3 xy_cli.py
-```
-
-### Serial Mode (for remote control)
-
-```bash
-# Via USB serial adapter
-python3 xy_cli.py --serial /dev/ttyUSB0
-
-# Via GPIO UART
+cd /home/user/3SD-SF-ScrewFeed
+pip install lgpio pyserial
 python3 xy_cli.py --serial /dev/ttyAMA0 --baud 115200
 ```
 
-## Command Reference
-
-### Connection & Status
-
-| Command | Response | Description |
-|---------|----------|-------------|
-| `PING` | `PONG` | Connection test |
-| `M114` | `STATUS X:... Y:... X_MIN:... Y_MIN:... ESTOP:...` | Full status |
-| `M119` | `X_MIN:... Y_MIN:...` | Endstop status only |
-
-### Emergency Stop
-
-| Command | Response | Description |
-|---------|----------|-------------|
-| `M112` | `ok ESTOP` | Activate E-STOP, disable drivers |
-| `M999` | `ok CLEAR` | Clear E-STOP, enable drivers |
-
-### Driver Control
-
-| Command | Description |
-|---------|-------------|
-| `M17` | Enable both drivers |
-| `M18` | Disable both drivers |
-
-### Homing
-
-| Command | Response | Description |
-|---------|----------|-------------|
-| `G28` | `ok IN_HOME_POS` | Home all axes (Y then X) |
-| `G28 X` | `ok IN_X_HOME_POS` | Home X axis only |
-| `G28 Y` | `ok IN_Y_HOME_POS` | Home Y axis only |
-| `HOME` | same as G28 | Legacy alias |
-| `CAL` | `ok` | Home all + go to position 0,0 |
-| `ZERO` | `ok` | Go to position 0,0 (without homing) |
-
-### Movement
-
-| Command | Description |
-|---------|-------------|
-| `G X<mm> Y<mm> F<mm/min>` | Guarded move (with endstop protection) |
-| `GF X<mm> Y<mm> F<mm/min>` | Fast move |
-| `G0 X<mm> Y<mm> F<mm/min>` | G-code style move |
-| `G1 X<mm> Y<mm> F<mm/min>` | Same as G0 |
-
-### Jogging
-
-| Command | Description |
-|---------|-------------|
-| `DX <+/-mm> F<mm/min>` | Jog X axis by delta |
-| `DY <+/-mm> F<mm/min>` | Jog Y axis by delta |
-| `JX <+/-mm> F<mm/min>` | Jog X (legacy syntax) |
-| `JY <+/-mm> F<mm/min>` | Jog Y (legacy syntax) |
-
-### Work Position
-
-| Command | Description |
-|---------|-------------|
-| `WORK` | Go to saved work position |
-| `WORK X<mm> Y<mm> F<mm/min>` | Go to specified position |
-| `SET WORK X<mm> Y<mm> F<mm/min>` | Save work position |
-
-### Configuration
-
-| Command | Description |
-|---------|-------------|
-| `SET LIM X<mm> Y<mm>` | Set travel limits (MAX values) |
-| `SET STEPS X<val> Y<val>` | Set steps per mm |
-| `SET SPMM X<val> Y<val>` | Set steps per mm (legacy) |
-| `SET X0` | Zero X position |
-| `SET Y0` | Zero Y position |
-| `SET XY0` | Zero both positions |
-
-## Configuration Constants
-
-Edit these in `xy_cli.py` header:
-
-```python
-# Steps per mm
-STEPS_PER_MM_X = 20.0
-STEPS_PER_MM_Y = 20.0
-
-# Travel limits (mm)
-X_MAX_MM = 165.0
-Y_MAX_MM = 350.0
-
-# Max feed rate (mm/s)
-MAX_FEED_MM_S = 600.0
-
-# Homing parameters
-SCAN_RANGE_X_MM = 170.0
-SCAN_RANGE_Y_MM = 355.0
-BACKOFF_MM = 5.0
-SLOW_MM_S = 2.0
-
-# Work position defaults
-WORK_X_MM = 5.0
-WORK_Y_MM = 350.0
-WORK_F_MM_MIN = 60000.0
-
-# Direction inversion
-INVERT_X_DIR = False
-INVERT_Y_DIR = False
-```
-
-## Examples
-
-```text
-# Check connection
-> PING
-PONG
-
-# Home and calibrate
-> G28
-ok IN_HOME_POS
-
-# Move to position
-> G X50 Y200 F12000
-ok
-
-# Jog X axis
-> DX +10 F6000
-ok
-
-# Check status
-> M114
-STATUS X:60.000 Y:200.000 X_MIN:open Y_MIN:open ESTOP:0
-ok
-
-# Emergency stop
-> M112
-ok ESTOP
-
-# Clear E-STOP
-> M999
-ok CLEAR
-```
-
-## Error Messages
-
-| Error | Description |
-|-------|-------------|
-| `err ESTOP` | E-STOP is active, clear with M999 |
-| `err UNKNOWN` | Unknown command |
-| `err BAD_ARGS` | Missing or invalid arguments |
-| `err BAD_SET` | Invalid SET command format |
-| `err INVALID_NUMBER` | Cannot parse number |
-| `err HOME_NOT_FOUND` | Homing failed (endstop not found) |
-| `err HOME_X_NOT_FOUND` | X homing failed |
-| `err HOME_Y_NOT_FOUND` | Y homing failed |
-
-## Serial Protocol
-
-When running in serial mode (`--serial`):
-
-- Baud rate: 115200 (default, configurable with `--baud`)
-- Line ending: `\n` or `\r\n`
-- On startup sends: `ok READY`
-- Each command response ends with `\n`
-
-### Example Serial Session
+### Доступ до веб-інтерфейсу
 
 ```
-< ok READY
-> PING
-< PONG
-> G28
-< ok IN_HOME_POS
-> M114
-< STATUS X:0.000 Y:0.000 X_MIN:TRIG Y_MIN:TRIG ESTOP:0
-< ok
+http://<master-pi-ip>:5000
 ```
 
-## Migration from Arduino Version
+## Архітектура
 
-This Python version is fully compatible with the Arduino/RAMPS version (`old_main.ino`). Key differences:
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      MASTER RASPBERRY PI 5                      │
+├────────────────────────────────────────────────────────────────┤
+│  main.py                                                        │
+│  ├─ GPIOController (lgpio)       - керування GPIO              │
+│  ├─ RelayController              - 10 реле                     │
+│  ├─ SensorController             - 9 датчиків                  │
+│  ├─ XYTableController            - зв'язок з XY столом         │
+│  ├─ CycleStateMachine            - логіка циклу                │
+│  ├─ USBCamera                    - відеозапис та стрімінг      │
+│  ├─ BarcodeScanner               - сканування штрих-кодів      │
+│  ├─ USBStorage                   - зовнішній USB-накопичувач   │
+│  └─ Flask API Server             - REST API + Web UI           │
+│                                                                 │
+│  UI:                                                            │
+│  ├─ Web UI (index.html, app.js)  - браузерний інтерфейс       │
+│  └─ Desktop UI (touchdesk.py)    - PyQt5 EGLFS інтерфейс      │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │ UART Serial (/dev/ttyAMA0, 115200)
+                           ▼
+┌────────────────────────────────────────────────────────────────┐
+│                      SLAVE RASPBERRY PI 5                       │
+├────────────────────────────────────────────────────────────────┤
+│  xy_cli.py --serial /dev/ttyAMA0                                │
+│  ├─ GPIO (lgpio)                 - пряме керування GPIO        │
+│  ├─ Stepper Motors (X/Y)         - крокові мотори              │
+│  ├─ Endstops (X_MIN, Y_MIN)     - кінцевики                   │
+│  └─ E-STOP button                - апаратна аварійна кнопка    │
+└────────────────────────────────────────────────────────────────┘
+```
 
-| Feature | Arduino | Python |
-|---------|---------|--------|
-| Platform | RAMPS 1.4 / Mega2560 | Raspberry Pi 5 |
-| GPIO library | Arduino | lgpio |
-| Stepper library | AccelStepper | Direct pulse generation |
-| Communication | Serial only | CLI + Serial |
-| ALM/PED signals | Supported | Not implemented (no hardware) |
-| Motor relays | Supported | Not implemented |
-
-## Safety Notes
-
-- Always run `G28` (homing) after power-up
-- E-STOP (`M112`) immediately disables drivers
-- Endstops are checked during movement toward MIN
-- Homing has 60-second timeout
-- Press `Ctrl+C` to safely exit in CLI mode
-
-## Project Structure
+## Структура проекту
 
 ```
 3SD-SF-ScrewFeed/
-├── README.md        # This file
-├── xy_cli.py        # Main Python controller
-├── old_main.ino     # Original Arduino version (reference)
-└── .gitignore       # Git ignore rules
+├── README.md                  # Цей файл
+├── xy_cli.py                  # Контролер XY столу (Slave Pi)
+├── doc/                       # Документація (12 документів)
+├── scripts/                   # Утилітарні скрипти
+└── screwdrive/                # Основний пакет (Master Pi)
+    ├── main.py                # Точка входу
+    ├── core/                  # Ядро: GPIO, реле, датчики, XY, камера, сканер
+    ├── api/                   # Flask REST API + автентифікація
+    ├── ui/                    # PyQt5 Desktop UI
+    ├── templates/             # HTML шаблони Web UI
+    ├── static/                # CSS, JS
+    ├── config/                # YAML конфігурація
+    ├── services/              # Systemd service файли
+    └── resources/             # Splash screen, KMS config
 ```
 
-## License
+## GPIO (Master Pi)
 
-Part of 3SD-SF-ScrewFeed automated screwdriver project.
+### Реле (виходи) — Active LOW
+
+| Реле | GPIO | Функція |
+|------|------|---------|
+| R01 | 5 | Подавач гвинтів (імпульс 200мс) |
+| R02 | 6 | Гальмо мотора X |
+| R03 | 13 | Гальмо мотора Y |
+| R04 | 16 | Циліндр (ON=вниз, OFF=вгору) |
+| R05 | 19 | Вільне обертання шуруповерта |
+| R06 | 20 | Режим моменту |
+| R07 | 21 | Вибір задачі 0 (імпульс 700мс) |
+| R08 | 26 | Вибір задачі 1 (імпульс 700мс) |
+| R09 | 4 | Живлення драйвера X (інвертовано) |
+| R10 | 24 | Живлення драйвера Y (інвертовано) |
+
+### Датчики (входи)
+
+| Датчик | GPIO | Active | Функція |
+|--------|------|--------|---------|
+| alarm_x | 2 | LOW | Аларм драйвера X |
+| alarm_y | 3 | LOW | Аларм драйвера Y |
+| area_sensor | 17 | LOW | Світлова завіса |
+| ped_start | 18 | LOW | Педаль старту |
+| ger_c2_up | 22 | LOW | Циліндр вгорі |
+| ger_c2_down | 23 | LOW | Циліндр внизу |
+| ind_scrw | 12 | LOW | Датчик гвинта |
+| do2_ok | 25 | LOW | Момент досягнуто |
+| emergency_stop | 27 | **HIGH** | E-STOP кнопка |
+
+## GPIO (Slave Pi — XY стіл)
+
+| Сигнал | GPIO | Опис |
+|--------|------|------|
+| X_STEP | 9 | Крок X |
+| X_DIR | 10 | Напрямок X |
+| X_ENA | 11 | Enable X |
+| X_MIN | 2 | Кінцевик X |
+| Y_STEP | 21 | Крок Y |
+| Y_DIR | 7 | Напрямок Y |
+| Y_ENA | 8 | Enable Y |
+| Y_MIN | 3 | Кінцевик Y |
+| ESTOP | 13 | E-STOP кнопка |
+
+## Команди XY столу (xy_cli.py)
+
+| Команда | Опис |
+|---------|------|
+| `PING` | Тест з'єднання → `PONG` |
+| `G28` | Хомінг обох осей |
+| `G X<mm> Y<mm> F<mm/min>` | Абсолютне переміщення |
+| `DX ±<mm> F<mm/min>` | Джог по X |
+| `DY ±<mm> F<mm/min>` | Джог по Y |
+| `M17` / `M18` | Enable / Disable моторів |
+| `M112` | Аварійна зупинка (E-STOP) |
+| `M999` | Скинути E-STOP |
+| `M114` | Повний статус |
+
+## Документація
+
+Повна документація в папці [`doc/`](doc/README.md):
+
+- [Архітектура](doc/ARCHITECTURE.md)
+- [Апаратне забезпечення](doc/HARDWARE.md)
+- [XY стіл](doc/XY_TABLE.md)
+- [Шуруповерт](doc/SCREWDRIVER.md)
+- [Інтерфейси](doc/USER_INTERFACE.md)
+- [User Flow](doc/USER_FLOW.md)
+- [Робочий цикл](doc/WORK_CYCLE.md)
+- [REST API](doc/API.md)
+- [Конфігурація](doc/CONFIGURATION.md)
+- [Встановлення](doc/INSTALLATION.md)
+- [Оновлення на сервері](doc/DEPLOY_PULL_GUIDE.md)
+- [Splash Screen](doc/SPLASH_SETUP_UA.md)
+
+## Безпека
+
+- **E-STOP** — негайне зупинення всіх операцій (GPIO 27 Master, GPIO 13 Slave)
+- **Світлова завіса** — зупинка при перетині робочої зони
+- **Аларми драйверів** — автоматичний power cycle при збої
+- **Таймаути** — захист від зависання всіх операцій
+- **Моніторинг E-STOP** — безперервна перевірка кожні 50мс
+
+## Ліцензія
+
+Проект 3SD-SF-ScrewFeed для автоматизації процесу закручування гвинтів.
