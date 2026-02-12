@@ -1,0 +1,54 @@
+motion:
+  steps_per_mm_x: 40.0
+  steps_per_mm_y: 40.0
+  x_min_mm: 0.0
+  x_max_mm: 220.0
+  y_min_mm: 0.0
+  y_max_mm: 500.0
+  max_feed_mm_s: 600.0
+  max_step_hz: 30000
+  pulse_us: 10
+  accel_mm_s2: 1500.0
+  start_speed_mm_s: 5.0
+  homing_timeout_s: 60.0
+  backoff_mm: 5.0
+  slow_speed_mm_s: 2.0
+work_position:
+  x_mm: 5.0
+  y_mm: 350.0
+  feed_mm_min: 10000.0
+work_offset:
+  x_mm: 106.5
+  y_mm: 104.0
+timing:
+  screw_down_timeout_s: 10.0
+  screw_up_timeout_s: 5.0
+  torque_timeout_s: 15.0
+  cylinder_down_timeout_s: 3.0
+  cylinder_up_timeout_s: 3.0
+  vacuum_grab_delay_s: 0.5
+  vacuum_release_delay_s: 0.3
+  area_sensor_debounce_s: 0.1
+  estop_debounce_s: 0.05
+cycle:
+  free_move_speed: 60000
+  work_move_speed: 30000
+  approach_speed: 10000
+  max_screw_retries: 3
+  retry_delay_s: 1.0
+api:
+  host: 0.0.0.0
+  port: 5000
+  debug: false
+logging:
+  level: INFO
+  file: /var/log/screwdrive/cycle.log
+  max_size_mb: 10
+  backup_count: 5
+xy_table:
+  mode: serial
+  serial_port: /dev/ttyAMA0
+  serial_baud: 115200
+  command_timeout_s: 30.0
+  slave_ssh_host: 192.168.1.101
+  slave_ssh_user: root

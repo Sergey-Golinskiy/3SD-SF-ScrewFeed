@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Панель керування 3SD-SF - Screw Feed</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=1.0.25">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <h1>3SD-SF - Screw Feed</h1>
+            <div class="header-right">
+                <span class="version">v1.0.22</span>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="dot"></span>
+                    <span class="text">Підключення...</span>
+                </div>
+                <div class="user-info" id="userInfo">
+                    <span class="user-name" id="userName">-</span>
+                    <button class="btn btn-logout" id="btnLogout">Вийти</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="status">Статус</button>
+            <button class="tab-btn" data-tab="control">Керування</button>
+            <button class="tab-btn" data-tab="xy">XY Стіл</button>
+            <button class="tab-btn" data-tab="settings">Налаштування</button>
+            <button class="tab-btn" data-tab="stats" id="tabStats">Статистика</button>
+            <button class="tab-btn" data-tab="admin" id="tabAdmin" style="display: none;">Адмін</button>
+            <button class="tab-btn" data-tab="logs" id="tabLogs" style="display: none;">Логи</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="tab-content">
+            <!-- Status Tab -->
+            <section id="status" class="tab-panel active">
+                <div class="grid-2">
+                    <!-- Cycle Status -->
+                    <div class="card">
+                        <h2>Стан циклу</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="label">Стан</span>
+                                <span class="value" id="cycleState">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Девайс</span>
+                                <span class="value" id="currentDevice">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Прогрес</span>
+                                <span class="value" id="cycleProgress">0 / 0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Цикли</span>
+                                <span class="value" id="cycleCount">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Всього закручено</span>
+                                <span class="value" id="globalCycleCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- XY Table Status -->
+                    <div class="card">
+                        <h2>XY Стіл</h2>
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="label">Стан</span>
+                                <span class="value" id="xyState">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="label">Позиція</span>
+                                <span class="value" id="xyPosition">X: 0.00 Y: 0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Датчики -->
+                <div class="card">
+                    <h2>Датчики</h2>
+                    <div class="sensor-grid" id="sensorGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Реле -->
+                <div class="card">
+                    <h2>Стан реле</h2>
+                    <div class="relay-grid" id="relayGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Control Tab -->
+            <section id="control" class="tab-panel">
+                <div class="card">
+                    <h2>Керування циклом</h2>
+                    <div class="control-row">
+                        <select id="deviceSelect" class="input-select">
+                            <option value="">-- Виберіть девайс --</option>
+                        </select>
+                        <button class="btn btn-info" id="btnInit">ІНІЦІАЛІЗАЦІЯ</button>
+                        <button class="btn btn-primary" id="btnCycleStart" disabled>СТАРТ</button>
+                        <button class="btn btn-danger" id="btnCycleStop">СТОП</button>
+                        <button class="btn btn-warning" id="btnCyclePause">ПАУЗА</button>
+                    </div>
+                </div>
+
+                <!-- Initialization Status Card -->
+                <div class="card" id="initStatusCard" style="display: none;">
+                    <h2>Статус ініціалізації</h2>
+                    <div id="initStatusText" class="init-status-text">-</div>
+                    <div class="init-progress">
+                        <div class="init-progress-bar" id="initProgressBar"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Аварійне керування</h2>
+                    <div class="control-row">
+                        <button class="btn btn-danger btn-large" id="btnEstop">АВАРІЯ</button>
+                        <button class="btn btn-secondary" id="btnClearEstop">Скинути аварію</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Ручне керування реле</h2>
+                    <div class="relay-control-grid" id="relayControlGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- XY Table Tab -->
+            <section id="xy" class="tab-panel">
+                <!-- XY Table Connection Status -->
+                <div class="card xy-connection-card">
+                    <h2>XY Table - Статус підключення</h2>
+                    <div class="xy-connection-grid">
+                        <div class="xy-conn-item">
+                            <span class="label">Сервіс:</span>
+                            <span class="value" id="xyServiceStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Підключення:</span>
+                            <span class="value" id="xyConnStatus">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Стан:</span>
+                            <span class="value" id="xyStateDisplay">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Пінг:</span>
+                            <span class="value" id="xyPingLatency">- ms</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop X:</span>
+                            <span class="value" id="xyEndstopX">-</span>
+                        </div>
+                        <div class="xy-conn-item">
+                            <span class="label">Endstop Y:</span>
+                            <span class="value" id="xyEndstopY">-</span>
+                        </div>
+                        <div class="xy-conn-item xy-conn-warning" id="xyLimitWarningRow" style="display: none;">
+                            <span class="label">Ліміт:</span>
+                            <span class="value" id="xyLimitWarning">-</span>
+                        </div>
+                        <div class="xy-conn-item xy-conn-error">
+                            <span class="label">Помилка:</span>
+                            <span class="value" id="xyLastError">-</span>
+                        </div>
+                    </div>
+                    <div class="xy-conn-buttons">
+                        <button class="btn btn-primary" id="btnXYConnect">Підключити</button>
+                        <button class="btn btn-secondary" id="btnXYDisconnect">Відключити</button>
+                        <button class="btn btn-secondary" id="btnXYPing">Ping</button>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <h2>Позиція</h2>
+                        <div class="xy-position">
+                            <span class="xy-coord xy-coord-physical" id="xyPosDisplay">X: 0.00  Y: 0.00</span>
+                            <span class="xy-coord-label">фізичні координати</span>
+                        </div>
+                        <div class="xy-position xy-position-work">
+                            <span class="xy-coord xy-coord-work" id="xyPosWorkDisplay">X: 0.00  Y: 0.00</span>
+                            <span class="xy-coord-label">робочі координати (зі зміщенням)</span>
+                        </div>
+                        <div class="xy-homed-status">
+                            <span class="homed-indicator" id="xyHomedX">X: не захомлено</span>
+                            <span class="homed-indicator" id="xyHomedY">Y: не захомлено</span>
+                        </div>
+                        <div class="xy-estop-indicator" id="xyEstopIndicator" style="display: none;">
+                            <span class="estop-warning">⚠️ АВАРІЙНА ЗУПИНКА! Потрібна калібрування.</span>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Крокове переміщення</h2>
+                        <div class="jog-grid">
+                            <div></div>
+                            <button class="btn btn-jog btn-jog-y" data-jog="y-">Y-</button>
+                            <div></div>
+                            <button class="btn btn-jog btn-jog-x" data-jog="x+">X+</button>
+                            <button class="btn btn-jog btn-home" id="btnXYHome">⌂</button>
+                            <button class="btn btn-jog btn-jog-x" data-jog="x-">X-</button>
+                            <div></div>
+                            <button class="btn btn-jog btn-jog-y" data-jog="y+">Y+</button>
+                            <div></div>
+                        </div>
+                        <div class="jog-step">
+                            <label>Крок:</label>
+                            <select id="jogStep" class="input-select">
+                                <option value="0.1">0.1 мм</option>
+                                <option value="0.5">0.5 мм</option>
+                                <option value="1">1 мм</option>
+                                <option value="5">5 мм</option>
+                                <option value="10" selected>10 мм</option>
+                                <option value="50">50 мм</option>
+                                <option value="100">100 мм</option>
+                            </select>
+                            <label>Швидкість:</label>
+                            <select id="jogFeed" class="input-select">
+                                <option value="1000">1000 мм/хв</option>
+                                <option value="3000">3000 мм/хв</option>
+                                <option value="5000" selected>5000 мм/хв</option>
+                                <option value="10000">10000 мм/хв</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3-column grid: Move To, Offset, Quick Actions -->
+                <div class="grid-3">
+                    <!-- Move To Position -->
+                    <div class="card">
+                        <h2>Перейти до позиції</h2>
+                        <div class="move-form-compact">
+                            <div class="input-group">
+                                <label>Координати:</label>
+                                <select id="moveCoordType" class="input-select">
+                                    <option value="physical">Фізичні</option>
+                                    <option value="work">Робочі (зі зміщенням)</option>
+                                </select>
+                            </div>
+                            <div class="form-inputs">
+                                <div class="input-group">
+                                    <label>X (мм):</label>
+                                    <input type="number" id="moveX" class="input-number" value="0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <label>Y (мм):</label>
+                                    <input type="number" id="moveY" class="input-number" value="0" step="0.1">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label>Швидкість (мм/хв):</label>
+                                <input type="number" id="moveFeed" class="input-number" value="10000">
+                            </div>
+                            <button class="btn btn-primary" id="btnMoveTo">ЇХАТИ</button>
+                        </div>
+                    </div>
+
+                    <!-- Work Offset (G92-like) -->
+                    <div class="card">
+                        <h2>Робочий офсет</h2>
+                        <div class="offset-form-compact">
+                            <div class="form-inputs">
+                                <div class="input-group">
+                                    <label>Офсет X:</label>
+                                    <input type="number" id="offsetX" class="input-number" value="0" step="0.1">
+                                </div>
+                                <div class="input-group">
+                                    <label>Офсет Y:</label>
+                                    <input type="number" id="offsetY" class="input-number" value="0" step="0.1">
+                                </div>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-primary" id="btnSaveOffset">Зберегти офсет</button>
+                                <button class="btn btn-secondary" id="btnSetCurrentAsOffset">Поточну → нуль</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="card">
+                        <h2>Швидкі дії</h2>
+                        <div class="quick-actions-compact">
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnHomeX">Хомінг X</button>
+                                <button class="btn btn-secondary" id="btnHomeY">Хомінг Y</button>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnZero">В нуль</button>
+                                <button class="btn btn-secondary" id="btnEnableMotors">Увімкн.</button>
+                            </div>
+                            <div class="btn-row">
+                                <button class="btn btn-secondary" id="btnDisableMotors">Вимкн.</button>
+                            </div>
+                            <div class="brake-controls-compact">
+                                <div class="brake-item">
+                                    <span class="brake-label">Гальмо X</span>
+                                    <button class="btn btn-brake" id="btnBrakeX" data-brake="x">
+                                        <span class="brake-status" id="brakeXStatus">--</span>
+                                    </button>
+                                </div>
+                                <div class="brake-item">
+                                    <span class="brake-label">Гальмо Y</span>
+                                    <button class="btn btn-brake" id="btnBrakeY" data-brake="y">
+                                        <span class="brake-status" id="brakeYStatus">--</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Tab -->
+            <section id="settings" class="tab-panel">
+                <div class="settings-layout-new">
+                    <!-- Left Column -->
+                    <div class="settings-left">
+                        <!-- Settings Mode Toggle -->
+                        <div class="settings-mode-toggle">
+                            <button class="btn btn-mode active" id="btnModeDevices" onclick="switchSettingsMode('devices')">ДЕВАЙСИ</button>
+                            <button class="btn btn-mode" id="btnModeFixtures" onclick="switchSettingsMode('fixtures')">ОСНАСТКИ</button>
+                            <div style="margin-left: auto; display: flex; gap: 6px;">
+                                <button class="btn btn-export" id="btnExportDevices" title="Експорт конфігу (девайси + оснастки)">&#x2B07;</button>
+                                <button class="btn btn-import" id="btnImportDevices" title="Імпорт конфігу (девайси + оснастки)">&#x2B06;</button>
+                                <input type="file" id="fileImportDevices" accept=".yaml,.yml" style="display:none">
+                            </div>
+                        </div>
+
+                        <!-- Devices List -->
+                        <div class="card settings-devices-area" id="deviceListCard">
+                            <div class="card-header">
+                                <h2>ДЕВАЙСИ</h2>
+                                <div class="card-header-actions">
+                                    <button class="btn btn-add" id="btnNewDevice">+</button>
+                                </div>
+                            </div>
+                            <div class="device-list" id="deviceList">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
+                        <!-- Fixtures List (hidden by default) -->
+                        <div class="card settings-fixtures-area" id="fixtureListCard" style="display:none;">
+                            <div class="card-header">
+                                <h2>ОСНАСТКИ</h2>
+                                <div class="card-header-actions">
+                                    <button class="btn btn-add" id="btnNewFixture">+</button>
+                                </div>
+                            </div>
+                            <div class="fixture-list" id="fixtureList">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+
+                        <!-- XY Table Control -->
+                        <div class="card">
+                            <h2>КЕРУВАННЯ XY СТОЛОМ</h2>
+                            <div class="xy-control-compact">
+                                <div class="xy-pos-display xy-pos-work-settings" id="settingsXYPos">X: 0.00  Y: 0.00</div>
+                                <div class="xy-pos-label-settings">робочі координати</div>
+                                <div class="jog-grid-compact">
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y-">Y-</button>
+                                    <div></div>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x+">X+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="y+">Y+</button>
+                                    <button class="btn btn-jog-compact" data-jog-settings="x-">X-</button>
+                                </div>
+                                <div class="jog-step-compact">
+                                    <label>Крок</label>
+                                    <select id="jogStepSettings" class="input-select-sm">
+                                        <option value="0.1">0.1</option>
+                                        <option value="0.5">0.5</option>
+                                        <option value="1">1</option>
+                                        <option value="5">5</option>
+                                        <option value="10" selected>10</option>
+                                        <option value="50">50</option>
+                                    </select>
+                                    <label>Швидк.</label>
+                                    <select id="jogFeedSettings" class="input-select-sm">
+                                        <option value="1000">1000</option>
+                                        <option value="3000">3000</option>
+                                        <option value="5000" selected>5000</option>
+                                        <option value="10000">10000</option>
+                                        <option value="20000">20000</option>
+                                        <option value="30000">30000</option>
+                                        <option value="50000">50000</option>
+                                    </select>
+                                </div>
+                                <div class="home-buttons">
+                                    <button class="btn btn-home-sm" id="btnHomeSettings">ХОМІНГ</button>
+                                    <button class="btn btn-home-sm btn-home-y" id="btnHomeYSettings">ХОМ Y</button>
+                                    <button class="btn btn-home-sm btn-home-x" id="btnHomeXSettings">ХОМ X</button>
+                                    <button class="btn btn-home-sm btn-work-zero" id="btnWorkZeroSettings">В роб. 0</button>
+                                </div>
+                                <div class="brake-grid-settings">
+                                    <div class="brake-cell">
+                                        <span class="brake-label-top">Гальмо X:</span>
+                                        <button class="btn btn-brake-grid" id="btnBrakeXSettings">
+                                            <span class="brake-status" id="brakeXStatusSettings">--</span>
+                                        </button>
+                                    </div>
+                                    <div class="brake-cell">
+                                        <span class="brake-label-top">Гальмо Y:</span>
+                                        <button class="btn btn-brake-grid" id="btnBrakeYSettings">
+                                            <span class="brake-status" id="brakeYStatusSettings">--</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column -->
+                    <div class="settings-right">
+                        <!-- === Devices Mode Areas === -->
+                        <div class="settings-devices-area" id="deviceCoordsCard">
+                            <!-- Movement Coordinates -->
+                            <div class="card">
+                                <div class="card-header">
+                                    <h2>КООРДИНАТИ ПЕРЕМІЩЕННЯ</h2>
+                                    <button class="btn btn-add" id="btnAddCoord">+</button>
+                                </div>
+
+                                <div class="coord-source-row">
+                                    <label class="form-label">Джерело координат:</label>
+                                    <select id="editCoordSource" class="input-select" onchange="onCoordSourceChange()">
+                                        <option value="">Власні координати</option>
+                                    </select>
+                                </div>
+                                <div class="coord-source-notice" id="coordSourceNotice" style="display:none;">
+                                    ⚠ Координати повторюють девайс <strong id="coordSourceName"></strong>. Зміни заборонені.
+                                </div>
+
+                                <div class="coords-table">
+                                    <div class="coords-header-new">
+                                        <span class="col-num">#</span>
+                                        <span class="col-x">Координата X1</span>
+                                        <span class="col-y">Координата Y1</span>
+                                        <span class="col-type">Тип координати</span>
+                                        <span class="col-feed">Швидкість</span>
+                                        <span class="col-del"></span>
+                                    </div>
+
+                                    <div class="coords-list-new" id="coordsList">
+                                        <!-- Populated by JS -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-devices-area" id="deviceEditorCard">
+                            <!-- Device Editor -->
+                            <div class="card">
+                                <h2>Редактор девайсу</h2>
+                                <input type="hidden" id="editDeviceKey">
+
+                                <div class="editor-form-new">
+                                    <div class="form-row-new">
+                                        <div class="form-group-new">
+                                            <label class="form-label">Назва</label>
+                                            <input type="text" id="editName" class="input-text input-uppercase" maxlength="10" placeholder="НАЗВ">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Що крутим</label>
+                                            <input type="text" id="editWhat" class="input-text" maxlength="10" placeholder="Крут">
+                                        </div>
+                                        <div class="form-group-new" style="flex: 0 0 140px;">
+                                            <label class="form-label">Кількість</label>
+                                            <select id="editHoles" class="input-select" style="width:140px; min-width:unset;">
+                                                <option value="" disabled selected>Виберіть...</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                                <option value="4">4</option>
+                                                <option value="5">5</option>
+                                                <option value="6">6</option>
+                                                <option value="7">7</option>
+                                                <option value="8">8</option>
+                                                <option value="9">9</option>
+                                                <option value="10">10</option>
+                                                <option value="11">11</option>
+                                                <option value="12">12</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group-new" style="flex: 0 0 140px;">
+                                            <label class="form-label">Розмір</label>
+                                            <select id="editScrewSize" class="input-select" style="width:140px; min-width:unset;">
+                                                <option value="" disabled selected>Виберіть...</option>
+                                                <option value="M3x6">M3x6</option>
+                                                <option value="M3x8">M3x8</option>
+                                                <option value="M3x10">M3x10</option>
+                                                <option value="M3x16">M3x16</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group-new" style="flex: 2;">
+                                            <label class="form-label">Група</label>
+                                            <select id="editGroup" class="input-select">
+                                                <option value="">-- Без групи --</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group-new" style="flex: 2;">
+                                            <label class="form-label">Оснастка</label>
+                                            <select id="editFixture" class="input-select">
+                                                <option value="">-- Без оснастки --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row-new">
+                                        <div class="form-group-new form-group-half">
+                                            <label class="form-label">Таска</label>
+                                            <select id="editTask" class="input-select">
+                                                <option value="" disabled selected>Виберіть...</option>
+                                                <option value="0">0</option>
+                                                <option value="1">1</option>
+                                                <option value="2">2</option>
+                                                <option value="3">3</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group-new form-group-half">
+                                            <label class="form-label">Момент <span class="label-hint">(Nm)</span></label>
+                                            <input type="number" id="editTorque" class="input-number" min="0" max="1" step="0.01" placeholder="0-1">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Робоча X <span class="label-hint">(фіз.)</span></label>
+                                            <input type="number" id="editWorkX" class="input-number" min="0" max="220" step="0.1" value="110" placeholder="0-220">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Робоча Y <span class="label-hint">(фіз.)</span></label>
+                                            <input type="number" id="editWorkY" class="input-number" min="0" max="500" step="0.1" value="500" placeholder="0-500">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Швидкість</label>
+                                            <input type="number" id="editWorkFeed" class="input-number" min="100" max="100000" step="100" value="50000" placeholder="мм/хв">
+                                        </div>
+                                    </div>
+                                    <div class="form-row-new">
+                                        <div class="form-group-new form-group-buttons">
+                                            <button class="btn btn-save-large" id="btnSaveDevice">Зберегти параметри</button>
+                                            <button class="btn btn-cancel-large" id="btnCancelEdit">Скасувати</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-danger btn-delete-device" id="btnDeleteDevice">Видалити девайс</button>
+                            </div>
+                        </div>
+
+                        <!-- === Fixtures Mode Areas (hidden by default) === -->
+                        <div class="settings-fixtures-area" id="fixtureListAreaCard" style="display:none;">
+                            <div class="card">
+                                <h2>Перелік оснасток</h2>
+                                <div class="fixture-catalog" id="fixtureCatalog">
+                                    <div class="fixture-catalog-empty">Оснастки не додані</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-fixtures-area" id="fixtureEditorCard" style="display:none;">
+                            <div class="card">
+                                <h2>Параметри оснастки</h2>
+                                <input type="hidden" id="editFixtureKey">
+                                <div class="editor-form-new">
+                                    <div class="form-row-new">
+                                        <div class="form-group-new" style="flex: 1;">
+                                            <label class="form-label">Код оснастки <span class="label-hint">(децимальний номер, унікальний)</span></label>
+                                            <input type="text" id="editFixtureCode" class="input-text" maxlength="50" placeholder="Введіть децимальний номер" style="text-transform: uppercase;">
+                                        </div>
+                                        <div class="form-group-new" style="flex: 1;">
+                                            <label class="form-label">QR код <span class="label-hint">(значення в QR, унікальний)</span></label>
+                                            <input type="text" id="editFixtureQR" class="input-text" maxlength="100" placeholder="Значення QR коду" style="text-transform: uppercase;">
+                                        </div>
+                                        <div class="form-group-new" style="flex: 1;">
+                                            <label class="form-label">Базовий девайс / група</label>
+                                            <select id="editFixtureBaseGroup" class="input-select" style="width: 100%; min-width: unset;">
+                                                <option value="">-- Виберіть групу --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="form-row-new">
+                                        <div class="form-group-new">
+                                            <label class="form-label">Робоча X <span class="label-hint">(фіз.)</span></label>
+                                            <input type="number" id="editFixtureScanX" class="input-number" min="0" max="220" step="0.1" value="220" placeholder="0-220">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Робоча Y <span class="label-hint">(фіз.)</span></label>
+                                            <input type="number" id="editFixtureScanY" class="input-number" min="0" max="500" step="0.1" value="500" placeholder="0-500">
+                                        </div>
+                                        <div class="form-group-new">
+                                            <label class="form-label">Швидкість</label>
+                                            <input type="number" id="editFixtureScanFeed" class="input-number" min="100" max="100000" step="100" value="50000" placeholder="мм/хв">
+                                        </div>
+                                    </div>
+                                    <div class="form-row-new" id="fixtureDevicesRow" style="display:none;">
+                                        <div class="form-group-new" style="flex: 1;">
+                                            <label class="form-label">Девайси в групі <span class="label-hint">(оберіть прив'язані до оснастки)</span></label>
+                                            <div class="fixture-devices-list" id="fixtureDevicesList"></div>
+                                        </div>
+                                    </div>
+                                    <div class="form-row-new">
+                                        <div class="form-group-new form-group-buttons">
+                                            <button class="btn btn-save-large" id="btnSaveFixture">Зберегти оснастку</button>
+                                            <button class="btn btn-cancel-large" id="btnCancelFixture">Скасувати</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="btn btn-danger btn-delete-device" id="btnDeleteFixture">Видалити оснастку</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Statistics Tab -->
+            <section id="stats" class="tab-panel">
+                <div class="card">
+                    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        <h2>Історія циклів</h2>
+                        <span id="statsCount" style="color:var(--text-muted);font-size:13px;"></span>
+                    </div>
+                    <div class="stats-filters">
+                        <select id="statsFilterDevice" class="input-sm">
+                            <option value="">Всі девайси</option>
+                        </select>
+                        <select id="statsFilterGroup" class="input-sm">
+                            <option value="">Всі групи</option>
+                        </select>
+                        <select id="statsFilterStatus" class="input-sm">
+                            <option value="">Всі статуси</option>
+                            <option value="OK">OK</option>
+                            <option value="FAIL">FAIL</option>
+                            <option value="ESTOP">ESTOP</option>
+                        </select>
+                        <input type="date" id="statsFilterDateFrom" class="input-sm" title="Від дати">
+                        <input type="date" id="statsFilterDateTo" class="input-sm" title="До дати">
+                        <button class="btn btn-secondary btn-sm stats-export-btn" id="btnExportStats" title="Завантажити CSV">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v9m0 0L5 7m3 3l3-3M2 12v1a2 2 0 002 2h8a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            CSV
+                        </button>
+                    </div>
+                    <div class="stats-table-wrap">
+                        <table class="stats-table" id="statsTable">
+                            <thead>
+                                <tr>
+                                    <th data-sort="timestamp" class="sortable">Дата/час <span class="sort-arrow"></span></th>
+                                    <th data-sort="device_name" class="sortable">Девайс <span class="sort-arrow"></span></th>
+                                    <th data-sort="group" class="sortable">Група <span class="sort-arrow"></span></th>
+                                    <th data-sort="what" class="sortable">Що крутим <span class="sort-arrow"></span></th>
+                                    <th data-sort="screw_size" class="sortable">Розмір <span class="sort-arrow"></span></th>
+                                    <th data-sort="torque" class="sortable">Момент <span class="sort-arrow"></span></th>
+                                    <th data-sort="task" class="sortable">Таска <span class="sort-arrow"></span></th>
+                                    <th data-sort="fixture" class="sortable">Оснастка <span class="sort-arrow"></span></th>
+                                    <th data-sort="screws" class="sortable">Гвинтів <span class="sort-arrow"></span></th>
+                                    <th data-sort="cycle_time" class="sortable">Час (с) <span class="sort-arrow"></span></th>
+                                    <th data-sort="status" class="sortable">Статус <span class="sort-arrow"></span></th>
+                                    <th>Відео</th>
+                                </tr>
+                            </thead>
+                            <tbody id="statsTableBody">
+                                <tr><td colspan="12" class="empty-message">Немає даних</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="stats-pagination" id="statsPagination"></div>
+                </div>
+            </section>
+
+            <!-- Admin Tab -->
+            <section id="admin" class="tab-panel">
+                <!-- Admin Sub-tabs -->
+                <nav class="admin-subtabs">
+                    <button class="admin-subtab-btn active" data-admintab="admin-scanner">Сканер штрих-кодів</button>
+                    <button class="admin-subtab-btn" data-admintab="admin-camera">Камера</button>
+                    <button class="admin-subtab-btn" data-admintab="admin-groups">Групи девайсів</button>
+                    <button class="admin-subtab-btn" data-admintab="admin-users">Користувачі</button>
+                    <button class="admin-subtab-btn" data-admintab="admin-backups">Бекапи</button>
+                </nav>
+
+                <!-- Sub-tab: Camera -->
+                <div class="admin-subtab-panel" id="admin-camera">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>USB Камера</h2>
+                            <span class="scanner-status-badge" id="cameraStatusBadge">--</span>
+                        </div>
+                        <div class="camera-section">
+                            <div class="camera-preview">
+                                <img id="cameraStream" class="camera-stream" alt="Камера не підключена">
+                                <div class="camera-no-signal" id="cameraNoSignal">
+                                    <span>Немає сигналу</span>
+                                </div>
+                            </div>
+                            <div class="camera-controls">
+                                <div class="camera-info-row">
+                                    <span class="camera-label">Роздільність:</span>
+                                    <span class="camera-value" id="cameraResolution">--</span>
+                                </div>
+                                <div class="camera-info-row">
+                                    <span class="camera-label">FPS:</span>
+                                    <span class="camera-value" id="cameraFps">--</span>
+                                </div>
+                                <div class="camera-info-row">
+                                    <span class="camera-label">Статус запису:</span>
+                                    <span class="camera-value" id="cameraRecStatus">Не записує</span>
+                                </div>
+                                <div class="camera-info-row" id="cameraRecDurationRow" style="display:none;">
+                                    <span class="camera-label">Тривалість:</span>
+                                    <span class="camera-value" id="cameraRecDuration">0:00</span>
+                                </div>
+                                <div class="camera-buttons">
+                                    <button class="btn btn-danger btn-camera-rec" id="btnCameraRec">ЗАПИС</button>
+                                    <button class="btn btn-secondary" id="btnCameraRecStop" style="display:none;">СТОП</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Сховище</h2>
+                        </div>
+                        <div class="storage-section">
+                            <div class="storage-row">
+                                <span class="storage-label">Папка записів:</span>
+                                <span class="storage-value storage-path" id="storageRecDir">--</span>
+                            </div>
+                            <div class="storage-row">
+                                <span class="storage-label">Записів:</span>
+                                <span class="storage-value" id="storageRecCount">--</span>
+                            </div>
+                            <div class="storage-sub-header">Квота записів</div>
+                            <div class="storage-bar-container">
+                                <div class="storage-bar">
+                                    <div class="storage-bar-used" id="storageQuotaBar" style="width:0%"></div>
+                                </div>
+                                <div class="storage-bar-labels">
+                                    <span id="storageRecSize">--</span>
+                                    <span id="storageQuotaPct">--%</span>
+                                    <span id="storageQuotaMax">-- ліміт</span>
+                                </div>
+                            </div>
+                            <div class="storage-sub-header">Диск</div>
+                            <div class="storage-bar-container">
+                                <div class="storage-bar">
+                                    <div class="storage-bar-used" id="storageDiskBar" style="width:0%"></div>
+                                </div>
+                                <div class="storage-bar-labels">
+                                    <span id="storageDiskUsed">--</span>
+                                    <span id="storageDiskPct">--%</span>
+                                    <span id="storageDiskFree">-- вільно</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>USB-накопичувач</h2>
+                            <span class="scanner-status-badge" id="usbStatusBadge">--</span>
+                        </div>
+                        <div class="usb-section">
+                            <div class="storage-row">
+                                <span class="storage-label">Пристрій:</span>
+                                <span class="storage-value" id="usbDevice">--</span>
+                            </div>
+                            <div class="storage-row">
+                                <span class="storage-label">Модель:</span>
+                                <span class="storage-value" id="usbModel">--</span>
+                            </div>
+                            <div class="storage-row">
+                                <span class="storage-label">Файлова система:</span>
+                                <span class="storage-value" id="usbFstype">--</span>
+                            </div>
+                            <div class="storage-row">
+                                <span class="storage-label">Записів:</span>
+                                <span class="storage-value" id="usbRecCount">--</span>
+                            </div>
+                            <div class="storage-bar-container" id="usbBarContainer" style="display:none;">
+                                <div class="storage-bar">
+                                    <div class="storage-bar-used" id="usbDiskBar" style="width:0%"></div>
+                                </div>
+                                <div class="storage-bar-labels">
+                                    <span id="usbDiskUsed">--</span>
+                                    <span id="usbDiskPct">--%</span>
+                                    <span id="usbDiskFree">-- вільно</span>
+                                </div>
+                            </div>
+                            <div class="usb-buttons">
+                                <button class="btn btn-primary btn-sm" id="btnUsbMount" onclick="usbMount()">Монтувати</button>
+                                <button class="btn btn-secondary btn-sm" id="btnUsbUnmount" onclick="usbUnmount()" style="display:none;">Відмонтувати</button>
+                                <button class="btn btn-danger btn-sm" id="btnUsbFormat" onclick="usbFormat()">Форматувати ext4</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Записи</h2>
+                        </div>
+                        <div id="cameraRecordingsList">
+                            <div class="empty-message">Немає записів</div>
+                        </div>
+                        <div class="rec-pagination" id="recPagination"></div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab: Scanner -->
+                <div class="admin-subtab-panel active" id="admin-scanner">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Сканер штрих-кодів</h2>
+                        <span class="scanner-status-badge" id="scannerStatusBadge">--</span>
+                    </div>
+                    <div class="scanner-section">
+                        <div class="scanner-info">
+                            <div class="scanner-info-row">
+                                <span class="scanner-label">Пристрій:</span>
+                                <span class="scanner-value scanner-device-path" id="scannerDevicePath">--</span>
+                            </div>
+                            <div class="scanner-info-row">
+                                <span class="scanner-label">Всього сканувань:</span>
+                                <span class="scanner-value" id="scannerScanCount">0</span>
+                            </div>
+                        </div>
+                        <div class="scanner-last-scan">
+                            <label class="form-label">Останнє сканування:</label>
+                            <div class="scanner-scan-value" id="scannerLastValue">--</div>
+                            <div class="scanner-scan-time" id="scannerLastTime"></div>
+                        </div>
+                        <div class="scanner-history">
+                            <label class="form-label">Історія сканувань:</label>
+                            <div class="scanner-history-list" id="scannerHistoryList">
+                                <div class="scanner-history-empty">Немає сканувань</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Sub-tab: Device Groups -->
+                <div class="admin-subtab-panel" id="admin-groups">
+                    <div class="grid-2">
+                        <!-- Left: groups list -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h2>Групи девайсів</h2>
+                            </div>
+                            <div class="device-groups-admin">
+                                <div class="device-groups-list" id="deviceGroupsList">
+                                    <!-- Groups will be rendered by JS -->
+                                </div>
+                                <div class="device-groups-add">
+                                    <input type="text" id="newGroupName" class="input-text" placeholder="Назва нової групи" maxlength="30">
+                                    <button class="btn btn-primary" id="btnAddGroup">Додати групу</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: selected group editor -->
+                        <div class="card" id="groupEditorCard" style="display:none;">
+                            <div class="card-header">
+                                <h2 id="groupEditorTitle">Редагування групи</h2>
+                            </div>
+                            <div class="group-editor">
+                                <div class="form-row-new">
+                                    <div class="form-group-new">
+                                        <label class="form-label">Назва групи</label>
+                                        <div class="group-rename-row">
+                                            <input type="text" id="editGroupName" class="input-text" maxlength="30">
+                                            <button class="btn btn-primary" id="btnRenameGroup">Зберегти</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="group-devices-section">
+                                    <label class="form-label">Девайси в групі:</label>
+                                    <div class="group-devices-list" id="groupDevicesInList">
+                                        <div class="empty-message">Немає девайсів</div>
+                                    </div>
+                                </div>
+                                <div class="group-devices-section">
+                                    <label class="form-label">Додати девайс до групи:</label>
+                                    <div class="group-add-device-row">
+                                        <select id="groupAvailableDevices" class="input-select">
+                                            <option value="">-- Виберіть девайс --</option>
+                                        </select>
+                                        <button class="btn btn-primary" id="btnAddDeviceToGroup">Додати</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab: Users -->
+                <div class="admin-subtab-panel" id="admin-users">
+                    <div class="grid-2">
+                    <div class="card">
+                        <h2>Користувачі</h2>
+                        <div class="users-list" id="usersList">
+                            <!-- Users will be rendered here -->
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2 id="userFormTitle">Додати користувача</h2>
+                        <div class="form-new">
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Логін</label>
+                                    <input type="text" id="editUserUsername" class="input-text" placeholder="Введіть логін">
+                                </div>
+                                <div class="form-group-new">
+                                    <label class="form-label">Пароль <span class="label-hint" id="passwordHint">(обов'язково)</span></label>
+                                    <input type="password" id="editUserPassword" class="input-text" placeholder="Введіть пароль">
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Роль</label>
+                                    <select id="editUserRole" class="input-select">
+                                        <option value="user">Користувач</option>
+                                        <option value="admin">Адміністратор</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new">
+                                    <label class="form-label">Доступні вкладки</label>
+                                    <div class="tabs-checkboxes" id="tabsCheckboxes">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="status" checked disabled>
+                                            <span>Статус</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="control">
+                                            <span>Керування</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="xy">
+                                            <span>XY Стіл</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="settings">
+                                            <span>Налаштування</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="admin">
+                                            <span>Адмін</span>
+                                        </label>
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" value="logs">
+                                            <span>Логи</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row-new">
+                                <div class="form-group-new form-group-buttons">
+                                    <button class="btn btn-save-large" id="btnSaveUser">Зберегти</button>
+                                    <button class="btn btn-cancel-large" id="btnCancelUser" style="display: none;">Скасувати</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <!-- Sub-tab: Backups -->
+                <div class="admin-subtab-panel" id="admin-backups">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>Резервне копіювання</h2>
+                        </div>
+
+                        <!-- Backup info -->
+                        <div class="backup-info">
+                            <div class="backup-info-row">
+                                <span class="backup-label">Збереження:</span>
+                                <span class="backup-value" id="backupDirInfo">—</span>
+                            </div>
+                            <div class="backup-info-row">
+                                <span class="backup-label">Що копіюється:</span>
+                                <span class="backup-value">Офсети, девайси, оснастки, групи, користувачі, статистика</span>
+                            </div>
+                        </div>
+
+                        <!-- Settings -->
+                        <div class="backup-settings">
+                            <h3>Автоматичне копіювання</h3>
+                            <div class="backup-settings-row">
+                                <label class="backup-toggle">
+                                    <input type="checkbox" id="backupAutoEnabled">
+                                    <span>Увімкнено</span>
+                                </label>
+                                <div class="backup-field">
+                                    <label for="backupInterval">Інтервал (годин):</label>
+                                    <input type="number" id="backupInterval" class="input-sm" min="1" max="720" value="24" style="width:80px;">
+                                </div>
+                                <div class="backup-field">
+                                    <label for="backupMaxCount">Макс. кількість:</label>
+                                    <input type="number" id="backupMaxCount" class="input-sm" min="1" max="100" value="10" style="width:80px;">
+                                </div>
+                                <button class="btn btn-primary btn-sm" id="btnSaveBackupSettings">Зберегти</button>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="backup-actions">
+                            <button class="btn btn-primary" id="btnCreateBackup">Створити бекап зараз</button>
+                            <label class="btn btn-secondary" id="btnUploadBackup" style="cursor:pointer;margin:0;">
+                                Відновити з файлу
+                                <input type="file" id="backupFileInput" accept=".tar.gz,.gz" style="display:none;">
+                            </label>
+                        </div>
+
+                        <!-- Backups list -->
+                        <h3 style="margin-top:20px;">Наявні бекапи</h3>
+                        <div class="backup-list-wrap">
+                            <table class="stats-table" id="backupTable">
+                                <thead>
+                                    <tr>
+                                        <th>Дата створення</th>
+                                        <th>Файл</th>
+                                        <th>Джерело</th>
+                                        <th>Розмір</th>
+                                        <th>Дії</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="backupTableBody">
+                                    <tr><td colspan="5" class="empty-message">Немає бекапів</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Logs Tab -->
+            <section id="logs" class="tab-panel">
+                <!-- Logs Controls -->
+                <div class="card logs-controls-card">
+                    <div class="logs-controls">
+                        <div class="logs-filters">
+                            <div class="filter-group">
+                                <label>Рівень:</label>
+                                <select id="logLevelFilter" class="input-select">
+                                    <option value="">Всі</option>
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                    <option value="CRITICAL">CRITICAL</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>Категорія:</label>
+                                <select id="logCategoryFilter" class="input-select">
+                                    <option value="">Всі</option>
+                                    <option value="SYSTEM">Система</option>
+                                    <option value="AUTH">Авторизація</option>
+                                    <option value="XY">XY Стіл</option>
+                                    <option value="CYCLE">Цикл</option>
+                                    <option value="RELAY">Реле</option>
+                                    <option value="SENSOR">Датчики</option>
+                                    <option value="API">API</option>
+                                    <option value="DEVICE">Девайси</option>
+                                    <option value="GCODE">G-Code</option>
+                                    <option value="COMM">Комунікація</option>
+                                    <option value="ERROR">Помилки</option>
+                                </select>
+                            </div>
+                            <div class="filter-group filter-search">
+                                <label>Пошук:</label>
+                                <input type="text" id="logSearchFilter" class="input-text" placeholder="Введіть текст...">
+                            </div>
+                        </div>
+                        <div class="logs-actions">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="logAutoScroll" checked>
+                                <span>Авто-прокрутка</span>
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="logAutoRefresh" checked>
+                                <span>Авто-оновлення</span>
+                            </label>
+                            <button class="btn btn-secondary" id="btnRefreshLogs">Оновити</button>
+                            <button class="btn btn-danger" id="btnClearLogs">Очистити</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Stats -->
+                <div class="logs-stats-row">
+                    <div class="log-stat">
+                        <span class="stat-label">Всього:</span>
+                        <span class="stat-value" id="logStatTotal">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-info">INFO:</span>
+                        <span class="stat-value" id="logStatInfo">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-warning">WARNING:</span>
+                        <span class="stat-value" id="logStatWarning">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-error">ERROR:</span>
+                        <span class="stat-value" id="logStatError">0</span>
+                    </div>
+                    <div class="log-stat">
+                        <span class="stat-label stat-critical">CRITICAL:</span>
+                        <span class="stat-value" id="logStatCritical">0</span>
+                    </div>
+                </div>
+
+                <!-- Logs Display -->
+                <div class="card logs-card">
+                    <div class="logs-container" id="logsContainer">
+                        <div class="logs-empty">Завантаження логів...</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js?v=1.0.25"></script>
+</body>
+</html>

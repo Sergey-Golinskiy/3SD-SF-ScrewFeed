@@ -1,0 +1,19 @@
+# Screw Drive Control System - Python Dependencies
+# Install with: pip3 install -r requirements.txt
+
+# Web server
+flask>=2.0.0
+flask-cors>=3.0.0
+
+# Hardware control
+lgpio>=0.2.0.0
+pyserial>=3.5
+
+# Configuration
+pyyaml>=6.0
+
+# Authentication
+bcrypt>=4.0.0
+
+# Optional: Desktop UI (TouchDesk)
+# PyQt5>=5.15.0

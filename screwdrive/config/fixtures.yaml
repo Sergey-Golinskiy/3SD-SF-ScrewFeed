@@ -1,0 +1,25 @@
+fixtures:
+- code: 3SD-ST-E_MCO-P_BK-S_310
+  base_group: Motion Cam Outdoor
+  qr_code: MCO_BK_001
+  scan_x: 110.0
+  scan_y: 320.0
+  scan_feed: 20000.0
+- code: 3SD-ST-E_MP-P_BK-S_316
+  base_group: Motion Protect
+  qr_code: MP_BK_001
+  scan_x: 110.0
+  scan_y: 390.0
+  scan_feed: 20000.0
+- code: 3SD-ST-E_MPO-P_BK-S_310
+  base_group: Motion Protect
+  qr_code: MPO_BK_001
+  scan_x: 60.0
+  scan_y: 310.0
+  scan_feed: 20000.0
+- code: 3SD-ST-E_MCO-HM-P_BK-S_310
+  base_group: Motion Cam Outdoor
+  qr_code: MCO-HM_BK_001
+  scan_x: 110.0
+  scan_y: 320.0
+  scan_feed: 20000.0

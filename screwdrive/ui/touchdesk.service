@@ -1,0 +1,24 @@
+[Unit]
+Description=TouchDesk Desktop UI for Screw Drive Control
+After=screwdrive-api.service
+Requires=screwdrive-api.service
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/user/3SD-SF-ScrewFeed/screwdrive/ui
+Environment=XDG_RUNTIME_DIR=/run/user/0
+Environment=DISPLAY=:0
+Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0:size=1280x800
+Environment=QT_QPA_FB_HIDECURSOR=1
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/user/3SD-SF-ScrewFeed/screwdrive/ui/touchdesk.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

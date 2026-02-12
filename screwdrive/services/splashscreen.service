@@ -1,0 +1,14 @@
+[Unit]
+Description=Framebuffer Splash Screen
+DefaultDependencies=no
+After=local-fs.target systemd-udev-settle.service
+Before=graphical.target
+
+[Service]
+Type=simple
+RemainAfterExit=yes
+Environment=FRAMEBUFFER=/dev/fb0
+ExecStart=/usr/bin/fbi -a -T 1 -d /dev/fb0 --noverbose /home/user/3SD-SF-ScrewFeed/screwdrive/resources/splash.png
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,52 @@
+available_tabs:
+- status
+- control
+- xy
+- settings
+- admin
+- logs
+secret_key: change-this-secret-key-in-production-abc123
+session:
+  remember_me_days: 30
+  timeout_minutes: 480
+users:
+  Mis_Y:
+    allowed_tabs:
+    - status
+    - control
+    - xy
+    - settings
+    - admin
+    - logs
+    password_hash: $2b$12$cM.E0SKbesN/0og16EXzhOyjw2l6C477pyNnqTFhInQP8l1IOIqIy
+    role: admin
+  Mister_X:
+    allowed_tabs:
+    - status
+    - control
+    - xy
+    - settings
+    - admin
+    - logs
+    password_hash: $2b$12$dhSNu4OCTfaWaNRoCqGuc.O24ZlxGXw52job6AS5WYqPKOgWjHbI.
+    role: admin
+  Mister_Y:
+    allowed_tabs:
+    - status
+    - control
+    - xy
+    - settings
+    - admin
+    - logs
+    password_hash: $2b$12$x3hVU8HmKOX9jEP9NJ.TQ.J344jdG9QGnp86iYvfZkBOGRRvPTJdu
+    role: admin
+  admin:
+    allowed_tabs:
+    - status
+    - control
+    - xy
+    - settings
+    - admin
+    - logs
+    password_hash: $2b$12$KzIB0o.R9zYhocdOfnVE.uMRCqKiu/4vbRVg4poEhvO1iKaxn06ei
+    role: admin
