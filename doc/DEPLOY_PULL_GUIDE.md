@@ -1,22 +1,209 @@
-# Инструкция: как сделать pull на сервере (Raspberry Pi)
+# 3SD-SF-ScrewFeed: Анализ проекта и инструкция по обновлению на сервере
 
-## Описание проекта
+## Часть 1: Анализ проекта
 
-**3SD-SF-ScrewFeed** — система автоматической закрутки винтов на базе двух Raspberry Pi 5.
+### Что это
 
-| Компонент | Описание |
-|-----------|----------|
-| **Master Pi** | Основной контроллер: Web UI, REST API, управление реле и датчиками |
-| **Slave Pi** | Контроллер XY-стола: управление шаговыми двигателями через GPIO |
-| **Связь** | UART (Serial) между двумя Pi |
+**3SD-SF-ScrewFeed** — промышленная система автоматической закрутки винтов на базе двух Raspberry Pi 5 в архитектуре Master-Slave. Система автоматически позиционирует детали на XY-столе и закручивает винты с контролем крутящего момента.
 
-**Стек**: Python 3.10+, Flask, lgpio, PyQt5, HTML/JS/CSS
+Целевое применение — автоматизация сборки устройств Notifi Group (Motion Cam, Motion Protect и др.).
 
 ---
 
-## 1. Первоначальная установка (если проект еще не клонирован)
+### Архитектура системы
 
-### На Master Pi
+```
+┌──────────────────────────────────────────────────────────┐
+│                  MASTER RASPBERRY PI 5                    │
+│                                                          │
+│  main.py (точка входа)                                   │
+│  ├── GPIOController (lgpio)    → 10 реле + 9 датчиков   │
+│  ├── RelayController           → управление актуаторами  │
+│  ├── SensorController          → чтение сигналов         │
+│  ├── XYTableController         → UART к Slave Pi         │
+│  ├── CycleStateMachine         → автоматика цикла        │
+│  ├── USBCamera                 → MJPEG видеопоток        │
+│  ├── BarcodeScanner            → считывание штрих-кодов  │
+│  ├── USBStorage                → внешние накопители      │
+│  └── Flask API Server          → REST API + Web UI       │
+└──────────────────┬───────────────────────────────────────┘
+                   │ UART Serial (/dev/ttyAMA0, 115200 baud)
+                   ▼
+┌──────────────────────────────────────────────────────────┐
+│                  SLAVE RASPBERRY PI 5                     │
+│                                                          │
+│  xy_cli.py (контроллер XY-стола)                         │
+│  ├── X-axis Stepper  → STEP/DIR/ENA                     │
+│  ├── Y-axis Stepper  → STEP/DIR/ENA                     │
+│  ├── Endstops        → концевики X_MIN, Y_MIN           │
+│  ├── E-STOP          → аварийная остановка (GPIO 13)     │
+│  └── Serial Parser   → обработка команд                  │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+### Технологический стек
+
+| Категория | Технология | Назначение |
+|-----------|-----------|-----------|
+| **Язык** | Python 3.10+ | Основной язык |
+| **Web-фреймворк** | Flask + Flask-CORS | REST API (50+ эндпоинтов) |
+| **GPIO** | lgpio | Управление GPIO Raspberry Pi 5 |
+| **Serial** | pyserial | UART-связь Master ↔ Slave |
+| **Конфигурация** | PyYAML | Парсинг YAML-файлов |
+| **Аутентификация** | bcrypt | Хэширование паролей |
+| **Desktop UI** | PyQt5 (EGLFS) | Интерфейс для тачскрина |
+| **Web UI** | HTML5 + CSS3 + Vanilla JS | Браузерный интерфейс |
+| **Камера** | OpenCV (опционально) | MJPEG-стриминг, запись видео |
+| **Деплой** | systemd | Управление сервисами |
+| **Хранение данных** | YAML/JSON файлы | Без базы данных |
+
+---
+
+### Структура файлов
+
+```
+3SD-SF-ScrewFeed/
+├── README.md                        # Описание проекта
+├── xy_cli.py                        # Slave Pi: контроллер XY-стола (~2000 строк)
+├── doc/                             # Документация (13 файлов)
+├── scripts/                         # Утилиты
+│   └── setup_splash.sh
+└── screwdrive/                      # Основное приложение (Master Pi)
+    ├── main.py                      # Точка входа (346 строк)
+    ├── requirements.txt             # Python-зависимости
+    ├── install_services.sh          # Установщик systemd-сервисов
+    ├── config/                      # Конфигурация
+    │   ├── settings.yaml            # Настройки движения, таймингов, API
+    │   ├── gpio_pins.yaml           # Карта GPIO (реле и датчики)
+    │   ├── devices.yaml             # Программы устройств (10+ профилей)
+    │   ├── auth.yaml                # Пользователи и роли
+    │   ├── fixtures.yaml            # Фикстуры
+    │   ├── global_cycles.txt        # Глобальный счетчик циклов
+    │   └── cycle_history.json       # История выполнения
+    ├── core/                        # Ядро системы
+    │   ├── gpio_controller.py       # Абстракция GPIO
+    │   ├── relays.py                # Управление 10 реле
+    │   ├── sensors.py               # Мониторинг 9 датчиков
+    │   ├── xy_table.py              # Связь с XY-столом (38KB)
+    │   ├── state_machine.py         # Автоматика цикла (16KB)
+    │   ├── camera.py                # USB-камера + MJPEG (29KB)
+    │   ├── scanner.py               # Сканер штрих-кодов (11KB)
+    │   └── usb_storage.py           # USB-накопители (10KB)
+    ├── api/                         # REST API
+    │   ├── server.py                # Flask API (2769 строк, 50+ эндпоинтов)
+    │   ├── auth.py                  # Аутентификация
+    │   └── logger.py                # Логирование
+    ├── ui/                          # Desktop UI
+    │   └── touchdesk.py             # PyQt5 EGLFS интерфейс
+    ├── templates/                   # Web UI
+    │   ├── index.html               # Главная страница (6 вкладок)
+    │   └── login.html               # Страница входа
+    ├── static/                      # Веб-ресурсы
+    │   ├── css/style.css            # Темная тема
+    │   └── js/app.js                # Клиентская логика (~3000 строк)
+    └── services/                    # Systemd-сервисы
+        ├── screwdrive-api.service
+        ├── touchdesk.service
+        └── splashscreen.service
+```
+
+---
+
+### Основные возможности
+
+**Автоматизация:**
+- Автопозиционирование XY-стола (рабочая зона 220x500 мм)
+- Последовательная закрутка винтов с контролем момента
+- 10+ программ для разных устройств (Motion Cam, Motion Protect и др.)
+- История циклов с видеозаписью
+
+**Интерфейсы:**
+- Web UI (6 вкладок: Status, Control, XY, Settings, Stats, Admin)
+- Desktop UI (PyQt5 EGLFS для тачскрина)
+- CLI-режим для тестирования
+- REST API (50+ эндпоинтов)
+
+**Безопасность:**
+- Физическая кнопка E-STOP
+- Световая завеса (area sensor)
+- Контроль аларма моторов
+- Таймауты на все операции
+- Аутентификация с ролями (admin/user)
+
+**Мониторинг:**
+- Реалтайм-статус всех компонентов
+- Камера с MJPEG-стримингом и записью
+- Сканер штрих-кодов
+- Журнал логов с фильтрацией
+
+---
+
+### Взаимосвязи модулей
+
+```
+Пользователь (браузер/тачскрин)
+    │
+    ▼
+Flask REST API (server.py) ─────────────── Web UI (index.html + app.js)
+    │                                       Desktop UI (touchdesk.py)
+    ▼
+CycleStateMachine (state_machine.py)
+    ├── RelayController (relays.py) ────── 10 реле → пневматика, питание, режимы
+    ├── SensorController (sensors.py) ──── 9 датчиков → безопасность, обратная связь
+    ├── XYTableController (xy_table.py) ── UART → xy_cli.py (Slave Pi)
+    ├── USBCamera (camera.py) ──────────── MJPEG стрим + запись видео
+    ├── BarcodeScanner (scanner.py) ────── HID USB → идентификация деталей
+    └── USBStorage (usb_storage.py) ────── Внешние накопители
+```
+
+**Конфигурация** (YAML-файлы) загружается в `main.py` и передается во все модули.
+
+**Цикл закрутки** (state_machine):
+```
+IDLE → READY → HOMING → MOVING_FREE → MOVING_WORK → LOWERING
+→ SCREWING → RAISING → VERIFYING → (следующий винт или COMPLETED)
+```
+
+---
+
+### Последние изменения в репозитории
+
+| Дата | Автор | Коммит | Описание |
+|------|-------|--------|----------|
+| 2026-02-12 | GOLINSKIY | `f31e612` | Merge PR #5: review-documentation |
+| 2026-02-12 | Claude | `ae35b0a` | docs: review and improve documentation coverage |
+| 2026-02-12 | GOLINSKIY | `77f16cc` | rm (удаление старых файлов) |
+| 2026-02-12 | GOLINSKIY | `b01df52` | last |
+| 2026-01-27 | GOLINSKIY | `ece63e3` | Initial commit |
+
+**Что изменилось в последнем PR (#5):**
+- Удалена папка `OLD/` с устаревшими файлами (cycle_onefile.py, touchdesk.py, web_ui.py и др.)
+- Удалены файлы `barcode_reader_timeout.py` и `old_main.ino`
+- Обновлен `README.md` (переработано описание проекта)
+- Добавлены новые документы: `CONFIGURATION.md`, `USER_FLOW.md`
+- Обновлен `ARCHITECTURE.md`
+- Перенесены файлы в `doc/` (DEPLOY_PULL_GUIDE.md, SPLASH_SETUP_UA.md)
+- Итого: +1322 / -4225 строк в 22 файлах
+
+---
+
+## Часть 2: Инструкция — как сделать pull на сервере (Raspberry Pi)
+
+### Краткая справка
+
+| Компонент | Описание |
+|-----------|----------|
+| **Master Pi** | Основной контроллер: Web UI, REST API, реле, датчики |
+| **Slave Pi** | Контроллер XY-стола: шаговые двигатели через GPIO |
+| **Связь** | UART Serial между Pi (/dev/ttyAMA0, 115200 baud) |
+
+---
+
+### 1. Первоначальная установка (если проект еще не клонирован)
+
+#### На Master Pi
 
 ```bash
 # Подключаемся к Master Pi по SSH
@@ -46,7 +233,7 @@ sudo systemctl enable screwdrive-api
 sudo systemctl start screwdrive-api
 ```
 
-### На Slave Pi (XY-стол)
+#### На Slave Pi (XY-стол)
 
 ```bash
 # Подключаемся к Slave Pi по SSH
@@ -71,9 +258,9 @@ sudo systemctl start xy_table
 
 ---
 
-## 2. Обновление кода (Pull) на сервере
+### 2. Обновление кода (Pull) на сервере
 
-### Вариант A: Быстрое обновление (рекомендуется)
+#### Вариант A: Быстрое обновление (рекомендуется)
 
 Выполнить на **каждой Pi** (Master и Slave):
 
@@ -112,7 +299,7 @@ sudo systemctl status screwdrive-api  # на Master Pi
 sudo systemctl status xy_table        # на Slave Pi
 ```
 
-### Вариант B: Обновление конкретной ветки
+#### Вариант B: Обновление конкретной ветки
 
 ```bash
 cd /home/pi/3SD-SF-ScrewFeed
@@ -130,7 +317,7 @@ cd screwdrive && source venv/bin/activate && pip install -r requirements.txt && 
 sudo systemctl restart screwdrive-api
 ```
 
-### Вариант C: Полная переустановка (при серьезных проблемах)
+#### Вариант C: Полная переустановка (при серьезных проблемах)
 
 ```bash
 cd /home/pi
@@ -163,7 +350,7 @@ sudo systemctl start xy_table
 
 ---
 
-## 3. Автоматизация обновления (скрипт)
+### 3. Скрипт автоматического обновления
 
 Создайте файл `/home/pi/update_screwfeed.sh`:
 
@@ -243,9 +430,9 @@ chmod +x /home/pi/update_screwfeed.sh
 
 ---
 
-## 4. Проверка после обновления
+### 4. Проверка после обновления
 
-### На Master Pi
+#### На Master Pi
 
 ```bash
 # Проверяем статус сервиса
@@ -261,7 +448,7 @@ curl http://localhost:5000/api/xy/status
 sudo journalctl -u screwdrive-api -f
 ```
 
-### На Slave Pi
+#### На Slave Pi
 
 ```bash
 # Проверяем статус
@@ -271,7 +458,7 @@ sudo systemctl status xy_table
 sudo journalctl -u xy_table -f
 ```
 
-### Через Web UI
+#### Через Web UI
 
 Откройте в браузере: `http://<IP_MASTER_PI>:5000`
 
@@ -281,7 +468,7 @@ sudo journalctl -u xy_table -f
 
 ---
 
-## 5. Откат к предыдущей версии
+### 5. Откат к предыдущей версии
 
 Если после обновления что-то сломалось:
 
@@ -303,9 +490,9 @@ sudo systemctl start screwdrive-api
 
 ---
 
-## 6. Частые проблемы при pull
+### 6. Частые проблемы при pull
 
-### Конфликт локальных изменений
+#### Конфликт локальных изменений
 
 ```bash
 # Если есть локальные изменения, которые мешают pull:
@@ -318,7 +505,7 @@ git checkout -- .          # отменить все локальные изме
 git pull origin main
 ```
 
-### Ошибка "Permission denied"
+#### Ошибка "Permission denied"
 
 ```bash
 # Проверьте права на директорию
@@ -328,7 +515,7 @@ ls -la /home/pi/3SD-SF-ScrewFeed/
 sudo chown -R pi:pi /home/pi/3SD-SF-ScrewFeed/
 ```
 
-### Ошибка "Could not resolve host"
+#### Ошибка "Could not resolve host"
 
 ```bash
 # Проверьте интернет-соединение
@@ -344,16 +531,16 @@ scp -r ./3SD-SF-ScrewFeed/ pi@<IP_PI>:/home/pi/
 
 ---
 
-## 7. Структура сервисов
+### 7. Структура сервисов
 
 | Сервис | Pi | Файл | Описание |
 |--------|----|-------|----------|
 | `screwdrive-api` | Master | `screwdrive/services/screwdrive-api.service` | API сервер + Web UI |
-| `touchdesk` | Master | `screwdrive/services/touchdesk.service` | Desktop UI (сенсорный экран) |
+| `touchdesk` | Master | `screwdrive/services/touchdesk.service` | Desktop UI (тачскрин) |
 | `splashscreen` | Master | `screwdrive/services/splashscreen.service` | Заставка при загрузке |
 | `xy_table` | Slave | создается вручную (см. раздел 1) | Контроллер XY-стола |
 
-### Управление сервисами
+#### Управление сервисами
 
 ```bash
 sudo systemctl start <имя>     # запустить
