@@ -848,6 +848,8 @@ class CycleWorker(QThread):
     DRIVER_ALARM_ERROR = "DRIVER_ALARM"
     # Special error for area sensor (light barrier) triggered
     AREA_BLOCKED_ERROR = "AREA_BLOCKED"
+    # Special error for screw feed failure (hopper empty or feeder jammed)
+    SCREW_FEED_ERROR = "SCREW_FEED_FAILED"
 
     def __init__(self, api: ApiClient, device: dict):
         super().__init__()
@@ -1056,7 +1058,7 @@ class CycleWorker(QThread):
                 break
 
         if not screw_detected:
-            raise Exception("Гвинт не виявлено після 3 спроб")
+            raise Exception(self.SCREW_FEED_ERROR)
 
         # Delay for screw to settle into position before driving
         time.sleep(0.25)
@@ -1284,6 +1286,20 @@ class CycleWorker(QThread):
                 )
                 self.finished_error.emit(error_msg)
 
+            # Special handling for screw feed failure (hopper empty)
+            elif self.SCREW_FEED_ERROR in error_str:
+                # Move to operator position so they can check the hopper
+                try:
+                    work_x = self.device.get("work_x")
+                    work_y = self.device.get("work_y")
+                    work_feed = self.device.get("work_feed", 5000)
+                    if work_x is not None and work_y is not None:
+                        self.api.xy_move(work_x, work_y, work_feed)
+                        self._wait_for_move()
+                except Exception:
+                    pass
+                self.finished_error.emit(self.SCREW_FEED_ERROR)
+
             # Special handling for area sensor (light barrier) blocked
             elif self.AREA_BLOCKED_ERROR in error_str:
                 # Safety shutdown with R05 pulse
@@ -1341,6 +1357,7 @@ class StartWorkTab(QWidget):
         self._cycle_times = []  # List of cycle times for average calculation
         self._estop_dialog = None  # E-STOP fullscreen dialog
         self._torque_error_dialog = None  # Torque error fullscreen dialog
+        self._feed_error_dialog = None  # Screw feed error fullscreen dialog
         self._device_refresh_counter = 0  # Counter for periodic device list refresh
 
         self._setup_ui()
@@ -2424,6 +2441,12 @@ class StartWorkTab(QWidget):
 
             # Show fullscreen dialog asking operator to remove device
             self._show_torque_error_dialog()
+        # Special handling for screw feed failure
+        elif error_msg == "SCREW_FEED_FAILED":
+            self._cycle_state = "FEED_ERROR"
+            self.lblWorkMessage.setText("Гвинт не подано! Перевірте бункер.")
+            self._sync_state_to_server("FEED_ERROR", "Гвинт не подано", 0, "Помилка подачі")
+            self._show_screw_feed_error_dialog()
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"
@@ -2433,6 +2456,91 @@ class StartWorkTab(QWidget):
             self._show_area_blocked_dialog()
         else:
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
+
+    def _show_screw_feed_error_dialog(self):
+        """Show fullscreen dialog when screw feeder fails after all attempts."""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
+        from PyQt5.QtCore import Qt
+
+        screen = QApplication.primaryScreen().geometry()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Помилка подачі гвинта")
+        dialog.setModal(True)
+        dialog.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        dialog.setGeometry(screen)
+        dialog.setStyleSheet("QDialog { background-color: #1a1a1a; }")
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(30)
+        layout.setContentsMargins(50, 60, 50, 60)
+
+        # Warning icon
+        icon_lbl = QLabel("!")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("""
+            color: #1a1a1a;
+            font-size: 80px;
+            font-weight: bold;
+            background-color: #ff9800;
+            border: 6px solid #e65100;
+            border-radius: 50px;
+            min-width: 100px; max-width: 100px;
+            min-height: 100px; max-height: 100px;
+        """)
+        layout.addWidget(icon_lbl, alignment=Qt.AlignCenter)
+
+        title_lbl = QLabel("ГВИНТ НЕ ПОДАНО!")
+        title_lbl.setAlignment(Qt.AlignCenter)
+        title_lbl.setStyleSheet("color: #ff9800; font-size: 48px; font-weight: bold;")
+        layout.addWidget(title_lbl)
+
+        instr_lbl = QLabel(
+            "Бункер не зміг подати гвинт після всіх спроб.\n\n"
+            "Можливі причини:\n"
+            "- Гвинти в бункері закінчились\n"
+            "- Бункер заклинило\n"
+            "- Гвинт застряг у подавачі"
+        )
+        instr_lbl.setAlignment(Qt.AlignCenter)
+        instr_lbl.setStyleSheet("color: #e0e0e0; font-size: 26px;")
+        layout.addWidget(instr_lbl)
+
+        layout.addStretch()
+
+        self._feed_error_dialog = dialog
+        btn = QPushButton("OK")
+        btn.setFixedSize(450, 120)
+        btn.setStyleSheet("""
+            QPushButton {
+                background-color: #5a9fd4;
+                color: #ffffff;
+                font-size: 36px;
+                font-weight: bold;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:pressed {
+                background-color: #4a8fc4;
+            }
+        """)
+        btn.clicked.connect(self._on_feed_error_ok)
+        layout.addWidget(btn, alignment=Qt.AlignCenter)
+
+        layout.addStretch()
+
+        dialog.exec_()
+
+    def _on_feed_error_ok(self):
+        """Handle OK button on screw feed error dialog."""
+        if self._feed_error_dialog:
+            self._feed_error_dialog.done(0)
+            self._feed_error_dialog = None
+
+        self._cycle_state = "READY"
+        self.lblWorkMessage.setText("Перевірте бункер та натисніть СТАРТ.")
+        self.btnStartCycle.setEnabled(True)
+        self._sync_state_to_server("READY", "Помилка подачі — перевірте бункер", 0, "Готово")
 
     def _show_area_blocked_dialog(self):
         """Show fullscreen dialog when light barrier is triggered."""
@@ -4363,7 +4471,7 @@ class MainWindow(QMainWindow):
                 self._set_border_color(COLORS['orange'])
             elif cycle_state == "COMPLETED":
                 self._set_border_color(COLORS['green'])
-            elif cycle_state in ("ERROR", "TORQUE_ERROR", "AREA_BLOCKED"):
+            elif cycle_state in ("ERROR", "TORQUE_ERROR", "AREA_BLOCKED", "FEED_ERROR"):
                 self._set_border_color(COLORS['red'])
             else:
                 # READY, IDLE, INITIALIZING — yellow solid
