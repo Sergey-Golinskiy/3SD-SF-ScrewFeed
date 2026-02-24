@@ -1077,7 +1077,7 @@ class CycleWorker(QThread):
             return self._perform_screwing()
 
         # Delay for screw to settle into position before driving
-        time.sleep(0.25)
+        time.sleep(0.08)
 
         # Check for alarms before torque mode
         self._check_alarm_and_raise()
