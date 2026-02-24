@@ -1621,6 +1621,7 @@ class StartWorkTab(QWidget):
         self.tabNameChanged.emit("СТАРТ")
 
         # Reset start mode UI
+        self._set_device_selection_enabled(True)
         self._update_device_styles()
         self.btnInit.setEnabled(False)
         self.startProgressBar.setValue(0)
@@ -1760,6 +1761,17 @@ class StartWorkTab(QWidget):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _set_device_selection_enabled(self, enabled: bool):
+        """Enable or disable all device/group selection controls.
+
+        Used to block device switching while initialization is in progress.
+        """
+        for btn in self._group_buttons.values():
+            btn.setEnabled(enabled)
+        for btn in self._device_buttons.values():
+            btn.setEnabled(enabled)
+        self.btnBackToGroups.setEnabled(enabled)
 
     def _update_device_styles(self):
         """Update device button selection styles."""
@@ -1973,6 +1985,7 @@ class StartWorkTab(QWidget):
         self.lblStartMessage.setText("Ініціалізація...")
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(False)
+        self._set_device_selection_enabled(False)
 
         # Sync state to server
         self._sync_state_to_server("INITIALIZING", "Ініціалізація...")
@@ -2017,6 +2030,7 @@ class StartWorkTab(QWidget):
         self.lblStartMessage.setText(f"ПОМИЛКА: {error_msg}")
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         # Sync state to server
@@ -2028,6 +2042,7 @@ class StartWorkTab(QWidget):
         self._cycle_state = "INIT_ERROR"
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         self.lblStartMessage.setText(
@@ -2113,6 +2128,7 @@ class StartWorkTab(QWidget):
         self._cycle_state = "INIT_ERROR"
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         self.lblStartMessage.setText(
