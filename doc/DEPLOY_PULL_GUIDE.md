@@ -317,6 +317,88 @@ cd screwdrive && source venv/bin/activate && pip install -r requirements.txt && 
 sudo systemctl restart screwdrive-api
 ```
 
+#### Вариант B2: Pull ветки `claude/analyze-setup-guide-4XxOk` (пошагово)
+
+Эта ветка содержит полный проект с актуальной документацией и анализом кода.
+
+**На Master Pi:**
+
+```bash
+# 1. Подключаемся по SSH
+ssh pi@<IP_MASTER_PI>
+
+# 2. Переходим в директорию проекта
+cd /home/pi/3SD-SF-ScrewFeed
+
+# 3. Останавливаем сервисы
+sudo systemctl stop screwdrive-api
+sudo systemctl stop touchdesk 2>/dev/null
+
+# 4. Получаем ветку с сервера
+git fetch origin claude/analyze-setup-guide-4XxOk
+
+# 5. Переключаемся на ветку
+git checkout claude/analyze-setup-guide-4XxOk
+
+# 6. Подтягиваем последние изменения
+git pull origin claude/analyze-setup-guide-4XxOk
+
+# 7. Обновляем Python зависимости
+cd screwdrive
+source venv/bin/activate
+pip install -r requirements.txt
+deactivate
+cd ..
+
+# 8. Перезапускаем сервисы
+sudo systemctl start screwdrive-api
+sudo systemctl start touchdesk 2>/dev/null
+
+# 9. Проверяем статус
+sudo systemctl status screwdrive-api
+curl http://localhost:5000/api/health
+```
+
+**На Slave Pi:**
+
+```bash
+# 1. Подключаемся по SSH
+ssh pi@<IP_SLAVE_PI>
+
+# 2. Переходим в директорию проекта
+cd /home/pi/3SD-SF-ScrewFeed
+
+# 3. Останавливаем сервис XY-стола
+sudo systemctl stop xy_table
+
+# 4. Получаем ветку с сервера
+git fetch origin claude/analyze-setup-guide-4XxOk
+
+# 5. Переключаемся на ветку
+git checkout claude/analyze-setup-guide-4XxOk
+
+# 6. Подтягиваем последние изменения
+git pull origin claude/analyze-setup-guide-4XxOk
+
+# 7. Перезапускаем сервис
+sudo systemctl start xy_table
+
+# 8. Проверяем статус
+sudo systemctl status xy_table
+```
+
+**Одной командой (Master Pi):**
+
+```bash
+ssh pi@<IP_MASTER_PI> 'cd /home/pi/3SD-SF-ScrewFeed && sudo systemctl stop screwdrive-api && git fetch origin claude/analyze-setup-guide-4XxOk && git checkout claude/analyze-setup-guide-4XxOk && git pull origin claude/analyze-setup-guide-4XxOk && cd screwdrive && source venv/bin/activate && pip install -r requirements.txt && deactivate && cd .. && sudo systemctl start screwdrive-api && echo "OK: обновлено"'
+```
+
+**Одной командой (Slave Pi):**
+
+```bash
+ssh pi@<IP_SLAVE_PI> 'cd /home/pi/3SD-SF-ScrewFeed && sudo systemctl stop xy_table && git fetch origin claude/analyze-setup-guide-4XxOk && git checkout claude/analyze-setup-guide-4XxOk && git pull origin claude/analyze-setup-guide-4XxOk && sudo systemctl start xy_table && echo "OK: обновлено"'
+```
+
 #### Вариант C: Полная переустановка (при серьезных проблемах)
 
 ```bash
