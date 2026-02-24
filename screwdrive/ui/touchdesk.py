@@ -552,6 +552,23 @@ class InitWorker(QThread):
                 if self._abort:
                     return
 
+                # Step 2.5: Ensure cylinder is up before homing
+                try:
+                    cyl_sensor = self.api.sensor("ger_c2_up")
+                    if cyl_sensor.get("state") != "ACTIVE":
+                        self.progress.emit("Піднімаю циліндр...", 22)
+                        self.api.relay_set("r04_c2", "off")
+                        time.sleep(0.5)
+                except Exception:
+                    # Safety: turn off cylinder relay anyway
+                    try:
+                        self.api.relay_set("r04_c2", "off")
+                    except Exception:
+                        pass
+
+                if self._abort:
+                    return
+
                 # Step 3: Home Y axis first
                 self.progress.emit("Хомінг осі Y...", 25)
                 self._sync_progress("Хомінг осі Y...", 25)
