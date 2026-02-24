@@ -843,6 +843,7 @@ class CycleWorker(QThread):
     progress = pyqtSignal(str, int, int, int)  # message, holes_completed, total_holes, progress_percent
     finished_ok = pyqtSignal(int)  # holes_completed
     finished_error = pyqtSignal(str)
+    screw_feed_failed = pyqtSignal()  # signal UI to show feed error dialog
 
     # Special error for driver alarm - requires device removal and reinit
     DRIVER_ALARM_ERROR = "DRIVER_ALARM"
@@ -857,6 +858,8 @@ class CycleWorker(QThread):
         self.device = device
         self._abort = False
         self._area_monitoring_active = False  # Light barrier monitoring
+        self._feed_retry_event = None  # threading.Event set by UI when operator decides
+        self._feed_retry_choice = None  # "retry" or "remove"
 
     def abort(self):
         self._abort = True
@@ -1058,7 +1061,20 @@ class CycleWorker(QThread):
                 break
 
         if not screw_detected:
-            raise Exception(self.SCREW_FEED_ERROR)
+            # Signal UI and wait for operator decision
+            import threading
+            self._feed_retry_event = threading.Event()
+            self._feed_retry_choice = None
+            self.screw_feed_failed.emit()
+            # Block until operator presses a button
+            self._feed_retry_event.wait()
+            self._feed_retry_event = None
+
+            if self._feed_retry_choice == "remove" or self._abort:
+                raise Exception(self.SCREW_FEED_ERROR)
+
+            # Operator chose "retry" — try feeding again from the top
+            return self._perform_screwing()
 
         # Delay for screw to settle into position before driving
         time.sleep(0.25)
@@ -1286,9 +1302,13 @@ class CycleWorker(QThread):
                 )
                 self.finished_error.emit(error_msg)
 
-            # Special handling for screw feed failure (hopper empty)
+            # Screw feed failure — operator chose "remove device"
             elif self.SCREW_FEED_ERROR in error_str:
-                # Stay in place — operator decides via dialog
+                # Disable motors so operator can move table manually
+                try:
+                    self.api.xy_disable_motors()
+                except Exception:
+                    pass
                 self.finished_error.emit(self.SCREW_FEED_ERROR)
 
             # Special handling for area sensor (light barrier) blocked
@@ -2284,6 +2304,7 @@ class StartWorkTab(QWidget):
         self._cycle_worker.progress.connect(self._on_cycle_progress)
         self._cycle_worker.finished_ok.connect(self._on_cycle_success)
         self._cycle_worker.finished_error.connect(self._on_cycle_error)
+        self._cycle_worker.screw_feed_failed.connect(self._on_screw_feed_failed)
         self._cycle_worker.start()
 
     def _on_cycle_progress(self, message: str, holes: int, total: int, pct: int):
@@ -2432,12 +2453,13 @@ class StartWorkTab(QWidget):
 
             # Show fullscreen dialog asking operator to remove device
             self._show_torque_error_dialog()
-        # Special handling for screw feed failure
+        # Screw feed failure — operator already chose "remove device" in dialog
         elif error_msg == "SCREW_FEED_FAILED":
-            self._cycle_state = "FEED_ERROR"
-            self.lblWorkMessage.setText("Гвинт не подано! Перевірте бункер.")
-            self._sync_state_to_server("FEED_ERROR", "Гвинт не подано", 0, "Помилка подачі")
-            self._show_screw_feed_error_dialog()
+            self._initialized = False
+            self._cycle_state = "IDLE"
+            self._sync_state_to_server("IDLE", "Девайс вилучено, потрібна переініціалізація")
+            self.switch_to_start_mode()
+            self.lblStartMessage.setText("Мотори вимкнено. Дістаньте девайс та переініціалізуйте.")
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"
@@ -2447,6 +2469,13 @@ class StartWorkTab(QWidget):
             self._show_area_blocked_dialog()
         else:
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
+
+    def _on_screw_feed_failed(self):
+        """Called from CycleWorker signal when screw feed fails — show dialog while worker waits."""
+        self._cycle_state = "FEED_ERROR"
+        self.lblWorkMessage.setText("Гвинт не подано!")
+        self._sync_state_to_server("FEED_ERROR", "Гвинт не подано", 0, "Помилка подачі")
+        self._show_screw_feed_error_dialog()
 
     def _show_screw_feed_error_dialog(self):
         """Show fullscreen dialog when screw feeder fails after all attempts."""
@@ -2547,34 +2576,30 @@ class StartWorkTab(QWidget):
         dialog.exec_()
 
     def _on_feed_error_retry(self):
-        """Operator chose to retry — close dialog and restart cycle."""
+        """Operator chose to retry — unblock CycleWorker to retry feed."""
         if self._feed_error_dialog:
             self._feed_error_dialog.done(0)
             self._feed_error_dialog = None
 
-        self._cycle_state = "READY"
+        self._cycle_state = "RUNNING"
         self.lblWorkMessage.setText("Повторна спроба подачі...")
-        self.btnStartCycle.setEnabled(True)
-        self._sync_state_to_server("READY", "Повторна спроба подачі", 0, "Готово")
+        self._sync_state_to_server("RUNNING", "Повторна спроба подачі")
+
+        # Unblock the waiting CycleWorker thread
+        if self._cycle_worker and self._cycle_worker._feed_retry_event:
+            self._cycle_worker._feed_retry_choice = "retry"
+            self._cycle_worker._feed_retry_event.set()
 
     def _on_feed_error_remove(self):
-        """Operator chose to remove device — disable motors, go to init screen."""
+        """Operator chose to remove device — unblock CycleWorker to abort."""
         if self._feed_error_dialog:
             self._feed_error_dialog.done(0)
             self._feed_error_dialog = None
 
-        # Disable motors so operator can move table manually
-        try:
-            self.api.xy_disable_motors()
-        except Exception:
-            pass
-
-        # Reset state and go to START mode for reinit
-        self._initialized = False
-        self._cycle_state = "IDLE"
-        self._sync_state_to_server("IDLE", "Девайс вилучено, потрібна переініціалізація")
-        self.switch_to_start_mode()
-        self.lblStartMessage.setText("Мотори вимкнено. Дістаньте девайс та переініціалізуйте.")
+        # Unblock the waiting CycleWorker thread — it will raise SCREW_FEED_ERROR
+        if self._cycle_worker and self._cycle_worker._feed_retry_event:
+            self._cycle_worker._feed_retry_choice = "remove"
+            self._cycle_worker._feed_retry_event.set()
 
     def _show_area_blocked_dialog(self):
         """Show fullscreen dialog when light barrier is triggered."""
