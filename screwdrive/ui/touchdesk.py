@@ -510,29 +510,6 @@ class InitWorker(QThread):
                     self.progress.emit(f"Аларм виявлено, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
                     continue
 
-                # Cylinder down/up before homing (ensures cylinder is in safe position)
-                self.progress.emit("Опускання циліндра...", 18)
-                self._sync_progress("Опускання циліндра...", 18)
-                self.api.relay_set("r04_c2", "on")
-                time.sleep(0.5)
-                self.api.relay_set("r04_c2", "off")
-
-                # Wait for cylinder to return up
-                self.progress.emit("Очікування повернення циліндра...", 19)
-                start_time = time.time()
-                while time.time() - start_time < 5:
-                    if self._abort:
-                        return
-                    sensor = self.api.sensor("ger_c2_up")
-                    if sensor.get("state") == "ACTIVE":
-                        break
-                    time.sleep(0.1)
-                else:
-                    raise Exception("Циліндр не піднявся за 5 секунд")
-
-                if self._abort:
-                    return
-
                 # Step 2: PING slave before homing
                 self.progress.emit("Перевірка зв'язку зі слейвом (PING)...", 20)
                 self._sync_progress("Перевірка зв'язку зі слейвом (PING)...", 20)
