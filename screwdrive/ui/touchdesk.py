@@ -1288,16 +1288,7 @@ class CycleWorker(QThread):
 
             # Special handling for screw feed failure (hopper empty)
             elif self.SCREW_FEED_ERROR in error_str:
-                # Move to operator position so they can check the hopper
-                try:
-                    work_x = self.device.get("work_x")
-                    work_y = self.device.get("work_y")
-                    work_feed = self.device.get("work_feed", 5000)
-                    if work_x is not None and work_y is not None:
-                        self.api.xy_move(work_x, work_y, work_feed)
-                        self._wait_for_move()
-                except Exception:
-                    pass
+                # Stay in place — operator decides via dialog
                 self.finished_error.emit(self.SCREW_FEED_ERROR)
 
             # Special handling for area sensor (light barrier) blocked
@@ -2459,7 +2450,7 @@ class StartWorkTab(QWidget):
 
     def _show_screw_feed_error_dialog(self):
         """Show fullscreen dialog when screw feeder fails after all attempts."""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication
         from PyQt5.QtCore import Qt
 
         screen = QApplication.primaryScreen().geometry()
@@ -2509,38 +2500,81 @@ class StartWorkTab(QWidget):
         layout.addStretch()
 
         self._feed_error_dialog = dialog
-        btn = QPushButton("OK")
-        btn.setFixedSize(450, 120)
-        btn.setStyleSheet("""
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(40)
+
+        btn_retry = QPushButton("ПРОДОВЖИТИ\nЗАКРУЧУВАННЯ")
+        btn_retry.setFixedSize(420, 140)
+        btn_retry.setStyleSheet("""
             QPushButton {
-                background-color: #5a9fd4;
+                background-color: #4CAF50;
                 color: #ffffff;
-                font-size: 36px;
+                font-size: 30px;
                 font-weight: bold;
                 border: none;
                 border-radius: 16px;
             }
             QPushButton:pressed {
-                background-color: #4a8fc4;
+                background-color: #388E3C;
             }
         """)
-        btn.clicked.connect(self._on_feed_error_ok)
-        layout.addWidget(btn, alignment=Qt.AlignCenter)
+        btn_retry.clicked.connect(self._on_feed_error_retry)
+        btn_row.addWidget(btn_retry)
+
+        btn_remove = QPushButton("ДІСТАТИ\nДЕВАЙС")
+        btn_remove.setFixedSize(420, 140)
+        btn_remove.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: #ffffff;
+                font-size: 30px;
+                font-weight: bold;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:pressed {
+                background-color: #c62828;
+            }
+        """)
+        btn_remove.clicked.connect(self._on_feed_error_remove)
+        btn_row.addWidget(btn_remove)
+
+        layout.addLayout(btn_row)
 
         layout.addStretch()
 
         dialog.exec_()
 
-    def _on_feed_error_ok(self):
-        """Handle OK button on screw feed error dialog."""
+    def _on_feed_error_retry(self):
+        """Operator chose to retry — close dialog and restart cycle."""
         if self._feed_error_dialog:
             self._feed_error_dialog.done(0)
             self._feed_error_dialog = None
 
         self._cycle_state = "READY"
-        self.lblWorkMessage.setText("Перевірте бункер та натисніть СТАРТ.")
+        self.lblWorkMessage.setText("Повторна спроба подачі...")
         self.btnStartCycle.setEnabled(True)
-        self._sync_state_to_server("READY", "Помилка подачі — перевірте бункер", 0, "Готово")
+        self._sync_state_to_server("READY", "Повторна спроба подачі", 0, "Готово")
+
+    def _on_feed_error_remove(self):
+        """Operator chose to remove device — disable motors, go to init screen."""
+        if self._feed_error_dialog:
+            self._feed_error_dialog.done(0)
+            self._feed_error_dialog = None
+
+        # Disable motors so operator can move table manually
+        try:
+            self.api.xy_disable_motors()
+        except Exception:
+            pass
+
+        # Reset state and go to START mode for reinit
+        self._initialized = False
+        self._cycle_state = "IDLE"
+        self._sync_state_to_server("IDLE", "Девайс вилучено, потрібна переініціалізація")
+        self.switch_to_start_mode()
+        self.lblStartMessage.setText("Мотори вимкнено. Дістаньте девайс та переініціалізуйте.")
 
     def _show_area_blocked_dialog(self):
         """Show fullscreen dialog when light barrier is triggered."""
