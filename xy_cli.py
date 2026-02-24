@@ -164,6 +164,11 @@ class GPIO:
         lgpio.gpio_claim_output(self.h, Y_DIR_GPIO, y_dir_safe)
         lgpio.gpio_claim_output(self.h, Y_STEP_GPIO, STEP_IDLE_LEVEL)
 
+        # Stabilization delay: ensure all GPIO outputs are latched before proceeding.
+        # This prevents transient signals from causing unintended motor movement
+        # during boot when driver power may already be on.
+        time.sleep(0.05)
+
         # inputs with pull-ups
         pull_up = getattr(lgpio, "SET_PULL_UP", 0)
         lgpio.gpio_claim_input(self.h, X_MIN_GPIO, pull_up)
@@ -256,6 +261,27 @@ def enable_driver_y(en: bool) -> None:
 def enable_all(en: bool) -> None:
     enable_driver_x(en)
     enable_driver_y(en)
+
+
+def safe_enable_all() -> None:
+    """Enable motor drivers safely: set DIR to safe direction first, then enable.
+
+    This prevents random movement that can occur when ENA is asserted
+    while DIR pins are in an unknown state (e.g. after power-on or E-STOP).
+    """
+    # 1. Set direction pins to safe direction (towards MIN endstops)
+    set_dir_x(False)
+    set_dir_y(False)
+    # 2. Ensure STEP pins are idle
+    io.write(X_STEP_GPIO, STEP_IDLE_LEVEL)
+    io.write(Y_STEP_GPIO, STEP_IDLE_LEVEL)
+    # 3. Small delay for signals to settle
+    time.sleep(0.005)
+    # 4. Now enable drivers
+    enable_driver_x(True)
+    enable_driver_y(True)
+    # 5. Stabilization delay after driver enable
+    time.sleep(0.01)
 
 
 def set_dir_x(positive: bool) -> None:
@@ -1246,14 +1272,14 @@ def handle_command(line: str) -> str:
 
         if up == "M999":
             estop = False
-            enable_all(True)
+            safe_enable_all()
             return "ok CLEAR"
 
         # === Driver enable/disable ===
         if up == "M17":
             if estop:
                 return "err ESTOP"
-            enable_all(True)
+            safe_enable_all()
             return "ok"
 
         if up == "M18":
@@ -1828,7 +1854,7 @@ def run_serial_mode(port: str, baud: int) -> None:
                                 print("CLEAR: M999 received - clearing cancel/estop")
                                 cancel_requested = False
                                 estop = False
-                                enable_all(True)
+                                safe_enable_all()
                                 with _serial_lock:
                                     ser.write(b"ok CLEAR\n")
                             else:
