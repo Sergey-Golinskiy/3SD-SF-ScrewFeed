@@ -2285,7 +2285,7 @@ class StartWorkTab(QWidget):
         self._sync_state_to_server("RUNNING", "Цикл виконується", 0, "Запуск циклу")
 
         # Record cycle start time
-        self._cycle_start_time = time.time()
+        self._cycle_start_time = time.monotonic()
 
         # Start camera recording (device name as prefix)
         try:
@@ -2350,7 +2350,7 @@ class StartWorkTab(QWidget):
         # Calculate cycle time and add to list
         cycle_time = 0
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
+            cycle_time = time.monotonic() - self._cycle_start_time
             self._cycle_times.append(cycle_time)
             self._cycle_start_time = None
 
@@ -2405,7 +2405,7 @@ class StartWorkTab(QWidget):
         # Save cycle history record
         cycle_time = 0
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
+            cycle_time = time.monotonic() - self._cycle_start_time
             self._cycle_start_time = None
         try:
             self.api.add_cycle_history({
@@ -2856,7 +2856,7 @@ class StartWorkTab(QWidget):
 
         # Save cycle history if cycle was running
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
+            cycle_time = time.monotonic() - self._cycle_start_time
             self._cycle_start_time = None
             try:
                 self.api.add_cycle_history({
