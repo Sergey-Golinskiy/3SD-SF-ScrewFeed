@@ -2893,13 +2893,13 @@ class StartWorkTab(QWidget):
         except Exception:
             pass
 
-        # Engage brakes (OFF = brakes engaged) to lock the table
+        # Release brakes (ON) so operator can move table manually
         try:
-            self.api.relay_set("r02_brake_x", "off")
+            self.api.relay_set("r02_brake_x", "on")
         except Exception:
             pass
         try:
-            self.api.relay_set("r03_brake_y", "off")
+            self.api.relay_set("r03_brake_y", "on")
         except Exception:
             pass
 
