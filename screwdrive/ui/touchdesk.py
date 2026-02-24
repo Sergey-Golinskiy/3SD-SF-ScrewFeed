@@ -4111,42 +4111,26 @@ class ControlTab(QWidget):
     def _check_brakes(self) -> bool:
         """Check if both brakes are released (ON). Returns True if movement allowed."""
         if not self._brake_x_on or not self._brake_y_on:
-            from PyQt5.QtWidgets import QMessageBox
-            msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Warning)
-            msg.setWindowTitle("Гальма")
-            msg.setText("Вимкніть гальма X та Y\nперед переміщенням!")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: #2b2b2b;
-                    border: 3px solid #f44336;
-                    border-radius: 12px;
-                }
-                QMessageBox QLabel {
-                    color: #ffffff;
-                    font-size: 18px;
-                    font-weight: bold;
-                    padding: 20px;
-                }
-                QMessageBox QPushButton {
-                    background-color: #ff9800;
-                    color: #000000;
-                    font-size: 16px;
-                    font-weight: bold;
-                    padding: 10px 30px;
-                    border: none;
-                    border-radius: 6px;
-                    min-width: 100px;
-                    margin: 10px auto;
-                }
-                QMessageBox QPushButton:hover {
-                    background-color: #ffa726;
-                }
-                QMessageBox QDialogButtonBox {
-                    qproperty-centerButtons: true;
-                }
-            """)
-            msg.exec_()
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+            dlg = QDialog(self)
+            dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+            dlg.setStyleSheet("background-color: #2b2b2b; border: 3px solid #f44336; border-radius: 12px;")
+            dlg.setFixedSize(420, 200)
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(20, 20, 20, 20)
+            lbl = QLabel("Вимкніть гальма X та Y\nперед переміщенням!")
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("color: #ffffff; font-size: 20px; font-weight: bold; border: none;")
+            lay.addWidget(lbl)
+            btn = QPushButton("OK")
+            btn.setFixedHeight(50)
+            btn.setStyleSheet(
+                "background-color: #ff9800; color: #000; font-size: 18px; font-weight: bold;"
+                " border: none; border-radius: 8px; min-width: 120px;"
+            )
+            btn.clicked.connect(dlg.accept)
+            lay.addWidget(btn, alignment=Qt.AlignCenter)
+            dlg.exec_()
             return False
         return True
 
