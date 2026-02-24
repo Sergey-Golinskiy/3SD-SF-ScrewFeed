@@ -28,11 +28,32 @@ from PyQt5.QtWidgets import (
     QTabWidget, QLabel, QPushButton, QFrame, QComboBox, QSpinBox, QSizePolicy,
     QScrollArea, QProgressBar
 )
+try:
+    from PyQt5.QtWidgets import QScroller, QScrollerProperties
+    HAS_QSCROLLER = True
+except ImportError:
+    HAS_QSCROLLER = False
 
 # ================== Config ==================
 API_BASE = os.getenv("API_BASE", "http://127.0.0.1:5000/api")
 POLL_MS = 1000
 BORDER_W = 8
+
+
+def enable_touch_scroll(widget) -> None:
+    """Enable finger/touch swipe scrolling on a QScrollArea or QTextEdit."""
+    if not HAS_QSCROLLER:
+        return
+    QScroller.grabGesture(widget.viewport(), QScroller.LeftMouseButtonGesture)
+    scroller = QScroller.scroller(widget.viewport())
+    props = scroller.scrollerProperties()
+    props.setScrollMetric(QScrollerProperties.DragVelocitySmoothingFactor, 0.6)
+    props.setScrollMetric(QScrollerProperties.MinimumVelocity, 0.0)
+    props.setScrollMetric(QScrollerProperties.MaximumVelocity, 0.5)
+    props.setScrollMetric(QScrollerProperties.AcceleratingFlickMaximumTime, 0.4)
+    props.setScrollMetric(QScrollerProperties.OvershootDragDistanceFactor, 0.1)
+    props.setScrollMetric(QScrollerProperties.OvershootScrollDistanceFactor, 0.1)
+    scroller.setScrollerProperties(props)
 
 
 def pluralize_gvynt(n: int) -> str:
@@ -1371,6 +1392,7 @@ class StartWorkTab(QWidget):
         self.groupListLay.setSpacing(8)
         self.groupScroll.setWidget(self.groupList)
         group_page_lay.addWidget(self.groupScroll)
+        enable_touch_scroll(self.groupScroll)
 
         self.devStack.addWidget(self.groupPage)
 
@@ -1394,6 +1416,7 @@ class StartWorkTab(QWidget):
         self.devListLay.setSpacing(8)
         self.devScroll.setWidget(self.devList)
         dev_page_lay.addWidget(self.devScroll)
+        enable_touch_scroll(self.devScroll)
 
         self.devStack.addWidget(self.devPage)
 
@@ -3402,6 +3425,7 @@ class PlatformTab(QWidget):
         self.logText.setObjectName("logTextArea")
         self.logText.setMinimumHeight(300)
         log_lay.addWidget(self.logText)
+        enable_touch_scroll(self.logText)
 
         root.addWidget(self.logCard, 1)
 
@@ -3608,6 +3632,7 @@ class LogsTab(QWidget):
         self.logText.setObjectName("logTextArea")
         self.logText.setMinimumHeight(400)
         root.addWidget(self.logText, 1)
+        enable_touch_scroll(self.logText)
 
     def _load_filters(self):
         """Load available categories and levels from API."""
