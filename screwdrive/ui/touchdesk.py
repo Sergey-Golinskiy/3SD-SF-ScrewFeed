@@ -1058,6 +1058,9 @@ class CycleWorker(QThread):
         if not screw_detected:
             raise Exception("Гвинт не виявлено після 3 спроб")
 
+        # Delay for screw to settle into position before driving
+        time.sleep(0.25)
+
         # Check for alarms before torque mode
         self._check_alarm_and_raise()
 
