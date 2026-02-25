@@ -4142,7 +4142,7 @@ class ControlTab(QWidget):
             dlg = QDialog(self)
             dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
             dlg.setStyleSheet("background-color: #2b2b2b; border: 3px solid #f44336; border-radius: 12px;")
-            dlg.setFixedSize(420, 200)
+            dlg.setFixedSize(500, 260)
             lay = QVBoxLayout(dlg)
             lay.setContentsMargins(20, 20, 20, 20)
             lbl = QLabel("Гальма осей не увімкнені,\nнатисніть увімкнути Гальмо X та Гальмо Y\nдля початку роботи")
