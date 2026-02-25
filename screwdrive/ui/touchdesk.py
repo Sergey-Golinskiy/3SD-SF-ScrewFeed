@@ -1802,6 +1802,21 @@ class StartWorkTab(QWidget):
         self._current_group = None
         self.devStack.setCurrentIndex(0)
 
+        # Reset selected device so stale selection doesn't persist
+        if self._selected_device:
+            self._save_device_stats()
+            self._selected_device = None
+            self._device_fixture = ""
+            self._device_task = "-"
+            self._device_torque = None
+            self._update_device_styles()
+            self.lblStartDevice.setText("Девайс: не вибрано")
+            self.lblStartTask.setText("Таска: -")
+            self.lblStartTorque.setText("Момент: -")
+            self.lblStartFixture.setText("")
+            self.lblStartMessage.setText("Виберіть девайс для початку роботи.")
+            self.btnInit.setEnabled(False)
+
     @staticmethod
     def _clear_layout(layout):
         """Remove all items from a layout."""
