@@ -4367,6 +4367,11 @@ class ControlTab(QWidget):
         if not self._buttons_locked and not y_homed:
             self.btnHomingX.setEnabled(False)
 
+        # Hide individual homing buttons after successful init (both axes homed)
+        both_homed = x_homed and y_homed
+        self.btnHomingX.setVisible(not both_homed)
+        self.btnHomingY.setVisible(not both_homed)
+
 
 # ================== Main Window ==================
 class MainWindow(QMainWindow):
