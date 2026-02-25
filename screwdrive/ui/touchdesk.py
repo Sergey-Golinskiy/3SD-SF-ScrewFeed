@@ -4145,7 +4145,7 @@ class ControlTab(QWidget):
             dlg.setFixedSize(420, 200)
             lay = QVBoxLayout(dlg)
             lay.setContentsMargins(20, 20, 20, 20)
-            lbl = QLabel("Вимкніть гальма X та Y\nперед переміщенням!")
+            lbl = QLabel("Гальма осей не увімкнені,\nнатисніть увімкнути Гальмо X та Гальмо Y\nдля початку роботи")
             lbl.setAlignment(Qt.AlignCenter)
             lbl.setStyleSheet("color: #ffffff; font-size: 20px; font-weight: bold; border: none;")
             lay.addWidget(lbl)
