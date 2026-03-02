@@ -1382,7 +1382,7 @@ class StartWorkTab(QWidget):
         self._state_restored = False  # Track if state was restored from server
         self._cycle_start_time = None  # Track cycle start time
         self._cycle_recording_file = None  # Track active recording for cycle
-        self._cycle_times = []  # List of cycle times for average calculation
+        self._last_cycle_time = None  # Last completed cycle time in seconds
         self._estop_dialog = None  # E-STOP fullscreen dialog
         self._torque_error_dialog = None  # Torque error fullscreen dialog
         self._feed_error_dialog = None  # Screw feed error fullscreen dialog
@@ -1619,7 +1619,7 @@ class StartWorkTab(QWidget):
         if self._selected_device:
             self._device_stats[self._selected_device] = {
                 "cycles": self._total_cycles,
-                "times": list(self._cycle_times),
+                "last_time": self._last_cycle_time,
             }
 
     def _load_device_stats(self):
@@ -1627,18 +1627,17 @@ class StartWorkTab(QWidget):
         stats = self._device_stats.get(self._selected_device)
         if stats:
             self._total_cycles = stats["cycles"]
-            self._cycle_times = list(stats["times"])
+            self._last_cycle_time = stats.get("last_time")
         else:
             self._total_cycles = 0
-            self._cycle_times = []
+            self._last_cycle_time = None
 
     def _get_counter_text(self) -> str:
-        """Get counter text with average cycle time."""
-        avg_time_str = ""
-        if self._cycle_times:
-            avg_time = sum(self._cycle_times) / len(self._cycle_times)
-            avg_time_str = f" ({avg_time:.1f}с)"
-        return f"Циклів: {self._total_cycles}{avg_time_str}"
+        """Get counter text with last cycle time."""
+        time_str = ""
+        if self._last_cycle_time is not None:
+            time_str = f" ({self._last_cycle_time:.1f}с)"
+        return f"Циклів: {self._total_cycles}{time_str}"
 
     def switch_to_work_mode(self):
         """Switch to WORK mode after successful initialization."""
@@ -2379,11 +2378,11 @@ class StartWorkTab(QWidget):
         self._cycle_state = "COMPLETED"
         self._holes_completed = holes_completed
 
-        # Calculate cycle time and add to list
+        # Calculate cycle time
         cycle_time = 0
         if self._cycle_start_time is not None:
             cycle_time = time.monotonic() - self._cycle_start_time
-            self._cycle_times.append(cycle_time)
+            self._last_cycle_time = cycle_time
             self._cycle_start_time = None
 
         self._save_device_stats()

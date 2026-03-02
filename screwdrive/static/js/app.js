@@ -1404,11 +1404,36 @@ async function runCycle() {
 
     let holesCompleted = 0;
     const totalHoles = device.steps.filter(s => (s.type || '').toLowerCase() === 'work').length;
+    const cycleStartTime = Date.now();
 
     // Helper to sync cycle progress
     const syncCycleProgress = (msg, holes) => {
         const pct = totalHoles > 0 ? Math.round((holes / totalHoles) * 100) : 0;
         syncUIStateToServer('RUNNING', msg, pct, msg);
+    };
+
+    // Helper to save cycle history record
+    const saveCycleHistory = async (status) => {
+        const cycleTime = Math.round((Date.now() - cycleStartTime) / 100) / 10; // seconds, 1 decimal
+        try {
+            await api.post('/stats/history', {
+                device: deviceKey,
+                device_name: device.name || deviceKey,
+                group: device.group || '',
+                what: device.what || '',
+                screw_size: device.screw_size || '',
+                torque: device.torque || '',
+                task: device.task || '',
+                fixture: device.fixture || '',
+                screws: holesCompleted,
+                total_screws: totalHoles,
+                cycle_time: cycleTime,
+                status: status,
+                video_file: '',
+            });
+        } catch (e) {
+            console.error('Failed to save cycle history:', e);
+        }
     };
 
     try {
@@ -1543,6 +1568,8 @@ async function runCycle() {
         totalCyclesCompleted++;
         // Increment global counter on server
         try { await api.post('/stats/global_cycles/increment'); } catch(e) {}
+        // Save cycle history with time
+        await saveCycleHistory('OK');
         updateCycleStatus(`Цикл завершено! Закручено ${holesCompleted} винтів. Натисніть START для наступного.`, 'success');
         updateCycleStatusPanel('COMPLETED', deviceKey, holesCompleted, totalHoles);
         syncUIStateToServer('COMPLETED', `Цикл завершено! Закручено ${holesCompleted} винтів.`, 100, 'Цикл завершено');
@@ -1553,6 +1580,10 @@ async function runCycle() {
     } catch (error) {
         console.error('Cycle error:', error);
         areaMonitoringActive = false;
+
+        // Save cycle history for failed cycle
+        const failStatus = error.message === 'AREA_BLOCKED' ? 'ESTOP' : 'FAIL';
+        await saveCycleHistory(failStatus);
 
         if (error.message === 'AREA_BLOCKED') {
             // Special shutdown for light barrier - includes R05 pulse
@@ -4041,7 +4072,7 @@ function renderStatsTable() {
         html += `<td>${r.task || ''}</td>`;
         html += `<td>${r.fixture || ''}</td>`;
         html += `<td>${r.screws}/${r.total_screws}</td>`;
-        html += `<td>${r.cycle_time}</td>`;
+        html += `<td>${Number(r.cycle_time).toFixed(1)}</td>`;
         html += `<td><span class="stats-badge ${statusClass}">${r.status}</span></td>`;
         html += `<td class="stats-video">${videoLink}</td>`;
         html += `</tr>`;
