@@ -28,11 +28,32 @@ from PyQt5.QtWidgets import (
     QTabWidget, QLabel, QPushButton, QFrame, QComboBox, QSpinBox, QSizePolicy,
     QScrollArea, QProgressBar
 )
+try:
+    from PyQt5.QtWidgets import QScroller, QScrollerProperties
+    HAS_QSCROLLER = True
+except ImportError:
+    HAS_QSCROLLER = False
 
 # ================== Config ==================
 API_BASE = os.getenv("API_BASE", "http://127.0.0.1:5000/api")
 POLL_MS = 1000
 BORDER_W = 8
+
+
+def enable_touch_scroll(widget) -> None:
+    """Enable finger/touch swipe scrolling on a QScrollArea or QTextEdit."""
+    if not HAS_QSCROLLER:
+        return
+    QScroller.grabGesture(widget.viewport(), QScroller.LeftMouseButtonGesture)
+    scroller = QScroller.scroller(widget.viewport())
+    props = scroller.scrollerProperties()
+    props.setScrollMetric(QScrollerProperties.DragVelocitySmoothingFactor, 0.6)
+    props.setScrollMetric(QScrollerProperties.MinimumVelocity, 0.0)
+    props.setScrollMetric(QScrollerProperties.MaximumVelocity, 0.5)
+    props.setScrollMetric(QScrollerProperties.AcceleratingFlickMaximumTime, 0.4)
+    props.setScrollMetric(QScrollerProperties.OvershootDragDistanceFactor, 0.1)
+    props.setScrollMetric(QScrollerProperties.OvershootScrollDistanceFactor, 0.1)
+    scroller.setScrollerProperties(props)
 
 
 def pluralize_gvynt(n: int) -> str:
@@ -510,29 +531,6 @@ class InitWorker(QThread):
                     self.progress.emit(f"Аларм виявлено, перезапуск (спроба {retry_count}/{MAX_RETRIES})...", 0)
                     continue
 
-                # Cylinder down/up before homing (ensures cylinder is in safe position)
-                self.progress.emit("Опускання циліндра...", 18)
-                self._sync_progress("Опускання циліндра...", 18)
-                self.api.relay_set("r04_c2", "on")
-                time.sleep(0.5)
-                self.api.relay_set("r04_c2", "off")
-
-                # Wait for cylinder to return up
-                self.progress.emit("Очікування повернення циліндра...", 19)
-                start_time = time.time()
-                while time.time() - start_time < 5:
-                    if self._abort:
-                        return
-                    sensor = self.api.sensor("ger_c2_up")
-                    if sensor.get("state") == "ACTIVE":
-                        break
-                    time.sleep(0.1)
-                else:
-                    raise Exception("Циліндр не піднявся за 5 секунд")
-
-                if self._abort:
-                    return
-
                 # Step 2: PING slave before homing
                 self.progress.emit("Перевірка зв'язку зі слейвом (PING)...", 20)
                 self._sync_progress("Перевірка зв'язку зі слейвом (PING)...", 20)
@@ -550,6 +548,23 @@ class InitWorker(QThread):
 
                 if not ping_ok:
                     raise Exception("Слейв не відповідає на PING (немає PONG)")
+
+                if self._abort:
+                    return
+
+                # Step 2.5: Ensure cylinder is up before homing
+                try:
+                    cyl_sensor = self.api.sensor("ger_c2_up")
+                    if cyl_sensor.get("state") != "ACTIVE":
+                        self.progress.emit("Піднімаю циліндр...", 22)
+                        self.api.relay_set("r04_c2", "off")
+                        time.sleep(0.5)
+                except Exception:
+                    # Safety: turn off cylinder relay anyway
+                    try:
+                        self.api.relay_set("r04_c2", "off")
+                    except Exception:
+                        pass
 
                 if self._abort:
                     return
@@ -845,11 +860,14 @@ class CycleWorker(QThread):
     progress = pyqtSignal(str, int, int, int)  # message, holes_completed, total_holes, progress_percent
     finished_ok = pyqtSignal(int)  # holes_completed
     finished_error = pyqtSignal(str)
+    screw_feed_failed = pyqtSignal()  # signal UI to show feed error dialog
 
     # Special error for driver alarm - requires device removal and reinit
     DRIVER_ALARM_ERROR = "DRIVER_ALARM"
     # Special error for area sensor (light barrier) triggered
     AREA_BLOCKED_ERROR = "AREA_BLOCKED"
+    # Special error for screw feed failure (hopper empty or feeder jammed)
+    SCREW_FEED_ERROR = "SCREW_FEED_FAILED"
 
     def __init__(self, api: ApiClient, device: dict):
         super().__init__()
@@ -857,6 +875,8 @@ class CycleWorker(QThread):
         self.device = device
         self._abort = False
         self._area_monitoring_active = False  # Light barrier monitoring
+        self._feed_retry_event = None  # threading.Event set by UI when operator decides
+        self._feed_retry_choice = None  # "retry" or "remove"
 
     def abort(self):
         self._abort = True
@@ -1058,7 +1078,23 @@ class CycleWorker(QThread):
                 break
 
         if not screw_detected:
-            raise Exception("Гвинт не виявлено після 3 спроб")
+            # Signal UI and wait for operator decision
+            import threading
+            self._feed_retry_event = threading.Event()
+            self._feed_retry_choice = None
+            self.screw_feed_failed.emit()
+            # Block until operator presses a button
+            self._feed_retry_event.wait()
+            self._feed_retry_event = None
+
+            if self._feed_retry_choice == "remove" or self._abort:
+                raise Exception(self.SCREW_FEED_ERROR)
+
+            # Operator chose "retry" — try feeding again from the top
+            return self._perform_screwing()
+
+        # Delay for screw to settle into position before driving
+        time.sleep(0.08)
 
         # Check for alarms before torque mode
         self._check_alarm_and_raise()
@@ -1283,6 +1319,15 @@ class CycleWorker(QThread):
                 )
                 self.finished_error.emit(error_msg)
 
+            # Screw feed failure — operator chose "remove device"
+            elif self.SCREW_FEED_ERROR in error_str:
+                # Disable motors so operator can move table manually
+                try:
+                    self.api.xy_disable_motors()
+                except Exception:
+                    pass
+                self.finished_error.emit(self.SCREW_FEED_ERROR)
+
             # Special handling for area sensor (light barrier) blocked
             elif self.AREA_BLOCKED_ERROR in error_str:
                 # Safety shutdown with R05 pulse
@@ -1337,9 +1382,10 @@ class StartWorkTab(QWidget):
         self._state_restored = False  # Track if state was restored from server
         self._cycle_start_time = None  # Track cycle start time
         self._cycle_recording_file = None  # Track active recording for cycle
-        self._cycle_times = []  # List of cycle times for average calculation
+        self._last_cycle_time = None  # Last completed cycle time in seconds
         self._estop_dialog = None  # E-STOP fullscreen dialog
         self._torque_error_dialog = None  # Torque error fullscreen dialog
+        self._feed_error_dialog = None  # Screw feed error fullscreen dialog
         self._device_refresh_counter = 0  # Counter for periodic device list refresh
 
         self._setup_ui()
@@ -1394,6 +1440,7 @@ class StartWorkTab(QWidget):
         self.groupListLay.setSpacing(8)
         self.groupScroll.setWidget(self.groupList)
         group_page_lay.addWidget(self.groupScroll)
+        enable_touch_scroll(self.groupScroll)
 
         self.devStack.addWidget(self.groupPage)
 
@@ -1417,6 +1464,7 @@ class StartWorkTab(QWidget):
         self.devListLay.setSpacing(8)
         self.devScroll.setWidget(self.devList)
         dev_page_lay.addWidget(self.devScroll)
+        enable_touch_scroll(self.devScroll)
 
         self.devStack.addWidget(self.devPage)
 
@@ -1571,7 +1619,7 @@ class StartWorkTab(QWidget):
         if self._selected_device:
             self._device_stats[self._selected_device] = {
                 "cycles": self._total_cycles,
-                "times": list(self._cycle_times),
+                "last_time": self._last_cycle_time,
             }
 
     def _load_device_stats(self):
@@ -1579,18 +1627,17 @@ class StartWorkTab(QWidget):
         stats = self._device_stats.get(self._selected_device)
         if stats:
             self._total_cycles = stats["cycles"]
-            self._cycle_times = list(stats["times"])
+            self._last_cycle_time = stats.get("last_time")
         else:
             self._total_cycles = 0
-            self._cycle_times = []
+            self._last_cycle_time = None
 
     def _get_counter_text(self) -> str:
-        """Get counter text with average cycle time."""
-        avg_time_str = ""
-        if self._cycle_times:
-            avg_time = sum(self._cycle_times) / len(self._cycle_times)
-            avg_time_str = f" ({avg_time:.1f}с)"
-        return f"Циклів: {self._total_cycles}{avg_time_str}"
+        """Get counter text with last cycle time."""
+        time_str = ""
+        if self._last_cycle_time is not None:
+            time_str = f" ({self._last_cycle_time:.1f}с)"
+        return f"Циклів: {self._total_cycles}{time_str}"
 
     def switch_to_work_mode(self):
         """Switch to WORK mode after successful initialization."""
@@ -1621,6 +1668,7 @@ class StartWorkTab(QWidget):
         self.tabNameChanged.emit("СТАРТ")
 
         # Reset start mode UI
+        self._set_device_selection_enabled(True)
         self._update_device_styles()
         self.btnInit.setEnabled(False)
         self.startProgressBar.setValue(0)
@@ -1753,6 +1801,21 @@ class StartWorkTab(QWidget):
         self._current_group = None
         self.devStack.setCurrentIndex(0)
 
+        # Reset selected device so stale selection doesn't persist
+        if self._selected_device:
+            self._save_device_stats()
+            self._selected_device = None
+            self._device_fixture = ""
+            self._device_task = "-"
+            self._device_torque = None
+            self._update_device_styles()
+            self.lblStartDevice.setText("Девайс: не вибрано")
+            self.lblStartTask.setText("Таска: -")
+            self.lblStartTorque.setText("Момент: -")
+            self.lblStartFixture.setText("")
+            self.lblStartMessage.setText("Виберіть девайс для початку роботи.")
+            self.btnInit.setEnabled(False)
+
     @staticmethod
     def _clear_layout(layout):
         """Remove all items from a layout."""
@@ -1760,6 +1823,17 @@ class StartWorkTab(QWidget):
             item = layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+
+    def _set_device_selection_enabled(self, enabled: bool):
+        """Enable or disable all device/group selection controls.
+
+        Used to block device switching while initialization is in progress.
+        """
+        for btn in self._group_buttons.values():
+            btn.setEnabled(enabled)
+        for btn in self._device_buttons.values():
+            btn.setEnabled(enabled)
+        self.btnBackToGroups.setEnabled(enabled)
 
     def _update_device_styles(self):
         """Update device button selection styles."""
@@ -1973,6 +2047,7 @@ class StartWorkTab(QWidget):
         self.lblStartMessage.setText("Ініціалізація...")
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(False)
+        self._set_device_selection_enabled(False)
 
         # Sync state to server
         self._sync_state_to_server("INITIALIZING", "Ініціалізація...")
@@ -2017,6 +2092,7 @@ class StartWorkTab(QWidget):
         self.lblStartMessage.setText(f"ПОМИЛКА: {error_msg}")
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         # Sync state to server
@@ -2028,6 +2104,7 @@ class StartWorkTab(QWidget):
         self._cycle_state = "INIT_ERROR"
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         self.lblStartMessage.setText(
@@ -2113,6 +2190,7 @@ class StartWorkTab(QWidget):
         self._cycle_state = "INIT_ERROR"
         self.startProgressBar.setValue(0)
         self.btnInit.setEnabled(True)
+        self._set_device_selection_enabled(True)
         self._init_worker = None
 
         self.lblStartMessage.setText(
@@ -2238,7 +2316,7 @@ class StartWorkTab(QWidget):
         self._sync_state_to_server("RUNNING", "Цикл виконується", 0, "Запуск циклу")
 
         # Record cycle start time
-        self._cycle_start_time = time.time()
+        self._cycle_start_time = time.monotonic()
 
         # Start camera recording (device name as prefix)
         try:
@@ -2257,6 +2335,7 @@ class StartWorkTab(QWidget):
         self._cycle_worker.progress.connect(self._on_cycle_progress)
         self._cycle_worker.finished_ok.connect(self._on_cycle_success)
         self._cycle_worker.finished_error.connect(self._on_cycle_error)
+        self._cycle_worker.screw_feed_failed.connect(self._on_screw_feed_failed)
         self._cycle_worker.start()
 
     def _on_cycle_progress(self, message: str, holes: int, total: int, pct: int):
@@ -2299,11 +2378,11 @@ class StartWorkTab(QWidget):
         self._cycle_state = "COMPLETED"
         self._holes_completed = holes_completed
 
-        # Calculate cycle time and add to list
+        # Calculate cycle time
         cycle_time = 0
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
-            self._cycle_times.append(cycle_time)
+            cycle_time = time.monotonic() - self._cycle_start_time
+            self._last_cycle_time = cycle_time
             self._cycle_start_time = None
 
         self._save_device_stats()
@@ -2357,7 +2436,7 @@ class StartWorkTab(QWidget):
         # Save cycle history record
         cycle_time = 0
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
+            cycle_time = time.monotonic() - self._cycle_start_time
             self._cycle_start_time = None
         try:
             self.api.add_cycle_history({
@@ -2405,6 +2484,13 @@ class StartWorkTab(QWidget):
 
             # Show fullscreen dialog asking operator to remove device
             self._show_torque_error_dialog()
+        # Screw feed failure — operator already chose "remove device" in dialog
+        elif error_msg == "SCREW_FEED_FAILED":
+            self._initialized = False
+            self._cycle_state = "IDLE"
+            self._sync_state_to_server("IDLE", "Девайс вилучено, потрібна переініціалізація")
+            self.switch_to_start_mode()
+            self.lblStartMessage.setText("Мотори вимкнено. Дістаньте девайс та переініціалізуйте.")
         # Special handling for light barrier (area sensor)
         elif error_msg == "AREA_BLOCKED":
             self._cycle_state = "AREA_BLOCKED"
@@ -2414,6 +2500,137 @@ class StartWorkTab(QWidget):
             self._show_area_blocked_dialog()
         else:
             self._sync_state_to_server("ERROR", f"Помилка: {error_msg}", 0, "Помилка циклу")
+
+    def _on_screw_feed_failed(self):
+        """Called from CycleWorker signal when screw feed fails — show dialog while worker waits."""
+        self._cycle_state = "FEED_ERROR"
+        self.lblWorkMessage.setText("Гвинт не подано!")
+        self._sync_state_to_server("FEED_ERROR", "Гвинт не подано", 0, "Помилка подачі")
+        self._show_screw_feed_error_dialog()
+
+    def _show_screw_feed_error_dialog(self):
+        """Show fullscreen dialog when screw feeder fails after all attempts."""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication
+        from PyQt5.QtCore import Qt
+
+        screen = QApplication.primaryScreen().geometry()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Помилка подачі гвинта")
+        dialog.setModal(True)
+        dialog.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        dialog.setGeometry(screen)
+        dialog.setStyleSheet("QDialog { background-color: #1a1a1a; }")
+
+        layout = QVBoxLayout(dialog)
+        layout.setSpacing(30)
+        layout.setContentsMargins(50, 60, 50, 60)
+
+        # Warning icon
+        icon_lbl = QLabel("!")
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setStyleSheet("""
+            color: #1a1a1a;
+            font-size: 80px;
+            font-weight: bold;
+            background-color: #ff9800;
+            border: 6px solid #e65100;
+            border-radius: 50px;
+            min-width: 100px; max-width: 100px;
+            min-height: 100px; max-height: 100px;
+        """)
+        layout.addWidget(icon_lbl, alignment=Qt.AlignCenter)
+
+        title_lbl = QLabel("ГВИНТ НЕ ПОДАНО!")
+        title_lbl.setAlignment(Qt.AlignCenter)
+        title_lbl.setStyleSheet("color: #ff9800; font-size: 48px; font-weight: bold;")
+        layout.addWidget(title_lbl)
+
+        instr_lbl = QLabel(
+            "Бункер не зміг подати гвинт після всіх спроб.\n\n"
+            "Можливі причини:\n"
+            "- Гвинти в бункері закінчились\n"
+            "- Бункер заклинило\n"
+            "- Гвинт застряг у подавачі"
+        )
+        instr_lbl.setAlignment(Qt.AlignCenter)
+        instr_lbl.setStyleSheet("color: #e0e0e0; font-size: 26px;")
+        layout.addWidget(instr_lbl)
+
+        layout.addStretch()
+
+        self._feed_error_dialog = dialog
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(40)
+
+        btn_retry = QPushButton("ПРОДОВЖИТИ\nЗАКРУЧУВАННЯ")
+        btn_retry.setFixedSize(420, 140)
+        btn_retry.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: #ffffff;
+                font-size: 30px;
+                font-weight: bold;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:pressed {
+                background-color: #388E3C;
+            }
+        """)
+        btn_retry.clicked.connect(self._on_feed_error_retry)
+        btn_row.addWidget(btn_retry)
+
+        btn_remove = QPushButton("ДІСТАТИ\nДЕВАЙС")
+        btn_remove.setFixedSize(420, 140)
+        btn_remove.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: #ffffff;
+                font-size: 30px;
+                font-weight: bold;
+                border: none;
+                border-radius: 16px;
+            }
+            QPushButton:pressed {
+                background-color: #c62828;
+            }
+        """)
+        btn_remove.clicked.connect(self._on_feed_error_remove)
+        btn_row.addWidget(btn_remove)
+
+        layout.addLayout(btn_row)
+
+        layout.addStretch()
+
+        dialog.exec_()
+
+    def _on_feed_error_retry(self):
+        """Operator chose to retry — unblock CycleWorker to retry feed."""
+        if self._feed_error_dialog:
+            self._feed_error_dialog.done(0)
+            self._feed_error_dialog = None
+
+        self._cycle_state = "RUNNING"
+        self.lblWorkMessage.setText("Повторна спроба подачі...")
+        self._sync_state_to_server("RUNNING", "Повторна спроба подачі")
+
+        # Unblock the waiting CycleWorker thread
+        if self._cycle_worker and self._cycle_worker._feed_retry_event:
+            self._cycle_worker._feed_retry_choice = "retry"
+            self._cycle_worker._feed_retry_event.set()
+
+    def _on_feed_error_remove(self):
+        """Operator chose to remove device — unblock CycleWorker to abort."""
+        if self._feed_error_dialog:
+            self._feed_error_dialog.done(0)
+            self._feed_error_dialog = None
+
+        # Unblock the waiting CycleWorker thread — it will raise SCREW_FEED_ERROR
+        if self._cycle_worker and self._cycle_worker._feed_retry_event:
+            self._cycle_worker._feed_retry_choice = "remove"
+            self._cycle_worker._feed_retry_event.set()
 
     def _show_area_blocked_dialog(self):
         """Show fullscreen dialog when light barrier is triggered."""
@@ -2670,7 +2887,7 @@ class StartWorkTab(QWidget):
 
         # Save cycle history if cycle was running
         if self._cycle_start_time is not None:
-            cycle_time = time.time() - self._cycle_start_time
+            cycle_time = time.monotonic() - self._cycle_start_time
             self._cycle_start_time = None
             try:
                 self.api.add_cycle_history({
@@ -2704,6 +2921,16 @@ class StartWorkTab(QWidget):
         try:
             self.api.xy_estop()
             self.api.cycle_estop()
+        except Exception:
+            pass
+
+        # Release brakes (ON) so operator can move table manually
+        try:
+            self.api.relay_set("r02_brake_x", "on")
+        except Exception:
+            pass
+        try:
+            self.api.relay_set("r03_brake_y", "on")
         except Exception:
             pass
 
@@ -3409,6 +3636,7 @@ class PlatformTab(QWidget):
         self.logText.setObjectName("logTextArea")
         self.logText.setMinimumHeight(300)
         log_lay.addWidget(self.logText)
+        enable_touch_scroll(self.logText)
 
         root.addWidget(self.logCard, 1)
 
@@ -3615,6 +3843,7 @@ class LogsTab(QWidget):
         self.logText.setObjectName("logTextArea")
         self.logText.setMinimumHeight(400)
         root.addWidget(self.logText, 1)
+        enable_touch_scroll(self.logText)
 
     def _load_filters(self):
         """Load available categories and levels from API."""
@@ -3923,42 +4152,26 @@ class ControlTab(QWidget):
     def _check_brakes(self) -> bool:
         """Check if both brakes are released (ON). Returns True if movement allowed."""
         if not self._brake_x_on or not self._brake_y_on:
-            from PyQt5.QtWidgets import QMessageBox
-            msg = QMessageBox(self)
-            msg.setIcon(QMessageBox.Warning)
-            msg.setWindowTitle("Гальма")
-            msg.setText("Вимкніть гальма X та Y\nперед переміщенням!")
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: #2b2b2b;
-                    border: 3px solid #f44336;
-                    border-radius: 12px;
-                }
-                QMessageBox QLabel {
-                    color: #ffffff;
-                    font-size: 18px;
-                    font-weight: bold;
-                    padding: 20px;
-                }
-                QMessageBox QPushButton {
-                    background-color: #ff9800;
-                    color: #000000;
-                    font-size: 16px;
-                    font-weight: bold;
-                    padding: 10px 30px;
-                    border: none;
-                    border-radius: 6px;
-                    min-width: 100px;
-                    margin: 10px auto;
-                }
-                QMessageBox QPushButton:hover {
-                    background-color: #ffa726;
-                }
-                QMessageBox QDialogButtonBox {
-                    qproperty-centerButtons: true;
-                }
-            """)
-            msg.exec_()
+            from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+            dlg = QDialog(self)
+            dlg.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+            dlg.setStyleSheet("background-color: #2b2b2b; border: 3px solid #f44336; border-radius: 12px;")
+            dlg.setFixedSize(500, 260)
+            lay = QVBoxLayout(dlg)
+            lay.setContentsMargins(20, 20, 20, 20)
+            lbl = QLabel("Гальма осей не увімкнені,\nнатисніть увімкнути Гальмо X та Гальмо Y\nдля початку роботи")
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("color: #ffffff; font-size: 20px; font-weight: bold; border: none;")
+            lay.addWidget(lbl)
+            btn = QPushButton("OK")
+            btn.setFixedHeight(50)
+            btn.setStyleSheet(
+                "background-color: #ff9800; color: #000; font-size: 18px; font-weight: bold;"
+                " border: none; border-radius: 8px; min-width: 120px;"
+            )
+            btn.clicked.connect(dlg.accept)
+            lay.addWidget(btn, alignment=Qt.AlignCenter)
+            dlg.exec_()
             return False
         return True
 
@@ -4168,6 +4381,11 @@ class ControlTab(QWidget):
         if not self._buttons_locked and not y_homed:
             self.btnHomingX.setEnabled(False)
 
+        # Hide individual homing buttons after successful init (both axes homed)
+        both_homed = x_homed and y_homed
+        self.btnHomingX.setVisible(not both_homed)
+        self.btnHomingY.setVisible(not both_homed)
+
 
 # ================== Main Window ==================
 class MainWindow(QMainWindow):
@@ -4342,7 +4560,7 @@ class MainWindow(QMainWindow):
                 self._set_border_color(COLORS['orange'])
             elif cycle_state == "COMPLETED":
                 self._set_border_color(COLORS['green'])
-            elif cycle_state in ("ERROR", "TORQUE_ERROR", "AREA_BLOCKED"):
+            elif cycle_state in ("ERROR", "TORQUE_ERROR", "AREA_BLOCKED", "FEED_ERROR"):
                 self._set_border_color(COLORS['red'])
             else:
                 # READY, IDLE, INITIALIZING — yellow solid

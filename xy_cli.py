@@ -164,6 +164,11 @@ class GPIO:
         lgpio.gpio_claim_output(self.h, Y_DIR_GPIO, y_dir_safe)
         lgpio.gpio_claim_output(self.h, Y_STEP_GPIO, STEP_IDLE_LEVEL)
 
+        # Stabilization delay: ensure all GPIO outputs are latched before proceeding.
+        # This prevents transient signals from causing unintended motor movement
+        # during boot when driver power may already be on.
+        time.sleep(0.05)
+
         # inputs with pull-ups
         pull_up = getattr(lgpio, "SET_PULL_UP", 0)
         lgpio.gpio_claim_input(self.h, X_MIN_GPIO, pull_up)
@@ -256,6 +261,38 @@ def enable_driver_y(en: bool) -> None:
 def enable_all(en: bool) -> None:
     enable_driver_x(en)
     enable_driver_y(en)
+
+
+def safe_enable_all() -> None:
+    """Enable motor drivers safely: set DIR to safe direction first, then enable.
+
+    This prevents random movement that can occur when ENA is asserted
+    while DIR pins are in an unknown state (e.g. after power-on or E-STOP).
+
+    Safety sequence:
+    1. Force STEP pins to idle (no pulses)
+    2. Set DIR pins to safe direction (towards MIN endstops)
+    3. Wait for signals to settle
+    4. Enable drivers
+    5. Wait for driver stabilization
+    6. Re-confirm STEP pins idle after enable
+    """
+    # 1. Ensure STEP pins are idle FIRST (prevent any step pulses)
+    io.write(X_STEP_GPIO, STEP_IDLE_LEVEL)
+    io.write(Y_STEP_GPIO, STEP_IDLE_LEVEL)
+    # 2. Set direction pins to safe direction (towards MIN endstops)
+    set_dir_x(False)
+    set_dir_y(False)
+    # 3. Wait for signals to settle on driver inputs
+    time.sleep(0.01)
+    # 4. Enable drivers
+    enable_driver_x(True)
+    enable_driver_y(True)
+    # 5. Stabilization delay after driver enable (driver needs time to latch coils)
+    time.sleep(0.02)
+    # 6. Re-confirm STEP pins idle after enable (catch any glitch during enable)
+    io.write(X_STEP_GPIO, STEP_IDLE_LEVEL)
+    io.write(Y_STEP_GPIO, STEP_IDLE_LEVEL)
 
 
 def set_dir_x(positive: bool) -> None:
@@ -1246,14 +1283,14 @@ def handle_command(line: str) -> str:
 
         if up == "M999":
             estop = False
-            enable_all(True)
+            safe_enable_all()
             return "ok CLEAR"
 
         # === Driver enable/disable ===
         if up == "M17":
             if estop:
                 return "err ESTOP"
-            enable_all(True)
+            safe_enable_all()
             return "ok"
 
         if up == "M18":
@@ -1744,9 +1781,20 @@ def run_serial_mode(port: str, baud: int) -> None:
     time.sleep(0.1)
 
     print(f"Serial mode active. Listening on {port}")
-    # Do NOT enable motors here — master sends M17 explicitly before homing.
-    # This prevents any movement before direction pins are properly set.
+    # Safety: ensure motors are DISABLED and GPIO pins are in safe state.
+    # This is critical after power-on: GPIO may have been in undefined state
+    # between boot and this point, potentially causing driver to move motors.
+    # 1. Disable motors immediately
     enable_all(False)
+    # 2. Force STEP pins to idle level
+    io.write(X_STEP_GPIO, STEP_IDLE_LEVEL)
+    io.write(Y_STEP_GPIO, STEP_IDLE_LEVEL)
+    # 3. Set DIR pins to safe direction (towards MIN endstops)
+    set_dir_x(False)
+    set_dir_y(False)
+    # 4. Disable again (in case enable was briefly toggled by boot transients)
+    enable_all(False)
+    time.sleep(0.05)
 
     # Send ready message
     ser.write(b"ok READY\n")
@@ -1828,7 +1876,7 @@ def run_serial_mode(port: str, baud: int) -> None:
                                 print("CLEAR: M999 received - clearing cancel/estop")
                                 cancel_requested = False
                                 estop = False
-                                enable_all(True)
+                                safe_enable_all()
                                 with _serial_lock:
                                     ser.write(b"ok CLEAR\n")
                             else:
